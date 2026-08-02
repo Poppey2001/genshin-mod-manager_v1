@@ -1,0 +1,44 @@
+# Virtuelle Python-Umgebungen
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Umgebungsvariablen und Zugangsdaten
+.env
+.env.*
+!.env.example
+
+# Tests und Analyse
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+*.spec
+
+# Logs
+*.log
+
+# Entwicklungsumgebungen
+.idea/
+.vscode/
+
+# Betriebssystem
+.DS_Store
+Thumbs.db
+
+# Temporäre Dateien
+*.tmp
+*.bak
+*~
