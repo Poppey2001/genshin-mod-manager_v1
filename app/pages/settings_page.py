@@ -36,7 +36,7 @@ class SettingsPage(QWidget):
         super().__init__()
 
         self.config = config
-
+        self.library_input = QLineEdit()
         self.active_mods_input = QLineEdit()
         self.launcher_input = QLineEdit()
 
@@ -72,7 +72,8 @@ class SettingsPage(QWidget):
 
         main_layout.addWidget(title_label)
         main_layout.addWidget(description_label)
-
+        main_layout.addWidget(self._create_library_group())
+                    
         main_layout.addWidget(self._create_paths_group())
         main_layout.addWidget(self._create_options_group())
 
@@ -106,7 +107,99 @@ class SettingsPage(QWidget):
         main_layout.addLayout(bottom_layout)
 
         self._apply_local_stylesheet()
+        
+    def _create_library_group(self) -> QGroupBox:
+        """Erstellt die Einstellungen für die zentrale Mod-Bibliothek."""
+        group = QGroupBox("Mod-Bibliothek")
 
+        layout = QVBoxLayout(group)
+        layout.setContentsMargins(
+            18,
+            24,
+            18,
+            18,
+        )
+        layout.setSpacing(12)
+
+        description_label = QLabel(
+            "Hier liegen alle vom Manager verwalteten Mods. "
+            "Der Ordner kann lokal oder auf einem eingehängten "
+            "Netzlaufwerk liegen."
+        )
+        description_label.setObjectName(
+            "settingsDescription"
+        )
+        description_label.setWordWrap(True)
+
+        self.library_input.setReadOnly(False)
+        self.library_input.setPlaceholderText(
+            "Standard: ~/.local/share/genshin-mod-manager/mods"
+        )
+
+        choose_button = QPushButton(
+            "Auswählen"
+        )
+        choose_button.clicked.connect(
+            self._choose_library_directory
+        )
+
+        default_button = QPushButton(
+            "Standard"
+        )
+        default_button.clicked.connect(
+            self.library_input.clear
+        )
+
+        path_layout = QHBoxLayout()
+        path_layout.setSpacing(8)
+
+        path_layout.addWidget(
+            self.library_input,
+            stretch=1,
+        )
+        path_layout.addWidget(
+            choose_button
+        )
+        path_layout.addWidget(
+            default_button
+        )
+
+        layout.addWidget(
+            description_label
+        )
+        layout.addLayout(
+            path_layout
+        )
+
+        return group      
+        
+    def _choose_library_directory(self) -> None:
+        """Wählt einen lokalen oder eingehängten Netzwerkordner."""
+        current_path = (
+            self.library_input.text().strip()
+        )
+
+        if current_path:
+            start_directory = current_path
+        else:
+            start_directory = str(
+                self.config.mod_library_directory
+            )
+
+        selected_directory = (
+            QFileDialog.getExistingDirectory(
+                self,
+                "Mod-Bibliothek auswählen",
+                start_directory,
+            )
+        )
+
+        if selected_directory:
+            self.library_input.setText(
+                selected_directory
+            )
+            self.status_label.clear()
+        
     def _create_paths_group(self) -> QGroupBox:
         """Erstellt den Bereich für Mods- und Launcher-Pfade."""
         group = QGroupBox("Pfade")
@@ -235,6 +328,7 @@ class SettingsPage(QWidget):
         layout.setColumnStretch(0, 1)
 
         return group
+    
 
     def _create_options_group(self) -> QGroupBox:
         """Erstellt den Bereich für allgemeine Optionen."""
@@ -303,6 +397,10 @@ class SettingsPage(QWidget):
 
     def _load_config_values(self) -> None:
         """Übernimmt die gespeicherten Werte in das Formular."""
+        self.library_input.setText(
+            self.config.library_path or ""
+        )
+        
         self.active_mods_input.setText(
             self.config.active_mods_path or ""
         )
@@ -392,6 +490,10 @@ class SettingsPage(QWidget):
 
     def _save_settings(self) -> None:
         """Prüft und speichert die Einstellungen."""
+        library_path_text = (
+            self.library_input.text().strip()
+        )
+        
         mods_path_text = (
             self.active_mods_input.text().strip()
         )
@@ -404,7 +506,9 @@ class SettingsPage(QWidget):
             mods_path = Path(
                 mods_path_text
             ).expanduser()
-            if "://" in mods_path_text:
+            if ("://" in mods_path_text
+                or "://" in library_path_text
+            ):
                 QMessageBox.warning(
                     self,
                     "Netzlaufwerk wird Benutzt",
@@ -436,7 +540,53 @@ class SettingsPage(QWidget):
                     ),
                 )
                 return
+        if library_path_text:
+            library_path = Path(
+                library_path_text
+            ).expanduser()
 
+            if not library_path.exists():
+                answer = QMessageBox.question(
+                    self,
+                    "Bibliothek erstellen",
+                    (
+                        "Der ausgewählte Bibliotheksordner existiert "
+                        "noch nicht.\n\n"
+                        "Soll er jetzt erstellt werden?"
+                    ),
+                    (
+                        QMessageBox.StandardButton.Yes
+                        | QMessageBox.StandardButton.No
+                    ),
+                    QMessageBox.StandardButton.Yes,
+                )
+
+                if (
+                    answer
+                    != QMessageBox.StandardButton.Yes
+                ):
+                    return
+
+                try:
+                    library_path.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+                except OSError as error:
+                    QMessageBox.critical(
+                        self,
+                        "Ordner konnte nicht erstellt werden",
+                        str(error),
+                    )
+                return
+
+        if not library_path.is_dir():
+            QMessageBox.warning(
+                self,
+                "Ungültige Mod-Bibliothek",
+                "Der Bibliothekspfad ist kein Verzeichnis.",
+            )
+            return
         if launcher_path_text:
             launcher_path = Path(
                 launcher_path_text
@@ -465,6 +615,10 @@ class SettingsPage(QWidget):
                 return
 
         try:
+            self.config.set_mod_library_directory(
+                library_path_text or None
+            )
+            
             self.config.set_active_mods_directory(
                 mods_path_text or None
             )

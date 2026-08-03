@@ -10,6 +10,11 @@ Ein unter Linux entwickelter Mod Manager zur Verwaltung von Genshin-Mods.
 - Unterstützung eingehängter Netzlaufwerke
 - Asynchroner Mod-Ordner-Scanner
 - Erkennung von INI-Dateien und Symlinks
+- Add character and mod type filters"
+
+## Was noch kommen wird
+
+- Enabling und Disabling von mods.
 
 ## Voraussetzungen
 

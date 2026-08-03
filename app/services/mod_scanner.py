@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from logging import root
 import os
 import time
 from dataclasses import dataclass
@@ -7,10 +8,14 @@ from pathlib import Path
 from typing import Callable
 
 from app.models.mod import ModInfo
-
+from app.services.character_detector import detect_characters
+from app.services.mod_structure_detector import (
+    detect_mod_structure,
+)
 
 ProgressCallback = Callable[[int, int, str], None]
 CancelCallback = Callable[[], bool]
+
 
 
 NETWORK_FILESYSTEMS = {
@@ -47,6 +52,14 @@ PREVIEW_FILENAMES = {
     "icon.jpg",
 }
 
+MOD_MARKER_FILES = {
+    "mod.json",
+    "metadata.json",
+    "character.txt",
+    "characters.txt",
+}
+
+MAX_SCAN_DEPTH = 4
 
 class ScanCancelledError(Exception):
     """Wird ausgelöst, wenn ein Scan abgebrochen wurde."""
@@ -138,6 +151,7 @@ class ModScanner:
             self._check_cancelled(cancel_callback)
 
             mod_info = self._scan_mod_directory(
+                library_root=root,
                 mod_directory=mod_directory,
                 mount_table=mount_table,
                 cancel_callback=cancel_callback,
@@ -166,10 +180,108 @@ class ModScanner:
         root: Path,
         cancel_callback: CancelCallback | None,
     ) -> list[Path]:
-        """Findet alle direkten Mod-Unterordner."""
-        mod_directories: list[Path] = []
+        """
+        Findet direkte und verschachtelte Mods.
+
+        Unterstützte Beispiele:
+
+        Bibliothek/Mod
+        Bibliothek/Charakter/Mod
+        Bibliothek/Charakter/Character Skin/Mod
+        """
+
+        found_mods: list[Path] = []
+
+        def scan_directory(
+            directory: Path,
+            depth: int,
+        ) -> None:
+            self._check_cancelled(
+                cancel_callback
+            )
+
+            if depth > MAX_SCAN_DEPTH:
+                return
+
+            try:
+                entries = list(
+                 os.scandir(directory)
+            )
+            except (
+                OSError,
+                PermissionError,
+            ):
+                return
+
+            directories: list[Path] = []
+            has_direct_mod_marker = False
+
+            for entry in entries:
+                self._check_cancelled(
+                    cancel_callback
+                )
+
+                if entry.name.startswith("."):
+                    continue
+
+                try:
+                    if entry.is_file(
+                        follow_symlinks=False
+                    ):
+                        lower_name = entry.name.casefold()
+
+                        if (
+                            lower_name.endswith(".ini")
+                            or lower_name in MOD_MARKER_FILES
+                        ):
+                            has_direct_mod_marker = True
+
+                    elif entry.is_dir(
+                        follow_symlinks=True
+                    ):
+                        if (
+                            entry.name
+                            not in IGNORED_DIRECTORIES
+                        ):
+                            directories.append(
+                                Path(entry.path)
+                            )
+
+                except OSError:
+                    continue
+
+            # Ein Ordner mit einer direkten INI- oder Metadaten-Datei
+            # wird als eigentlicher Mod behandelt.
+            if depth >= 1 and has_direct_mod_marker:
+                found_mods.append(directory)
+                return
+
+            # Bei der Struktur Charakter / Typ / Mod ist die dritte
+            # Ebene der Mod-Ordner. Dort suchen wir zusätzlich in
+            # Unterordnern nach INI-Dateien.
+            if (
+                depth >= 3
+                and self._contains_mod_marker(
+                    directory,
+                    cancel_callback,
+                )
+            ):
+                found_mods.append(directory)
+                return
+
+            directories.sort(
+                key=lambda path: path.name.casefold()
+            )
+
+            for child_directory in directories:
+                scan_directory(
+                    child_directory,
+                    depth + 1,
+                )
 
         try:
+            root_directories = []
+
             with os.scandir(root) as entries:
                 for entry in entries:
                     self._check_cancelled(
@@ -183,12 +295,10 @@ class ModScanner:
                         if entry.is_dir(
                             follow_symlinks=True
                         ):
-                            mod_directories.append(
+                            root_directories.append(
                                 Path(entry.path)
                             )
-
                     except OSError:
-                        # Beispielsweise ein kaputter Symlink.
                         continue
 
         except PermissionError as error:
@@ -196,14 +306,82 @@ class ModScanner:
                 f"Keine Leseberechtigung für: {root}"
             ) from error
 
-        mod_directories.sort(
+        root_directories.sort(
             key=lambda path: path.name.casefold()
         )
 
-        return mod_directories
+        for directory in root_directories:
+            scan_directory(
+                directory,
+                depth=1,
+            )
 
+        found_mods.sort(
+            key=lambda path: str(path).casefold()
+        )
+
+        return found_mods    
+    def _contains_mod_marker(
+        self,
+        directory: Path,
+        cancel_callback: CancelCallback | None,
+    ) -> bool:
+        """
+        Prüft einen Mod-Ordner und höchstens zwei Unterebenen
+        auf INI- oder Metadaten-Dateien.
+        """
+
+        directory_depth = len(
+            directory.parts
+        )
+
+        try:
+            for current_directory, directory_names, file_names in os.walk(
+                directory,
+                followlinks=False,
+            ):
+                self._check_cancelled(
+                    cancel_callback
+                )
+
+                current_path = Path(
+                    current_directory
+                )
+
+                current_depth = (
+                    len(current_path.parts)
+                    - directory_depth
+                )
+
+                if current_depth >= 2:
+                    directory_names[:] = []
+
+                directory_names[:] = [
+                    name
+                    for name in directory_names
+                    if (
+                        name not in IGNORED_DIRECTORIES
+                        and not name.startswith(".")
+                    )
+                ]
+
+                for file_name in file_names:
+                    lower_name = file_name.casefold()
+
+                    if (
+                        lower_name.endswith(".ini")
+                        or lower_name in MOD_MARKER_FILES
+                    ):
+                        return True
+
+        except OSError:
+            return False
+
+        return False
+    
     def _scan_mod_directory(
         self,
+        library_root: Path,
         mod_directory: Path,
         mount_table: list[MountInfo],
         cancel_callback: CancelCallback | None,
@@ -220,11 +398,40 @@ class ModScanner:
             mount_table,
         )
 
+        characters = detect_characters(
+            mod_directory
+        )
         calculate_size = (
             not network_path
             or self.calculate_network_sizes
         )
+        
+        structure = detect_mod_structure(
+            library_root=library_root,
+            mod_directory=mod_directory,
+        )
+        
+        detected_characters = list(
+            detect_characters(
+                mod_directory
+            )
+        )
 
+        if(
+            structure.character
+            and structure.character.casefold()
+            not in {
+                character.casefold()
+                for character in detected_characters
+            }
+        ):
+            detected_characters.insert(
+                0,
+                structure.character,
+            )
+        characters = tuple(
+            detected_characters
+        )
         try:
             modified_at = (
                 mod_directory.stat().st_mtime
@@ -325,6 +532,9 @@ class ModScanner:
             modified_at=modified_at,
             preview_path=preview_path,
             error=error_message,
+            characters=characters,
+            mod_type=structure.mod_type,
+            relative_path=structure.relative_path,
         )
 
     @staticmethod

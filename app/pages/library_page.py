@@ -14,6 +14,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+    
 )
 
 from app.config import AppConfig
@@ -122,6 +124,25 @@ class LibraryPage(QWidget):
         self.location_label = QLabel()
         self.status_label = QLabel()
 
+        self.character_filter = QComboBox()
+        
+        self.character_filter.addItem(
+            "Alle Charaktere",
+            userData=None,
+        )
+        
+        self.character_filter.addItem(
+            "Unbekannt",
+            userData="__unknown__"
+        )
+        
+        self.mod_type_filter = QComboBox()
+        
+        self.mod_type_filter.addItem(
+            "Alle Mod-Typen",
+            userData=None,
+        )
+        
         self.refresh_button = QPushButton(
             "Neu scannen"
         )
@@ -198,7 +219,37 @@ class LibraryPage(QWidget):
         self.refresh_button.clicked.connect(
             self.scan_mods
         )
-
+        character_filter_label = QLabel(
+            "Charakter:"
+        )
+        
+        character_filter_label.setObjectName(
+            "characterFilterLabel"
+        )
+        
+        self.character_filter.setMinimumWidth(
+            180
+        )
+        mod_type_filter_label= QLabel(
+            "Mod-Typ:"
+        )
+        
+        mod_type_filter_label.setObjectName(
+            "modTypeFilterLabel"
+        )
+        
+        self.mod_type_filter.setMinimumWidth(
+            170
+        )
+        
+        self.mod_type_filter.currentIndexChanged.connect(
+            self._apply_mod_filters
+        )
+        
+        self.character_filter.currentIndexChanged.connect(
+            self._apply_mod_filters
+        )
+        
         toolbar_layout.addWidget(
             self.path_label,
             stretch=1,
@@ -206,6 +257,21 @@ class LibraryPage(QWidget):
         toolbar_layout.addWidget(
             self.location_label
         )
+        toolbar_layout.addWidget(
+            character_filter_label
+        )
+        toolbar_layout.addWidget(
+            self.character_filter
+        )
+        
+        toolbar_layout.addWidget(
+            mod_type_filter_label
+        )
+        
+        toolbar_layout.addWidget(
+            self.mod_type_filter
+        )
+        
         toolbar_layout.addWidget(
             self.refresh_button
         )
@@ -219,11 +285,13 @@ class LibraryPage(QWidget):
             self.progress_bar
         )
 
-        self.mod_table.setColumnCount(7)
+        self.mod_table.setColumnCount(9)
 
         self.mod_table.setHorizontalHeaderLabels(
             [
                 "Mod",
+                "Charakter",
+                "Mod-Typ",
                 "Speicherort",
                 "Dateien",
                 "INI-Dateien",
@@ -287,6 +355,11 @@ class LibraryPage(QWidget):
         )
         header.setSectionResizeMode(
             6,
+            QHeaderView.ResizeMode.ResizeToContents,
+        )
+        
+        header.setSectionResizeMode(
+            7,
             QHeaderView.ResizeMode.Stretch,
         )
 
@@ -313,26 +386,24 @@ class LibraryPage(QWidget):
             return
 
         mods_directory = (
-            self.config.active_mods_directory
+            self.config.mod_library_directory
         )
-
-        if mods_directory is None:
+        if not mods_directory.exists():
             self.path_label.setText(
-                "Kein Mods-Ordner eingestellt"
+                str(mods_directory)
             )
 
             self.location_label.setText(
-                "Nicht konfiguriert"
+                "Nicht erreichbar"
             )
 
             self.status_label.setText(
-                "Wähle zuerst unter Einstellungen "
-                "einen Mods-Ordner aus."
+                "Die Mod-Bibliothek existiert nicht oder "
+                "das Netzlaufwerk ist momentan nicht eingehängt."
             )
 
             self.mod_table.setRowCount(0)
             return
-
         self.path_label.setText(
             str(mods_directory)
         )
@@ -494,7 +565,175 @@ class LibraryPage(QWidget):
         self.mod_table.setSortingEnabled(
             True
         )
+        
 
+        self._update_character_filter(
+            result.mods
+        )
+        
+        self._update_mod_type_filter(
+            result.mods
+        )
+
+        self._apply_mod_filters
+        
+    def _update_character_filter(
+        self,
+        mods: list[ModInfo],
+    ) -> None:
+        """Erzeugt die Charakterliste aus den gefundenen Mods."""
+        selected_character = (
+            self.character_filter.currentData()
+        )
+
+        characters: set[str] = set()
+        has_unknown_mods = False
+
+        for mod in mods:
+            if mod.characters:
+                characters.update(
+                    mod.characters
+                )
+            else:
+                has_unknown_mods = True
+
+        self.character_filter.blockSignals(
+            True
+        )
+
+        self.character_filter.clear()
+
+        self.character_filter.addItem(
+            "Alle Charaktere",
+            userData=None,
+        )
+
+        if has_unknown_mods:
+            self.character_filter.addItem(
+                "Unbekannt",
+                userData="__unknown__",
+            )
+
+        for character in sorted(
+            characters,
+            key=str.casefold,
+        ):
+            self.character_filter.addItem(
+                character,
+                userData=character,
+            )
+
+        selected_index = (
+            self.character_filter.findData(
+                selected_character
+            )
+        )
+
+        if selected_index >= 0:
+            self.character_filter.setCurrentIndex(
+                selected_index
+            )
+        else:
+            self.character_filter.setCurrentIndex(
+                0
+            )
+
+        self.character_filter.blockSignals(
+            False
+        )
+
+
+    def _apply_mod_filters(
+        self,
+        _index: int | None = None,
+    ) -> None:
+        """Wendet Charakter- und Mod-Typ-Filter gemeinsam an."""
+
+        selected_character = (
+            self.character_filter.currentData()
+        )
+
+        selected_mod_type = (
+            self.mod_type_filter.currentData()
+        )
+
+        visible_mods = 0
+
+        for row in range(
+            self.mod_table.rowCount()
+        ):
+            character_item = self.mod_table.item(
+                row,
+                1,
+            )
+
+            mod_type_item = self.mod_table.item(
+                row,
+                2,
+            )
+
+            if (
+                character_item is None
+                or mod_type_item is None
+            ):
+                self.mod_table.setRowHidden(
+                    row,
+                    True,
+                )
+                continue
+
+            characters = character_item.data(
+                Qt.ItemDataRole.UserRole
+            )
+
+            if not isinstance(
+                characters,
+                list,
+            ):
+                characters = []
+
+            row_mod_type = mod_type_item.data(
+                Qt.ItemDataRole.UserRole
+            )
+
+            if selected_character is None:
+                matches_character = True
+
+            elif selected_character == "__unknown__":
+                matches_character = not characters
+
+            else:
+                matches_character = any(
+                    character.casefold()
+                    == str(selected_character).casefold()
+                    for character in characters
+                )
+
+            if selected_mod_type is None:
+                matches_mod_type = True
+            else:
+                matches_mod_type = (
+                    str(row_mod_type).casefold()
+                    == str(selected_mod_type).casefold()
+                )
+
+            row_visible = (
+                matches_character
+                and matches_mod_type
+            )
+
+            self.mod_table.setRowHidden(
+                row,
+                not row_visible,
+            )
+
+            if row_visible:
+                visible_mods += 1
+
+        self.status_label.setText(
+            f"{visible_mods} von "
+            f"{self.mod_table.rowCount()} Mods werden angezeigt."
+        )
     def _set_mod_row(
         self,
         row: int,
@@ -509,13 +748,35 @@ class LibraryPage(QWidget):
                 mod.error
             )
 
-        location_parts: list[str] = []
+        character_text = (
+            ", ".join(mod.characters)
+            if mod.characters
+            else "Unbekannt"
+        )
 
-        location_parts.append(
+        character_item = QTableWidgetItem(
+            character_text
+        )
+
+        character_item.setData(
+            Qt.ItemDataRole.UserRole,
+            list(mod.characters),
+        )
+
+        mod_type_item = QTableWidgetItem(
+            mod.mod_type
+        )
+
+        mod_type_item.setData(
+            Qt.ItemDataRole.UserRole,
+            mod.mod_type,
+        )
+
+        location_parts = [
             "Netzwerk"
             if mod.is_network
             else "Lokal"
-        )
+        ]
 
         if mod.is_symlink:
             location_parts.append(
@@ -536,7 +797,7 @@ class LibraryPage(QWidget):
 
         size_item = QTableWidgetItem(
             format_file_size(
-                mod.total_size
+             mod.total_size
             )
         )
 
@@ -547,49 +808,86 @@ class LibraryPage(QWidget):
         )
 
         path_item = QTableWidgetItem(
-            str(mod.path)
+            mod.relative_path or str(mod.path)
         )
 
         path_item.setToolTip(
             str(mod.path)
         )
 
-        self.mod_table.setItem(
-            row,
-            0,
+        items = (
             name_item,
-        )
-        self.mod_table.setItem(
-            row,
-            1,
+            character_item,
+            mod_type_item,
             location_item,
-        )
-        self.mod_table.setItem(
-            row,
-            2,
             file_count_item,
-        )
-        self.mod_table.setItem(
-            row,
-            3,
             ini_count_item,
-        )
-        self.mod_table.setItem(
-            row,
-            4,
             size_item,
-        )
-        self.mod_table.setItem(
-            row,
-            5,
             modified_item,
-        )
-        self.mod_table.setItem(
-            row,
-            6,
             path_item,
         )
 
+        for column, item in enumerate(items):
+            self.mod_table.setItem(
+                row,
+                column,
+                item,
+            )
+            
+    def _update_mod_type_filter(
+        self,
+        mods: list[ModInfo],
+    ) -> None:
+        selected_mod_type = (
+            self.mod_type_filter.currentData()
+        )
+
+        mod_types = {
+            mod.mod_type
+            for mod in mods
+            if mod.mod_type
+        }
+
+        self.mod_type_filter.blockSignals(
+            True
+        )
+
+        self.mod_type_filter.clear()
+
+        self.mod_type_filter.addItem(
+            "Alle Mod-Typen",
+            userData=None,
+        )
+
+        for mod_type in sorted(
+            mod_types,
+            key=str.casefold,
+        ):
+            self.mod_type_filter.addItem(
+                mod_type,
+                userData=mod_type,
+            )
+
+        selected_index = (
+            self.mod_type_filter.findData(
+                selected_mod_type
+            )
+        )
+
+        if selected_index >= 0:
+            self.mod_type_filter.setCurrentIndex(
+                selected_index
+            )
+        else:
+            self.mod_type_filter.setCurrentIndex(
+                0
+            )
+
+        self.mod_type_filter.blockSignals(
+            False
+        )
+        
+             
     def _apply_stylesheet(self) -> None:
         self.setStyleSheet(
             """

@@ -22,3 +22,8 @@ class ModInfo:
 
     preview_path: Path | None = None
     error: str | None = None
+    
+    characters: tuple[str, ...] =()
+    
+    mod_type: str = "Unbekannt"
+    relative_path: str = ""    

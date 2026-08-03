@@ -55,7 +55,7 @@ class AppConfig:
     Pfade werden als Strings gespeichert, damit die Konfiguration
     problemlos als JSON geschrieben werden kann.
     """
-
+    library_path: str | None = None
     active_mods_path: str | None = None
     launcher_path: str | None = None
 
@@ -86,9 +86,40 @@ class AppConfig:
             return None
 
         return Path(self.launcher_path).expanduser()
+    @property
+    def mod_library_directory(self) -> Path:
+        """
+        Gibt den Bibliotheksordner zurück.
 
-    def set_active_mods_directory(self, path: Path | str | None) -> None:
-        """Setzt den aktiven Mods-Ordner."""
+        Ohne benutzerdefinierten Pfad wird der normale
+        XDG-Datenordner verwendet.
+        """
+        if not self.library_path:
+            return MOD_LIBRARY_DIR
+
+        return Path(
+            self.library_path
+        ).expanduser()
+    def set_mod_library_directory(
+        self,
+        path: Path | str | None,
+    ) -> None:
+        """Setzt den Pfad zur zentralen Mod-Bibliothek."""
+        if path is None:
+            self.library_path = None
+            return
+
+        candidate = Path(path).expanduser()
+
+        if not candidate.is_absolute():
+            candidate = Path.cwd() / candidate
+
+        self.library_path = str(candidate)
+        
+    def set_active_mods_directory(
+        self,
+        path: Path | str | None,
+    ) -> None:
         if path is None:
             self.active_mods_path = None
             return
@@ -155,6 +186,7 @@ class AppConfig:
         config = cls()
 
         string_or_none_fields = (
+            "library_path",
             "active_mods_path",
             "launcher_path",
         )
@@ -337,6 +369,21 @@ def backup_broken_config() -> Path | None:
 
         return None
 
+def set_mod_library_directory(
+    self,
+    path: Path | str | None,
+) -> None:
+    """Setzt einen lokalen oder eingehängten Netzwerkpfad."""
+    if path is None:
+        self.library_path = None
+        return
+
+    candidate = Path(path).expanduser()
+
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+
+    self.library_path = str(candidate)
 
 def load_config() -> AppConfig:
     """Kurzfunktion zum Laden der Konfiguration."""
