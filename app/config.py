@@ -61,7 +61,7 @@ class AppConfig:
 
     selected_profile: str = "Default"
 
-    use_symlinks: bool = True
+    use_symlinks: bool = False
     create_backups: bool = True
 
     theme: str = "dark"

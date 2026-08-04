@@ -409,9 +409,7 @@ class SettingsPage(QWidget):
             self.config.launcher_path or ""
         )
 
-        self.use_symlinks_checkbox.setChecked(
-            self.config.use_symlinks
-        )
+        self.use_symlinks_checkbox.setChecked(False)
 
         self.create_backups_checkbox.setChecked(
             self.config.create_backups
@@ -627,9 +625,7 @@ class SettingsPage(QWidget):
                 launcher_path_text or None
             )
 
-            self.config.use_symlinks = (
-                self.use_symlinks_checkbox.isChecked()
-            )
+            self.config.use_symlinks = False
 
             self.config.create_backups = (
                 self.create_backups_checkbox.isChecked()

@@ -113,7 +113,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.navigation_list)
         sidebar_layout.addStretch()
 
-        version_label = QLabel("Version 0.1.0")
+        version_label = QLabel("Version 0.3.0")
         version_label.setObjectName("versionLabel")
 
         sidebar_layout.addWidget(version_label)

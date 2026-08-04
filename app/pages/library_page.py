@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QFrame,
+    QMessageBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -34,6 +35,13 @@ from app.services.mod_scanner import (
     ModScanner,
     ScanCancelledError,
     ScanResult,
+)
+
+from app.services.mod_manager import (
+    ModManager,
+    ModManagerError,
+    ModState,
+    mod_state_label,
 )
 
 
@@ -112,6 +120,13 @@ class LibraryPage(QWidget):
         super().__init__()
 
         self.config = config
+        self.mod_manager = ModManager(
+            config=self.config
+        )
+        
+        self.mods_by_path: dict[str, ModInfo] = {}
+        
+
 
         self.thread_pool = (
             QThreadPool.globalInstance()
@@ -250,6 +265,18 @@ class LibraryPage(QWidget):
             self._apply_mod_filters
         )
         
+        self.toggle_button = QPushButton(
+            "Aktivieren"
+        )
+        
+        self.toggle_button.setEnabled(
+            False
+        )
+        
+        self.toggle_button.clicked.connect(
+            self._toggle_selected_mod
+        )
+        
         toolbar_layout.addWidget(
             self.path_label,
             stretch=1,
@@ -273,6 +300,10 @@ class LibraryPage(QWidget):
         )
         
         toolbar_layout.addWidget(
+            self.toggle_button
+        )
+        
+        toolbar_layout.addWidget(
             self.refresh_button
         )
 
@@ -287,11 +318,11 @@ class LibraryPage(QWidget):
 
         self.mod_table.setColumnCount(9)
 
-        self.mod_table.setHorizontalHeaderLabels(
-            [
+        headers =[
                 "Mod",
                 "Charakter",
                 "Mod-Typ",
+                "Status"
                 "Speicherort",
                 "Dateien",
                 "INI-Dateien",
@@ -299,73 +330,38 @@ class LibraryPage(QWidget):
                 "Geändert",
                 "Pfad",
             ]
-        )
+        
 
-        self.mod_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-
-        self.mod_table.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
-
-        self.mod_table.setEditTriggers(
-            QAbstractItemView.EditTrigger.NoEditTriggers
-        )
-
-        self.mod_table.setAlternatingRowColors(
-            True
-        )
-
-        self.mod_table.setSortingEnabled(
-            True
-        )
-
-        self.mod_table.verticalHeader().setVisible(
-            False
-        )
-
-        header = (
-            self.mod_table.horizontalHeader()
-        )
-
-        header.setSectionResizeMode(
-            0,
-            QHeaderView.ResizeMode.ResizeToContents,
-        )
-        header.setSectionResizeMode(
-            1,
-            QHeaderView.ResizeMode.ResizeToContents,
-        )
-        header.setSectionResizeMode(
-            2,
-            QHeaderView.ResizeMode.ResizeToContents,
-        )
-        header.setSectionResizeMode(
-            3,
-            QHeaderView.ResizeMode.ResizeToContents,
-        )
-        header.setSectionResizeMode(
-            4,
-            QHeaderView.ResizeMode.ResizeToContents,
-        )
-        header.setSectionResizeMode(
-            5,
-            QHeaderView.ResizeMode.ResizeToContents,
-        )
-        header.setSectionResizeMode(
-            6,
-            QHeaderView.ResizeMode.ResizeToContents,
+        self.mod_table.setColumnCount(
+            len(headers)
         )
         
+        self.mod_table.setHorizontalHeaderLabels(
+            headers
+        )
+        
+        header = self.mod_table.horizontalHeader()
+        
+        for column in range (
+            len(headers)-1
+        ):
+            header.setSectionResizeMode(
+                column,
+                QHeaderView.ResizeMode.ResizeToContents,
+            )
+        
         header.setSectionResizeMode(
-            7,
+            len(headers) -1,
             QHeaderView.ResizeMode.Stretch,
         )
-
+        
         main_layout.addWidget(
             self.mod_table,
             stretch=1,
+        )
+        
+        self.mod_table.itemSelectionChanged.connect(
+            self._update_toggle_button
         )
 
         self.status_label.setObjectName(
@@ -546,6 +542,11 @@ class LibraryPage(QWidget):
         self,
         result: ScanResult,
     ) -> None:
+        self.mods_by_path = {
+            str(mod.path): mod
+            for mod in result.mods
+        }
+
         self.mod_table.setSortingEnabled(
             False
         )
@@ -565,17 +566,17 @@ class LibraryPage(QWidget):
         self.mod_table.setSortingEnabled(
             True
         )
-        
 
         self._update_character_filter(
             result.mods
         )
-        
+
         self._update_mod_type_filter(
             result.mods
         )
 
-        self._apply_mod_filters
+        self._apply_mod_filters()
+        self._update_toggle_button()
         
     def _update_character_filter(
         self,
@@ -734,13 +735,23 @@ class LibraryPage(QWidget):
             f"{visible_mods} von "
             f"{self.mod_table.rowCount()} Mods werden angezeigt."
         )
+        
     def _set_mod_row(
         self,
         row: int,
         mod: ModInfo,
     ) -> None:
+        state = self.mod_manager.get_state(
+            mod.path
+        )
+
         name_item = QTableWidgetItem(
             mod.name
+        )
+
+        name_item.setData(
+            Qt.ItemDataRole.UserRole,
+            str(mod.path),
         )
 
         if mod.error:
@@ -756,7 +767,7 @@ class LibraryPage(QWidget):
 
         character_item = QTableWidgetItem(
             character_text
-        )
+        )   
 
         character_item.setData(
             Qt.ItemDataRole.UserRole,
@@ -770,6 +781,15 @@ class LibraryPage(QWidget):
         mod_type_item.setData(
             Qt.ItemDataRole.UserRole,
             mod.mod_type,
+        )
+
+        state_item = QTableWidgetItem(
+            mod_state_label(state)
+        )
+
+        state_item.setData(
+            Qt.ItemDataRole.UserRole,
+            state.value,
         )
 
         location_parts = [
@@ -789,7 +809,7 @@ class LibraryPage(QWidget):
 
         file_count_item = QTableWidgetItem(
             str(mod.file_count)
-        )
+        )   
 
         ini_count_item = QTableWidgetItem(
             str(mod.ini_file_count)
@@ -797,7 +817,7 @@ class LibraryPage(QWidget):
 
         size_item = QTableWidgetItem(
             format_file_size(
-             mod.total_size
+                mod.total_size
             )
         )
 
@@ -808,7 +828,8 @@ class LibraryPage(QWidget):
         )
 
         path_item = QTableWidgetItem(
-            mod.relative_path or str(mod.path)
+            mod.relative_path
+            or str(mod.path)
         )
 
         path_item.setToolTip(
@@ -819,6 +840,7 @@ class LibraryPage(QWidget):
             name_item,
             character_item,
             mod_type_item,
+            state_item,
             location_item,
             file_count_item,
             ini_count_item,
@@ -886,7 +908,224 @@ class LibraryPage(QWidget):
         self.mod_type_filter.blockSignals(
             False
         )
-        
+    
+    def _selected_mod(
+        self,
+    ) -> ModInfo | None:
+        row = self.mod_table.currentRow()
+
+        if row < 0:
+            return None
+
+        name_item = self.mod_table.item(
+            row,
+            0,
+        )
+
+        if name_item is None:
+            return None
+
+        mod_path = name_item.data(
+            Qt.ItemDataRole.UserRole
+        )
+
+        if not isinstance(mod_path, str):
+            return None
+
+        return self.mods_by_path.get(
+            mod_path
+        )
+
+
+    def _update_toggle_button(
+        self,
+    ) -> None:
+        mod = self._selected_mod()
+
+        if mod is None:
+            self.toggle_button.setText(
+                "Aktivieren"
+            )
+            self.toggle_button.setEnabled(
+                False
+            )
+            return
+
+        state = self.mod_manager.get_state(
+            mod.path
+        )
+
+        if state == ModState.DISABLED:
+            self.toggle_button.setText(
+                "Aktivieren"
+            )
+            self.toggle_button.setEnabled(
+                True
+            )
+
+        elif state == ModState.ENABLED:
+            self.toggle_button.setText(
+                "Deaktivieren"
+            )
+            self.toggle_button.setEnabled(
+                True
+            )
+
+        elif state == ModState.BROKEN:
+            self.toggle_button.setText(
+                "Defekten Link entfernen"
+            )
+            self.toggle_button.setEnabled(
+                True
+            )
+
+        elif state == ModState.NOT_CONFIGURED:
+            self.toggle_button.setText(
+                "Mods-Ordner fehlt"
+            )
+            self.toggle_button.setEnabled(
+                False
+            )
+
+        else:
+            self.toggle_button.setText(
+                "Konflikt"
+            )
+            self.toggle_button.setEnabled(
+                False
+            )
+
+
+    def _toggle_selected_mod(
+        self,
+    ) -> None:
+        mod = self._selected_mod()
+
+        if mod is None:
+            return
+
+        state = self.mod_manager.get_state(
+            mod.path
+        )
+
+        try:
+            if state == ModState.DISABLED:
+                destination = self.mod_manager.enable(
+                    mod.path
+                )
+
+                self.status_label.setText(
+                    f"„{mod.name}“ wurde aktiviert: {destination}"
+                )
+
+            elif state in {
+                ModState.ENABLED,
+                ModState.BROKEN,
+            }:
+                self.mod_manager.disable(
+                    mod.path
+                )
+
+                self.status_label.setText(
+                    f"„{mod.name}“ wurde deaktiviert."
+                )
+
+            elif state == ModState.NOT_CONFIGURED:
+                QMessageBox.warning(
+                    self,
+                    "Aktiver Mods-Ordner fehlt",
+                    (
+                        "Wähle unter Einstellungen zuerst "
+                        "den aktiven Mods-Ordner aus."
+                    ),
+                )
+                return
+
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Mod-Konflikt",
+                    (
+                        "Am Ziel befindet sich bereits ein fremder "
+                        "Ordner oder eine fremde Verknüpfung.\n\n"
+                        "Der Manager überschreibt diese Daten nicht."
+                    ),
+                )
+                return
+
+        except ModManagerError as error:
+            QMessageBox.critical(
+                self,
+                "Mod-Verwaltung fehlgeschlagen",
+                str(error),
+            )
+            return
+
+        self._refresh_mod_state(
+            mod
+        )
+
+
+    def _refresh_mod_state(
+        self,
+        mod: ModInfo,
+    ) -> None:
+        state = self.mod_manager.get_state(
+            mod.path
+        )
+
+        self.mod_table.setSortingEnabled(
+            False
+        )
+
+        for row in range(
+            self.mod_table.rowCount()
+        ):
+            name_item = self.mod_table.item(
+                row,
+                0,
+            )
+
+            if name_item is None:
+                continue
+
+            item_path = name_item.data(
+                Qt.ItemDataRole.UserRole
+            )
+
+            if item_path != str(mod.path):
+                continue
+
+            state_item = self.mod_table.item(
+                row,
+                3,
+            )
+
+            if state_item is None:
+                state_item = QTableWidgetItem()
+                self.mod_table.setItem(
+                    row,
+                    3,
+                    state_item,
+                )
+
+            state_item.setText(
+                mod_state_label(state)
+            )
+
+            state_item.setData(
+                Qt.ItemDataRole.UserRole,
+                state.value,
+            )
+
+            break
+
+        self.mod_table.setSortingEnabled(
+            True
+        )
+
+        self._update_toggle_button()
+    
              
     def _apply_stylesheet(self) -> None:
         self.setStyleSheet(
