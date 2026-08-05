@@ -133,7 +133,97 @@ class ModManager:
             if name in ignored_names
         }
 
+    def adopt_existing(
+        self,
+        mod_path: Path | str,
+    ) -> ModState:
+        """
+        Übernimmt einen vorhandenen, bisher nicht verwalteten Mod-Ordner.
 
+        Es werden keine Mod-Dateien überschrieben oder gelöscht.
+        Der Manager legt lediglich seine Markierungsdatei an.
+        """
+        source, relative_path = self._source_and_relative(
+            mod_path,
+            require_exists=True,
+        )
+
+        active_root = self._get_active_root(
+            create=True,
+        )
+
+        enabled_path, disabled_path = self._destination_paths(
+            active_root=active_root,
+            source=source,
+        )
+
+        enabled_exists = enabled_path.exists()
+        disabled_exists = disabled_path.exists()
+
+        if enabled_exists and disabled_exists:
+            raise ModConflictError(
+                "Der Konflikt kann nicht automatisch übernommen werden, "
+                "weil eine aktive und eine deaktivierte Version existieren.\n\n"
+                f"Aktiv:\n{enabled_path}\n\n"
+                f"Deaktiviert:\n{disabled_path}"
+            )
+
+        if not enabled_exists and not disabled_exists:
+            raise ModConflictError(
+                "Es wurde kein vorhandener Zielordner gefunden, "
+                "der übernommen werden könnte."
+            )
+
+        if enabled_exists:
+            destination = enabled_path
+            resulting_state = ModState.ENABLED
+        else:
+            destination = disabled_path
+            resulting_state = ModState.DISABLED
+
+        if destination.is_symlink():
+            raise ModConflictError(
+                "Symbolische Verknüpfungen können nicht als bestehende "
+                "Mod-Kopie übernommen werden.\n\n"
+                f"Pfad: {destination}"
+            )
+
+        if not destination.is_dir():
+            raise ModConflictError(
+                "Das vorhandene Ziel ist kein Ordner.\n\n"
+                f"Pfad: {destination}"
+            )
+
+        marker_file = destination / MANAGER_MARKER
+
+        if marker_file.exists():
+            if self._marker_matches(
+                destination=destination,
+                source=source,
+            ):
+                return resulting_state
+
+            raise ModConflictError(
+                "Der Ordner besitzt bereits eine Manager-Markierung, "
+                "die zu einem anderen Mod gehört.\n\n"
+                f"Pfad: {destination}"
+            )
+
+        try:
+            self._write_marker(
+                destination=destination,
+                source=source,
+                relative_path=relative_path,
+            )
+
+        except OSError as error:
+            raise ModManagerError(
+                "Der vorhandene Mod-Ordner konnte nicht übernommen werden.\n\n"
+                f"Pfad: {destination}\n\n"
+                f"{error}"
+            ) from error
+
+        return resulting_state
 
     def enable(
         self,
@@ -322,6 +412,46 @@ class ModManager:
         )
 
         return enabled_path
+    
+    def inspection_path_for(
+        self,
+        mod_path: Path | str,
+    ) -> Path:
+        """
+        Gibt den besten Ordner für die INI-Analyse zurück.
+
+        Reihenfolge:
+        1. aktive Mod-Kopie
+        2. deaktivierte Mod-Kopie
+        3. Original in der Bibliothek
+        """
+        source, _relative_path = self._source_and_relative(
+            mod_path,
+            require_exists=False,
+        )
+
+        try:
+            active_root = self._get_active_root(
+                create=False,
+            )
+        except ModManagerError:
+            return source
+
+        enabled_path, disabled_path = (
+            self._destination_paths(
+                active_root=active_root,
+                source=source,
+            )
+        )
+
+        if enabled_path.is_dir():
+            return enabled_path
+
+        if disabled_path.is_dir():
+            return disabled_path
+
+        return source
+    
     def _get_destination(
         self,
         active_root: Path,
@@ -332,9 +462,6 @@ class ModManager:
         Ordnernamen des Mods.
         """
         return active_root / source.name
-    
-    
-    
     
     def _state_for(
         self,

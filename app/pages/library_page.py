@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 from datetime import datetime
-
+from functools import partial
 from PySide6.QtCore import (
     QObject,
     QRunnable,
@@ -14,6 +14,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QComboBox,
     QFrame,
     QMessageBox,
@@ -24,6 +25,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
     
@@ -44,6 +47,8 @@ from app.services.mod_manager import (
     mod_state_label,
 )
 
+from app.dialogs.mod_info_dialog import ModInfoDialog
+from app.services.ini_analyzer import analyze_mod_ini
 
 class ScanSignals(QObject):
     finished = Signal(object)
@@ -156,6 +161,22 @@ class LibraryPage(QWidget):
         self.mod_type_filter.addItem(
             "Alle Mod-Typen",
             userData=None,
+        )
+        self.ignore_conflict_button = QPushButton(
+            "Konflikt übernehmen"
+        )
+
+        self.ignore_conflict_button.setEnabled(
+            False
+        )
+
+        self.ignore_conflict_button.setToolTip(
+            "Übernimmt einen vorhandenen Mod-Ordner, "
+            "ohne seine Dateien zu überschreiben."
+        )
+
+        self.ignore_conflict_button.clicked.connect(
+            self._ignore_selected_conflict
         )
         
         self.refresh_button = QPushButton(
@@ -298,7 +319,10 @@ class LibraryPage(QWidget):
         toolbar_layout.addWidget(
             self.mod_type_filter
         )
-        
+        toolbar_layout.addWidget(
+            self.ignore_conflict_button
+        )
+
         toolbar_layout.addWidget(
             self.toggle_button
         )
@@ -342,19 +366,33 @@ class LibraryPage(QWidget):
         
         header = self.mod_table.horizontalHeader()
         
+        # Die Mod-Spalte enthält ein eigenes Widget.
+        # ResizeToContents funktioniert dafür nicht zuverlässig.
+        header.setSectionResizeMode(
+            0,
+            QHeaderView.ResizeMode.Interactive,
+        )       
+         
+        self.mod_table.setColumnWidth(
+            0,
+            420,
+        )
+            
         for column in range (
-            len(headers)-1
+            1,
+            self.mod_table.columnCount() - 1,
         ):
             header.setSectionResizeMode(
                 column,
                 QHeaderView.ResizeMode.ResizeToContents,
             )
         
+        # Die letzte Pfad-Spalte nutzt den restlichen Platz.
         header.setSectionResizeMode(
-            len(headers) -1,
+            self.mod_table.columnCount() - 1,
             QHeaderView.ResizeMode.Stretch,
         )
-        
+                
         main_layout.addWidget(
             self.mod_table,
             stretch=1,
@@ -566,6 +604,17 @@ class LibraryPage(QWidget):
         self.mod_table.setSortingEnabled(
             True
         )
+        
+        self.mod_table.verticalHeader().setVisible(
+            False
+        )
+
+        # Legt die Höhe jeder Tabellenzeile fest.
+        self.mod_table.verticalHeader().setDefaultSectionSize(
+            42
+        )
+
+        header = self.mod_table.horizontalHeader()      
 
         self._update_character_filter(
             result.mods
@@ -643,6 +692,79 @@ class LibraryPage(QWidget):
             False
         )
 
+    def _ignore_selected_conflict(
+        self,
+    ) -> None:
+        """
+        Übernimmt einen vorhandenen Mod-Ordner in die Verwaltung.
+
+        Der Ordnerinhalt wird nicht überschrieben.
+        """
+        mod = self._selected_mod()
+
+        if mod is None:
+            return
+
+        state = self.mod_manager.get_state(
+            mod.path
+        )
+
+        if state != ModState.CONFLICT:
+            QMessageBox.information(
+                self,
+                "Kein Konflikt",
+                "Der ausgewählte Mod besitzt aktuell keinen Konflikt.",
+            )
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Vorhandenen Mod übernehmen",
+            (
+                f"Der vorhandene Ordner für „{mod.name}“ wird als "
+                "vom Genshin Mod Manager verwaltet markiert.\n\n"
+                "Dabei werden keine Mod-Dateien überschrieben, "
+                "verschoben oder gelöscht.\n\n"
+                "Danach kann der Manager den Ordner durch Umbenennen "
+                "aktivieren und deaktivieren.\n\n"
+                "Möchtest du fortfahren?"
+            ),
+            (
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+            ),
+            QMessageBox.StandardButton.No,
+        )
+
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            resulting_state = self.mod_manager.adopt_existing(
+                mod.path
+            )
+
+        except ModManagerError as error:
+            QMessageBox.critical(
+                self,
+                "Konflikt konnte nicht übernommen werden",
+                str(error),
+            )
+            return
+
+        if resulting_state == ModState.ENABLED:
+            state_text = "aktiviert"
+        else:
+            state_text = "deaktiviert"
+
+        self.status_label.setText(
+            f"„{mod.name}“ wurde als vorhandener "
+            f"{state_text}er Mod übernommen."
+        )
+
+        self._refresh_mod_state(
+            mod
+        )
 
     def _apply_mod_filters(
         self,
@@ -745,9 +867,9 @@ class LibraryPage(QWidget):
             mod.path
         )
 
-        name_item = QTableWidgetItem(
-            mod.name
-        )
+        # Der sichtbare Name wird vom QLabel im Cell-Widget dargestellt.
+        # Das Tabellen-Item bleibt nur für Pfad, Auswahl und Sortierung bestehen.
+        name_item = QTableWidgetItem("")
 
         name_item.setData(
             Qt.ItemDataRole.UserRole,
@@ -855,7 +977,123 @@ class LibraryPage(QWidget):
                 column,
                 item,
             )
-            
+        
+        self._set_mod_name_widget(
+            row=row,
+            mod=mod,
+        )
+
+    def _show_mod_info(
+        self,
+        mod: ModInfo,
+        _checked: bool = False,
+    ) -> None:
+        """Analysiert die Steuerungs-INI des ausgewählten Mods."""
+        inspection_path = (
+            self.mod_manager.inspection_path_for(
+                mod.path
+            )
+        )
+
+        QApplication.setOverrideCursor(
+            Qt.CursorShape.WaitCursor
+        )
+
+        try:
+            analysis = analyze_mod_ini(
+                inspection_path
+            )
+
+        except Exception as error:
+            QMessageBox.critical(
+                self,
+                "INI-Analyse fehlgeschlagen",
+                (
+                    "Die Merge- oder Master-INI konnte "
+                    "nicht analysiert werden.\n\n"
+                    f"{type(error).__name__}: {error}"
+                ),
+            )
+            return
+
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        dialog = ModInfoDialog(
+            mod_name=mod.name,
+            analysis=analysis,
+            parent=self,
+        )
+
+        dialog.exec()
+     
+    def _set_mod_name_widget(
+        self,
+        row: int,
+        mod: ModInfo,
+    ) -> None:
+        """Zeigt den Modnamen und den Info-Button in einer Zelle."""
+        container = QWidget()
+        container.setObjectName("modNameContainer")
+        container.setAutoFillBackground(False)
+
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(
+            8,
+            2,
+            6,
+            2,
+        )
+        layout.setSpacing(6)
+
+        name_label = QLabel(mod.name)
+        name_label.setObjectName("modNameLabel")
+        name_label.setToolTip(str(mod.path))
+        
+        name_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+
+        name_label.setMinimumWidth(0)
+
+        # Der Labeltext soll keine Mausklicks abfangen.
+        name_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
+        
+
+
+        info_button = QToolButton()
+        info_button.setObjectName("modInfoButton")
+        info_button.setText("?")
+        info_button.setFixedSize(24, 24)
+        info_button.setToolTip(
+            "Merge- und Master-INI analysieren"
+        )
+
+        info_button.clicked.connect(
+            partial(
+                self._show_mod_info,
+                mod,
+            )
+        )
+
+        layout.addWidget(
+            name_label,
+            stretch=1,
+        )
+        layout.addWidget(info_button)
+
+        self.mod_table.setCellWidget(
+            row,
+            0,
+            container,
+        )
+        
+
+        
     def _update_mod_type_filter(
         self,
         mods: list[ModInfo],
@@ -936,11 +1174,15 @@ class LibraryPage(QWidget):
             mod_path
         )
 
-
     def _update_toggle_button(
         self,
     ) -> None:
+        """Aktualisiert die Aktionen für den ausgewählten Mod."""
         mod = self._selected_mod()
+
+        self.ignore_conflict_button.setEnabled(
+            False
+        )
 
         if mod is None:
             self.toggle_button.setText(
@@ -987,7 +1229,7 @@ class LibraryPage(QWidget):
                 False
             )
 
-        else:
+        elif state == ModState.CONFLICT:
             self.toggle_button.setText(
                 "Konflikt"
             )
@@ -995,6 +1237,9 @@ class LibraryPage(QWidget):
                 False
             )
 
+            self.ignore_conflict_button.setEnabled(
+                True
+            )
 
     def _toggle_selected_mod(
         self,
@@ -1066,7 +1311,6 @@ class LibraryPage(QWidget):
             mod
         )
 
-
     def _refresh_mod_state(
         self,
         mod: ModInfo,
@@ -1126,8 +1370,7 @@ class LibraryPage(QWidget):
         )
 
         self._update_toggle_button()
-    
-             
+               
     def _apply_stylesheet(self) -> None:
         self.setStyleSheet(
             """
@@ -1192,9 +1435,36 @@ class LibraryPage(QWidget):
                 background-color: #7c5cff;
                 border-radius: 4px;
             }
-            """
-        )
+            
+            
+            QWidget#modNameContainer {
+                background-color: transparent;
+                border: none;
+            }
 
+            QLabel#modNameLabel {
+                background-color: transparent;
+                border: none;
+                color: #f1f1f1;
+                background-color: transparent;
+            }
+
+            QToolButton#modInfoButton {
+                background-color: #353a44;
+                color: #d8dce5;
+                border: 1px solid #4a505d;
+                border-radius: 12px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+
+            QToolButton#modInfoButton:hover {
+                background-color: #7c5cff;
+                color: #ffffff;
+                border-color: #8b70ff;
+            }
+            """           
+        )
 
 def format_file_size(
     size: int | None,
@@ -1222,7 +1492,6 @@ def format_file_size(
         value /= 1024
 
     return f"{size} B"
-
 
 def format_timestamp(
     timestamp: float | None,
