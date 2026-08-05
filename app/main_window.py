@@ -14,7 +14,13 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
+    QMessageBox,
     QWidget,
+)
+
+from app.platform_support import (
+    PlatformSupportError,
+    launch_program,
 )
 
 from app.config import AppConfig
@@ -47,6 +53,32 @@ class MainWindow(QMainWindow):
         self._connect_signals()
 
         self.navigation_list.setCurrentRow(0)
+        
+    def launch_game(self) -> None:
+        launcher_path = self.config.launcher_path
+
+        if not launcher_path:
+            QMessageBox.warning(
+                self,
+                "Kein Launcher ausgewählt",
+                (
+                    "Wähle zuerst in den Einstellungen "
+                    "einen Launcher aus."
+                ),
+            )
+            return
+
+        try:
+            launch_program(
+                launcher_path
+            )
+
+        except PlatformSupportError as error:
+            QMessageBox.critical(
+                self,
+                "Launcher konnte nicht gestartet werden",
+                str(error),
+            )
 
     def _build_ui(self) -> None:
         """Erstellt die komplette Grundoberfläche."""

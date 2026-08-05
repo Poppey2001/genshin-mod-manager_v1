@@ -9,6 +9,11 @@ from pathlib import Path
 from app.config import AppConfig, BACKUP_DIR, FIXED_MODS_DIR
 import hashlib
 import logging
+from app.platform_support import (
+    normalized_path_key,
+    paths_equal,
+)
+
 MANAGER_MARKER = ".gmm-managed.json"
 
 DISABLED_PREFIX = "DISABLED "
@@ -619,31 +624,59 @@ class ModManager:
         destination: Path,
         source: Path,
     ) -> bool:
-        marker_file = destination / MANAGER_MARKER
-
-        if not marker_file.is_file():
-            return False
+        marker_file = (
+            destination
+            / MANAGER_MARKER
+        )
 
         try:
-            data = json.loads(
+            marker_data = json.loads(
                 marker_file.read_text(
-                    encoding="utf-8",
+                    encoding="utf-8"
                 )
             )
         except (
             OSError,
             json.JSONDecodeError,
+            TypeError,
         ):
             return False
 
-        marker_source = data.get("source")
+        stored_source_key = marker_data.get(
+            "source_key"
+        )
 
-        if not isinstance(marker_source, str):
-            return False
+        if isinstance(
+            stored_source_key,
+            str,
+        ):
+            if (
+                stored_source_key
+                == normalized_path_key(source)
+            ):
+                return True
 
-        return self._absolute_path(
-            Path(marker_source)
-        ) == self._absolute_path(source)
+        for field_name in (
+            "source",
+            "source_path",
+        ):
+            stored_source = marker_data.get(
+                field_name
+            )
+
+            if not isinstance(
+                stored_source,
+                str,
+            ):
+                continue
+
+            if paths_equal(
+                stored_source,
+                source,
+            ):
+                return True
+
+        return False
 
     def _symlink_points_to(
         self,

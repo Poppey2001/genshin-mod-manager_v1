@@ -12,10 +12,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QTextBrowser,
+    QMessageBox,
     QVBoxLayout,
     QWidget,
 )
-
+from app.platform_support import (
+    PlatformSupportError,
+    reveal_in_file_manager,
+)
 from app.models.ini_analysis import (
     IniAssignment,
     IniFileAnalysis,
@@ -171,13 +175,20 @@ class ModInfoDialog(QDialog):
             """
         )
 
-    def _open_mod_folder(self) -> None:
-        QDesktopServices.openUrl(
-            QUrl.fromLocalFile(
-                str(self.analysis.root_path)
+    def _open_mod_folder(
+        self,
+    ) -> None:
+        try:
+            reveal_in_file_manager(
+                self.analysis.root_path
             )
-        )
 
+        except PlatformSupportError as error:
+            QMessageBox.critical(
+                self,
+                "Ordner konnte nicht geöffnet werden",
+                str(error),
+            )
 
 def _build_analysis_html(
     mod_name: str,

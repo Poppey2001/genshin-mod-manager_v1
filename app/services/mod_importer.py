@@ -15,6 +15,11 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Callable
 
+from app.platform_support import (
+    IS_WINDOWS,
+    paths_overlap,
+    sanitize_path_segment,
+)
 
 MAX_ARCHIVE_FILES = 30_000
 MAX_UNPACKED_SIZE = 20 * 1024 * 1024 * 1024
@@ -233,7 +238,7 @@ class ModImporter:
             )
 
         if source.is_dir():
-            if self._paths_overlap(
+            if paths_overlap(
                 source,
                 library_root,
             ):
@@ -477,7 +482,7 @@ class ModImporter:
                     entry.external_attr >> 16
                 ) & 0o777
 
-                if mode:
+                if mode and not IS_WINDOWS:
                     try:
                         destination.chmod(mode)
                     except OSError:
@@ -572,13 +577,13 @@ class ModImporter:
                             current_total=total_written,
                             cancel_callback=cancel_callback,
                         )
-
-                try:
-                    destination.chmod(
-                        member.mode & 0o777
-                    )
-                except OSError:
-                    pass
+                if not IS_WINDOWS:
+                    try:
+                        destination.chmod(
+                            member.mode & 0o777
+                        )
+                    except OSError:
+                        pass
 
     def _copy_stream(
         self,
@@ -866,17 +871,6 @@ class ModImporter:
         }
 
     @staticmethod
-    def _paths_overlap(
-        first: Path,
-        second: Path,
-    ) -> bool:
-        return (
-            first == second
-            or path_is_inside(first, second)
-            or path_is_inside(second, first)
-        )
-
-    @staticmethod
     def _check_cancelled(
         cancel_callback: CancelCallback | None,
     ) -> None:
@@ -935,46 +929,6 @@ def archive_name_without_suffix(
     return sanitize_path_segment(
         name
     )
-
-
-def sanitize_path_segment(
-    value: str,
-) -> str:
-    cleaned = re.sub(
-        r"[\\/\x00-\x1f]",
-        "_",
-        value,
-    )
-
-    cleaned = re.sub(
-        r"\s+",
-        " ",
-        cleaned,
-    )
-
-    cleaned = cleaned.strip(
-        " ."
-    )
-
-    if cleaned in {
-        "",
-        ".",
-        "..",
-    }:
-        return "Imported Mod"
-
-    return cleaned[:180]
-
-
-def path_is_inside(
-    path: Path,
-    parent: Path,
-) -> bool:
-    try:
-        path.relative_to(parent)
-        return True
-    except ValueError:
-        return False
 
 
 def format_size(

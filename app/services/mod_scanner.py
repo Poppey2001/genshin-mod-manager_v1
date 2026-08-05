@@ -12,6 +12,9 @@ from app.services.character_detector import detect_characters
 from app.services.mod_structure_detector import (
     detect_mod_structure,
 )
+from app.platform_support import (
+    is_network_path,
+)
 
 ProgressCallback = Callable[[int, int, str], None]
 CancelCallback = Callable[[], bool]
@@ -123,10 +126,8 @@ class ModScanner:
                 f"Der Mods-Pfad ist kein Verzeichnis: {root}"
             )
 
-        mount_table = read_mount_table()
         root_is_network = is_network_path(
             root,
-            mount_table,
         )
 
         mod_directories = self._find_mod_directories(
@@ -153,7 +154,6 @@ class ModScanner:
             mod_info = self._scan_mod_directory(
                 library_root=root,
                 mod_directory=mod_directory,
-                mount_table=mount_table,
                 cancel_callback=cancel_callback,
             )
 
@@ -383,7 +383,6 @@ class ModScanner:
         self,
         library_root: Path,
         mod_directory: Path,
-        mount_table: list[MountInfo],
         cancel_callback: CancelCallback | None,
     ) -> ModInfo:
         file_count = 0
@@ -395,7 +394,6 @@ class ModScanner:
 
         network_path = is_network_path(
             mod_directory,
-            mount_table,
         )
 
         characters = detect_characters(
@@ -548,162 +546,3 @@ class ModScanner:
             raise ScanCancelledError()
 
 
-def read_mount_table() -> list[MountInfo]:
-    """
-    Liest die Linux-Mount-Tabelle.
-
-    /proc/self/mountinfo enthält auch CIFS-, NFS- und
-    GVFS-Einhängepunkte.
-    """
-    mountinfo_file = Path(
-        "/proc/self/mountinfo"
-    )
-
-    if not mountinfo_file.exists():
-        return []
-
-    mounts: list[MountInfo] = []
-
-    try:
-        lines = mountinfo_file.read_text(
-            encoding="utf-8",
-            errors="replace",
-        ).splitlines()
-
-    except OSError:
-        return []
-
-    for line in lines:
-        try:
-            left_side, right_side = line.split(
-                " - ",
-                maxsplit=1,
-            )
-
-            left_fields = left_side.split()
-            right_fields = right_side.split()
-
-            if (
-                len(left_fields) < 5
-                or len(right_fields) < 2
-            ):
-                continue
-
-            mount_point = Path(
-                decode_mount_field(
-                    left_fields[4]
-                )
-            )
-
-            filesystem = right_fields[0]
-            source = decode_mount_field(
-                right_fields[1]
-            )
-
-            mounts.append(
-                MountInfo(
-                    mount_point=mount_point,
-                    filesystem=filesystem,
-                    source=source,
-                )
-            )
-
-        except (
-            ValueError,
-            IndexError,
-        ):
-            continue
-
-    mounts.sort(
-        key=lambda mount: len(
-            str(mount.mount_point)
-        ),
-        reverse=True,
-    )
-
-    return mounts
-
-
-def decode_mount_field(
-    value: str,
-) -> str:
-    """Dekodiert Escape-Sequenzen aus mountinfo."""
-    return (
-        value
-        .replace("\\040", " ")
-        .replace("\\011", "\t")
-        .replace("\\012", "\n")
-        .replace("\\134", "\\")
-    )
-
-
-def is_network_path(
-    path: Path | str,
-    mount_table: list[MountInfo] | None = None,
-) -> bool:
-    """Prüft, ob ein Pfad auf einem Netzlaufwerk liegt."""
-    candidate = Path(path).expanduser()
-
-    try:
-        candidate = candidate.resolve(
-            strict=False
-        )
-    except OSError:
-        candidate = candidate.absolute()
-
-    candidate_text = str(candidate)
-
-    if (
-        "/gvfs/" in candidate_text
-        and candidate_text.startswith(
-            "/run/user/"
-        )
-    ):
-        return True
-
-    mounts = (
-        mount_table
-        if mount_table is not None
-        else read_mount_table()
-    )
-
-    for mount in mounts:
-        if not path_is_inside(
-            candidate,
-            mount.mount_point,
-        ):
-            continue
-
-        filesystem = (
-            mount.filesystem.casefold()
-        )
-
-        source = mount.source.casefold()
-
-        if filesystem in NETWORK_FILESYSTEMS:
-            return True
-
-        if source.startswith("//"):
-            return True
-
-        if (
-            ":" in source
-            and filesystem.startswith("nfs")
-        ):
-            return True
-
-        return False
-
-    return False
-
-
-def path_is_inside(
-    path: Path,
-    parent: Path,
-) -> bool:
-    """Prüft, ob path innerhalb von parent liegt."""
-    try:
-        path.relative_to(parent)
-        return True
-    except ValueError:
-        return False

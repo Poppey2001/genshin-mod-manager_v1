@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QFileDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -22,9 +23,12 @@ from PySide6.QtWidgets import (
 )
 
 from app.config import AppConfig
-
-
+from app.platform_support import (
+    launcher_file_filter,
+)
+from pathlib import Path
 logger = logging.getLogger(__name__)
+
 
 
 class SettingsPage(QWidget):
@@ -107,6 +111,32 @@ class SettingsPage(QWidget):
         main_layout.addLayout(bottom_layout)
 
         self._apply_local_stylesheet()
+        
+    def _choose_launcher(self) -> None:
+        current_path = self.launcher_input.text().strip()
+
+        if current_path:
+            start_directory = str(
+                Path(current_path).expanduser().parent
+            )
+        else:
+            start_directory = str(Path.home())
+
+        selected_file, _selected_filter = (
+            QFileDialog.getOpenFileName(
+                self,
+                "Launcher auswählen",
+                start_directory,
+                launcher_file_filter(),
+            )
+        )
+
+        if not selected_file:
+            return
+
+        self.launcher_input.setText(
+            selected_file
+        )
         
     def _create_library_group(self) -> QGroupBox:
         """Erstellt die Einstellungen für die zentrale Mod-Bibliothek."""

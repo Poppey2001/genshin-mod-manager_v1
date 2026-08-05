@@ -3,15 +3,49 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
+from app.platform_support import (
+    configure_windows_app_id,
+    resource_path,
 
+)
 from PySide6.QtWidgets import QApplication, QMessageBox
-
+from PySide6.QtGui import QIcon
 from app.main_window import MainWindow
 from app.config import ensure_app_directories, load_config
 
 APP_NAME = "Genshin Mod Manager"
 APP_VERSION = "0.1.0"
 
+
+def main() -> int:
+    configure_windows_app_id()
+
+    app = QApplication(
+        sys.argv
+    )
+
+    icon_path = resource_path(
+        "assets",
+        "icons",
+        "app.png",
+    )
+
+    if icon_path.is_file():
+        app.setWindowIcon(
+            QIcon(
+                str(icon_path)
+            )
+        )
+
+    config = load_config()
+
+    window = MainWindow(
+        config=config
+    )
+
+    window.show()
+
+    return app.exec()
 
 def configure_logging() -> None:
     """Konfiguriert die Konsolenausgabe für Fehler und Statusmeldungen."""
