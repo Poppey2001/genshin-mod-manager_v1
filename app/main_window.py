@@ -293,6 +293,8 @@ class MainWindow(QMainWindow):
         
     def closeEvent(self, event: QCloseEvent) -> None:
         """Speichert die Fenstergröße vor dem Beenden."""
+        self.library_page.cancel_scan()
+        self.library_page.cancel_import()
         self.config.window_width = self.width()
         self.config.window_height = self.height()
 

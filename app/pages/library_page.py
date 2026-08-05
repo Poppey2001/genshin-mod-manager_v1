@@ -9,6 +9,7 @@ from PySide6.QtCore import (
     Qt,
     QThreadPool,
     QTimer,
+    QEvent,
     Signal,
     Slot,
 )
@@ -16,10 +17,13 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QDialog,
+    QFileDialog,
     QFrame,
     QMessageBox,
     QHBoxLayout,
     QHeaderView,
+    QMenu,
     QLabel,
     QProgressBar,
     QPushButton,
@@ -28,8 +32,21 @@ from PySide6.QtWidgets import (
     QToolButton,
     QSizePolicy,
     QVBoxLayout,
-    QWidget,
-    
+    QWidget,  
+)
+
+from app.dialogs.import_options_dialog import (
+    ImportOptionsDialog,
+)
+
+from app.services.mod_importer import (
+    ImportBatchResult,
+    ImportStatus,
+    is_supported_import_source,
+)
+
+from app.workers.import_worker import (
+    ImportWorker,
 )
 
 from app.config import AppConfig
@@ -49,7 +66,7 @@ from app.services.mod_manager import (
 
 from app.dialogs.mod_info_dialog import ModInfoDialog
 from app.services.ini_analyzer import analyze_mod_ini
-
+from pathlib import Path
 class ScanSignals(QObject):
     finished = Signal(object)
     failed = Signal(str)
@@ -184,6 +201,8 @@ class LibraryPage(QWidget):
         )
 
         self.progress_bar = QProgressBar()
+        
+        self.current_import_task: ImportWorker | None = None
 
         self.mod_table = QTableWidget()
 
@@ -297,7 +316,53 @@ class LibraryPage(QWidget):
         self.toggle_button.clicked.connect(
             self._toggle_selected_mod
         )
-        
+
+        self.import_button = QToolButton()
+        self.import_button.setObjectName(
+            "importButton"
+        )
+        self.import_button.setText(
+            "Importieren"
+        )
+
+        self.import_button.setPopupMode(
+            QToolButton.ToolButtonPopupMode.MenuButtonPopup
+        )
+
+        import_menu = QMenu(
+            self.import_button
+        )
+
+        import_menu.addAction(
+            "ZIP oder Archiv auswählen",
+            self._choose_import_archives,
+        )
+
+        import_menu.addAction(
+            "Mod-Ordner auswählen",
+            self._choose_import_directory,
+        )
+
+        self.import_button.setMenu(
+            import_menu
+        )
+
+        self.import_button.clicked.connect(
+            self._choose_import_archives
+        )
+
+        self.cancel_import_button = QPushButton(
+            "Import abbrechen"
+        )
+
+        self.cancel_import_button.setVisible(
+            False
+        )
+
+        self.cancel_import_button.clicked.connect(
+            self.cancel_import
+        )
+                
         toolbar_layout.addWidget(
             self.path_label,
             stretch=1,
@@ -326,7 +391,15 @@ class LibraryPage(QWidget):
         toolbar_layout.addWidget(
             self.toggle_button
         )
-        
+
+        toolbar_layout.addWidget(
+            self.import_button
+        )
+
+        toolbar_layout.addWidget(
+            self.cancel_import_button
+        )
+
         toolbar_layout.addWidget(
             self.refresh_button
         )
@@ -411,9 +484,476 @@ class LibraryPage(QWidget):
         )
 
         self._apply_stylesheet()
+        
+        self.setAcceptDrops(
+            True
+        )
+
+        self.mod_table.setAcceptDrops(
+            True
+        )
+
+        self.mod_table.viewport().setAcceptDrops(
+            True
+        )
+
+        self.mod_table.viewport().installEventFilter(
+            self
+        )
+
+    def dragEnterEvent(
+        self,
+        event,
+    ) -> None:
+        paths = self._import_paths_from_mime(
+            event.mimeData()
+        )
+
+        if paths:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+
+    def dragMoveEvent(
+        self,
+        event,
+    ) -> None:
+        paths = self._import_paths_from_mime(
+            event.mimeData()
+        )
+
+        if paths:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+
+    def dropEvent(
+        self,
+        event,
+    ) -> None:
+        paths = self._import_paths_from_mime(
+            event.mimeData()
+        )
+
+        if not paths:
+            event.ignore()
+            return
+
+        event.acceptProposedAction()
+
+        self._request_import(
+            paths
+        )
+
+
+    def eventFilter(
+        self,
+        watched,
+        event,
+    ) -> bool:
+        if watched is self.mod_table.viewport():
+            event_type = event.type()
+
+            if event_type in {
+                QEvent.Type.DragEnter,
+                QEvent.Type.DragMove,
+            }:
+                paths = self._import_paths_from_mime(
+                    event.mimeData()
+                )
+
+                if paths:
+                    event.acceptProposedAction()
+                    return True
+
+            elif event_type == QEvent.Type.Drop:
+                paths = self._import_paths_from_mime(
+                    event.mimeData()
+                )
+
+                if paths:
+                    event.acceptProposedAction()
+
+                    self._request_import(
+                        paths
+                    )
+
+                    return True
+
+        return super().eventFilter(
+            watched,
+            event,
+        )
+
+
+    def _import_paths_from_mime(
+        self,
+        mime_data,
+    ) -> list[Path]:
+        if not mime_data.hasUrls():
+            return []
+
+        paths: list[Path] = []
+        known_paths: set[str] = set()
+
+        for url in mime_data.urls():
+            if not url.isLocalFile():
+                continue
+
+            path = Path(
+                url.toLocalFile()
+            ).expanduser()
+
+            if not is_supported_import_source(
+                path
+            ):
+                continue
+
+            path_key = str(
+                path.absolute()
+            )
+
+            if path_key in known_paths:
+                continue
+
+            known_paths.add(
+                path_key
+            )
+
+            paths.append(
+                path
+            )
+
+        return paths
+        
+    def _choose_import_archives(
+        self,
+    ) -> None:
+        selected_files, _selected_filter = (
+            QFileDialog.getOpenFileNames(
+                self,
+                "Mod-Archive auswählen",
+                str(Path.home()),
+                (
+                    "Unterstützte Archive "
+                    "(*.zip *.tar *.tar.gz *.tgz "
+                    "*.tar.bz2 *.tbz2 *.tar.xz *.txz);;"
+                    "ZIP-Archive (*.zip);;"
+                    "TAR-Archive "
+                    "(*.tar *.tar.gz *.tgz "
+                    "*.tar.bz2 *.tbz2 *.tar.xz *.txz);;"
+                    "Alle Dateien (*)"
+                ),
+            )
+        )
+
+        if not selected_files:
+            return
+
+        self._request_import(
+            [
+                Path(file_path)
+                for file_path in selected_files
+            ]
+        )
+
+
+    def _choose_import_directory(
+        self,
+    ) -> None:
+        selected_directory = (
+            QFileDialog.getExistingDirectory(
+                self,
+                "Mod-Ordner auswählen",
+                str(Path.home()),
+            )
+        )
+
+        if not selected_directory:
+            return
+
+        self._request_import(
+            [
+                Path(selected_directory)
+            ]
+        )
+
+
+    def _request_import(
+        self,
+        paths: list[Path],
+    ) -> None:
+        if self.current_import_task is not None:
+            QMessageBox.information(
+                self,
+                "Import läuft",
+                "Es läuft bereits ein Mod-Import.",
+            )
+            return
+
+        if self.current_task is not None:
+            QMessageBox.information(
+                self,
+                "Scan läuft",
+                (
+                    "Warte bitte, bis der aktuelle Bibliotheks-Scan "
+                    "abgeschlossen ist."
+                ),
+            )
+            return
+
+        supported_paths = [
+            path
+            for path in paths
+            if is_supported_import_source(path)
+        ]
+
+        if not supported_paths:
+            QMessageBox.warning(
+                self,
+                "Keine unterstützten Dateien",
+                (
+                    "Es wurden keine unterstützten Mod-Ordner "
+                    "oder Archive ausgewählt."
+                ),
+            )
+            return
+
+        dialog = ImportOptionsDialog(
+            sources=supported_paths,
+            parent=self,
+        )
+
+        if (
+            dialog.exec()
+            != QDialog.DialogCode.Accepted
+        ):
+            return
+
+        options = dialog.selected_options()
+
+        worker = ImportWorker(
+            sources=supported_paths,
+            library_root=(
+                self.config.mod_library_directory
+            ),
+            options=options,
+        )
+
+        worker.signals.progress.connect(
+            self._on_import_progress
+        )
+
+        worker.signals.finished.connect(
+            self._on_import_finished
+        )
+
+        worker.signals.failed.connect(
+            self._on_import_failed
+        )
+
+        worker.signals.cancelled.connect(
+            self._on_import_cancelled
+        )
+
+        self.current_import_task = worker
+
+        self.import_button.setEnabled(
+            False
+        )
+
+        self.refresh_button.setEnabled(
+            False
+        )
+
+        self.cancel_import_button.setVisible(
+            True
+        )
+
+        self.progress_bar.setVisible(
+            True
+        )
+
+        self.progress_bar.setRange(
+            0,
+            len(supported_paths),
+        )
+
+        self.progress_bar.setValue(
+            0
+        )
+
+        self.progress_bar.setFormat(
+            "Import wird vorbereitet …"
+        )
+
+        self.status_label.setText(
+            "Mod-Import wurde gestartet."
+        )
+
+        self.thread_pool.start(
+            worker
+        )    
+
+    def _on_import_progress(
+        self,
+        current: int,
+        total: int,
+        source_name: str,
+    ) -> None:
+        self.progress_bar.setRange(
+            0,
+            max(total, 1),
+        )
+
+        self.progress_bar.setValue(
+            current
+        )
+
+        self.progress_bar.setFormat(
+            f"{current}/{total} – {source_name}"
+        )
+
+
+    def _on_import_finished(
+        self,
+        result: ImportBatchResult,
+    ) -> None:
+        self._finish_import_ui()
+
+        summary_lines: list[str] = []
+
+        for item in result.items[:12]:
+            if item.status == ImportStatus.IMPORTED:
+                destination_name = (
+                    item.destination.name
+                    if item.destination is not None
+                    else "Unbekannt"
+                )
+
+                summary_lines.append(
+                    f"✓ {item.source.name} → {destination_name}"
+                )
+
+            elif item.status == ImportStatus.SKIPPED:
+                summary_lines.append(
+                    f"– {item.source.name}: {item.message}"
+                )
+
+            else:
+                summary_lines.append(
+                    f"✗ {item.source.name}: {item.message}"
+                )
+
+        if len(result.items) > 12:
+            summary_lines.append(
+                f"… und {len(result.items) - 12} weitere"
+            )
+
+        summary_text = "\n".join(
+            summary_lines
+        )
+
+        message = (
+            f"Importiert: {result.imported_count}\n"
+            f"Übersprungen: {result.skipped_count}\n"
+            f"Fehlgeschlagen: {result.failed_count}\n"
+            f"Dauer: {result.duration_seconds:.1f} Sekunden\n\n"
+            f"{summary_text}"
+        )
+
+        if result.failed_count:
+            QMessageBox.warning(
+                self,
+                "Mod-Import abgeschlossen",
+                message,
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "Mod-Import abgeschlossen",
+                message,
+            )
+
+        self.status_label.setText(
+            f"{result.imported_count} Mod(s) importiert."
+        )
+
+        QTimer.singleShot(
+            0,
+            self.scan_mods,
+        )
+
+
+    def _on_import_failed(
+        self,
+        message: str,
+    ) -> None:
+        self._finish_import_ui()
+
+        QMessageBox.critical(
+            self,
+            "Mod-Import fehlgeschlagen",
+            message,
+        )
+
+        self.status_label.setText(
+            "Der Mod-Import ist fehlgeschlagen."
+        )
+
+
+    def _on_import_cancelled(
+        self,
+    ) -> None:
+        self._finish_import_ui()
+
+        self.status_label.setText(
+            "Der Mod-Import wurde abgebrochen."
+        )
+
+
+    def _finish_import_ui(
+        self,
+    ) -> None:
+        self.current_import_task = None
+
+        self.import_button.setEnabled(
+            True
+        )
+
+        self.refresh_button.setEnabled(
+            True
+        )
+
+        self.cancel_import_button.setVisible(
+            False
+        )
+
+        self.progress_bar.setVisible(
+            False
+        )
+
+
+    def cancel_import(
+        self,
+    ) -> None:
+        if self.current_import_task is not None:
+            self.current_import_task.cancel()
+
+            self.status_label.setText(
+                "Import wird abgebrochen …"
+            )
 
     def scan_mods(self) -> None:
         """Startet einen asynchronen Scan."""
+        if self.current_import_task is not None:
+            self.status_label.setText(
+                "Während eines Imports kann nicht gescannt werden."
+            )
+            return
+        
         if self.current_task is not None:
             self.scan_again = True
             self.current_task.cancel()
@@ -481,6 +1021,7 @@ class LibraryPage(QWidget):
 
         self.current_task = task
         self.thread_pool.start(task)
+
 
     def cancel_scan(self) -> None:
         if self.current_task is not None:
@@ -1463,6 +2004,27 @@ class LibraryPage(QWidget):
                 color: #ffffff;
                 border-color: #8b70ff;
             }
+            
+            QToolButton#importButton {
+                min-height: 36px;
+                padding: 0 14px;
+                background-color: #7c5cff;
+                color: #ffffff;
+                border: 1px solid #8b70ff;
+                border-radius: 6px;
+                font-weight: bold;
+            }
+
+            QToolButton#importButton:hover {
+                background-color: #8b70ff;
+            }
+
+            QToolButton#importButton:disabled {
+                background-color: #343742;
+                color: #777d89;
+                border-color: #414651;
+            }
+                        
             """           
         )
 
