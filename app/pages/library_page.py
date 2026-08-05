@@ -1027,7 +1027,8 @@ class LibraryPage(QWidget):
                 )
 
                 self.status_label.setText(
-                    f"„{mod.name}“ wurde deaktiviert."
+                    f"„{mod.name}“ wurde deaktiviert und "
+                    "die reparierte Version wurde gespeichert."
                 )
 
             elif state == ModState.NOT_CONFIGURED:

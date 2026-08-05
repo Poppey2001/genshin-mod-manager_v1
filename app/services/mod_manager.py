@@ -6,11 +6,12 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
-from app.config import AppConfig, BACKUP_DIR
-
-
+from app.config import AppConfig, BACKUP_DIR, FIXED_MODS_DIR
+import hashlib
+import logging
 MANAGER_MARKER = ".gmm-managed.json"
 
+DISABLED_PREFIX = "DISABLED "
 
 class ModState(str, Enum):
     """Aktueller Aktivierungszustand eines Mods."""
@@ -30,6 +31,7 @@ STATE_LABELS = {
     ModState.CONFLICT: "Konflikt",
 }
 
+logger = logging.getLogger(__name__)
 
 class ModManagerError(Exception):
     """Grundfehler der Mod-Verwaltung."""
@@ -49,13 +51,26 @@ class ModManager:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
 
+    def _destination_paths(
+        self,
+        active_root: Path,
+        source: Path,
+    ) -> tuple[Path, Path]:
+        """Erzeugt den aktiven und deaktivierten Zielpfad."""
+        enabled_path = active_root / source.name
+        disabled_path = active_root / (
+            f"{DISABLED_PREFIX}{source.name}"
+        )
+
+        return enabled_path, disabled_path
+
     def get_state(
         self,
         mod_path: Path | str,
     ) -> ModState:
-        """Ermittelt den Aktivierungszustand eines Mods."""
+        """Ermittelt den Zustand anhand der beiden Ordnernamen."""
         try:
-            source, relative_path = self._source_and_relative(
+            source, _relative_path = self._source_and_relative(
                 mod_path,
                 require_exists=False,
             )
@@ -70,21 +85,66 @@ class ModManager:
         except ModManagerError:
             return ModState.CONFLICT
 
-        destination = self._get_destination(
+        enabled_path, disabled_path = self._destination_paths(
             active_root=active_root,
             source=source,
         )
 
-        return self._state_for(
-            source=source,
-            destination=destination,
-        )
+        enabled_exists = enabled_path.exists()
+        disabled_exists = disabled_path.exists()
+
+        if enabled_exists and disabled_exists:
+            return ModState.CONFLICT
+
+        if enabled_exists:
+            if self._marker_matches(
+                destination=enabled_path,
+                source=source,
+            ):
+                return ModState.ENABLED
+
+            return ModState.CONFLICT
+
+        if disabled_exists:
+            if self._marker_matches(
+                destination=disabled_path,
+                source=source,
+            ):
+                return ModState.DISABLED
+
+            return ModState.CONFLICT
+
+        return ModState.DISABLED
+
+    @staticmethod
+    def _copy_ignore(
+        _directory: str,
+        names: list[str],
+    ) -> set[str]:
+        """Schließt interne Manager-Dateien vom Mod-Inhalt aus."""
+        ignored_names = {
+            MANAGER_MARKER,
+            f"{MANAGER_MARKER}.tmp",
+        }
+
+        return {
+            name
+            for name in names
+            if name in ignored_names
+        }
+
+
 
     def enable(
         self,
         mod_path: Path | str,
     ) -> Path:
-        """Aktiviert einen Mod per Symlink oder Kopie."""
+        """
+        Aktiviert einen Mod.
+
+        Eine vorhandene deaktivierte Kopie wird nur umbenannt.
+        Andernfalls wird der Mod einmalig aus der Bibliothek kopiert.
+        """
         source, relative_path = self._source_and_relative(
             mod_path,
             require_exists=True,
@@ -94,151 +154,94 @@ class ModManager:
             create=True,
         )
 
-        destination = self._get_destination(
+        enabled_path, disabled_path = self._destination_paths(
             active_root=active_root,
             source=source,
         )
 
-        state = self._state_for(
-            source=source,
-            destination=destination,
-        )
-
-        if state == ModState.ENABLED:
-            return destination
-
-        if state != ModState.DISABLED:
+        if enabled_path.exists() and disabled_path.exists():
             raise ModConflictError(
-                "Der Mod kann nicht aktiviert werden, weil am Ziel "
-                "bereits eine andere Datei, ein anderer Ordner oder "
-                "eine fremde Verknüpfung existiert.\n\n"
-                f"Ziel: {destination}"
+                "Die aktive und die deaktivierte Version existieren "
+                "gleichzeitig.\n\n"
+                f"Aktiv: {enabled_path}\n"
+                f"Deaktiviert: {disabled_path}"
             )
 
+        if enabled_path.exists():
+            if self._marker_matches(
+                destination=enabled_path,
+                source=source,
+            ):
+                return enabled_path
+
+            raise ModConflictError(
+                "Am aktiven Ziel befindet sich ein nicht vom "
+                "Manager verwalteter Ordner.\n\n"
+                f"Ziel: {enabled_path}"
+            )
+
+        # Bereits vorhandene, reparierte Mod-Kopie reaktivieren.
+        if disabled_path.exists():
+            if not self._marker_matches(
+                destination=disabled_path,
+                source=source,
+            ):
+                raise ModConflictError(
+                    "Der deaktivierte Ordner besitzt keine gültige "
+                    "Manager-Markierung.\n\n"
+                    f"Ordner: {disabled_path}"
+                )
+
+            try:
+                disabled_path.rename(
+                    enabled_path
+                )
+            except OSError as error:
+                raise ModManagerError(
+                    "Der deaktivierte Mod konnte nicht aktiviert werden.\n\n"
+                    f"{error}"
+                ) from error
+
+            return enabled_path
+
+        # Erste Aktivierung: vollständige Kopie erstellen.
         try:
-            destination.parent.mkdir(
-                parents=True,
-                exist_ok=True,
-            )
-
             shutil.copytree(
                 source,
-                destination,
+                enabled_path,
                 symlinks=False,
+                ignore=self._copy_ignore,
             )
-            
+
             self._write_marker(
-                destination=destination,
+                destination=enabled_path,
                 source=source,
                 relative_path=relative_path,
             )
-            
+
         except OSError as error:
             self._rollback_destination(
-                destination
-            )
-
-            mode_name = (
-                "symbolische Verknüpfung"
-                if self.config.use_symlinks
-                else "Kopie"
+                enabled_path
             )
 
             raise ModManagerError(
-                f"Der Mod konnte nicht als {mode_name} aktiviert werden.\n\n"
+                "Der Mod konnte nicht kopiert werden.\n\n"
+                f"Quelle: {source}\n"
+                f"Ziel: {enabled_path}\n\n"
                 f"{error}"
             ) from error
 
-        return destination
+        return enabled_path
 
     def disable(
         self,
         mod_path: Path | str,
     ) -> bool:
-        """Deaktiviert einen vom Manager aktivierten Mod."""
-        source, relative_path = self._source_and_relative(
-            mod_path,
-            require_exists=False,
-        )
+        """
+        Deaktiviert einen Mod durch Umbenennen.
 
-        active_root = self._get_active_root(
-            create=False,
-        )
-
-        destination = self._get_destination(
-            active_root=active_root,
-            source=source,
-        )
-
-        state = self._state_for(
-            source=source,
-            destination=destination,
-        )
-
-        if state == ModState.DISABLED:
-            return False
-
-        if state == ModState.NOT_CONFIGURED:
-            raise ModNotConfiguredError(
-                "Es wurde noch kein aktiver Mods-Ordner eingestellt."
-            )
-
-        if state == ModState.CONFLICT:
-            raise ModConflictError(
-                "Der Zielordner gehört offenbar nicht zu diesem Mod. "
-                "Er wird aus Sicherheitsgründen nicht gelöscht.\n\n"
-                f"Ziel: {destination}"
-            )
-
-        try:
-            if destination.is_symlink():
-                destination.unlink()
-
-            elif destination.is_dir():
-                if not self._marker_matches(
-                    destination=destination,
-                    source=source,
-                ):
-                    raise ModConflictError(
-                        "Der Zielordner besitzt keine gültige "
-                        "Genshin-Mod-Manager-Markierung."
-                    )
-
-                if self.config.create_backups:
-                    self._backup_managed_copy(
-                        destination=destination,
-                        relative_path=Path(source.name),
-                    )
-
-                shutil.rmtree(destination)
-
-            else:
-                raise ModConflictError(
-                    "Das Mod-Ziel ist weder eine verwaltete Kopie "
-                    "noch eine symbolische Verknüpfung."
-                )
-
-        except ModManagerError:
-            raise
-
-        except OSError as error:
-            raise ModManagerError(
-                "Der Mod konnte nicht deaktiviert werden.\n\n"
-                f"{error}"
-            ) from error
-
-        self._cleanup_empty_directories(
-            start=destination.parent,
-            active_root=active_root,
-        )
-
-        return True
-
-    def destination_for(
-        self,
-        mod_path: Path | str,
-    ) -> Path:
-        """Gibt den flachen Zielpfad eines Mods zurück."""
+        Die Dateien und alle Änderungen des Fixing-Tools bleiben erhalten.
+        """
         source, _relative_path = self._source_and_relative(
             mod_path,
             require_exists=False,
@@ -248,11 +251,77 @@ class ModManager:
             create=False,
         )
 
-        return self._get_destination(
+        enabled_path, disabled_path = self._destination_paths(
             active_root=active_root,
             source=source,
         )
-    
+
+        if enabled_path.exists() and disabled_path.exists():
+            raise ModConflictError(
+                "Die aktive und die deaktivierte Version existieren "
+                "gleichzeitig.\n\n"
+                f"Aktiv: {enabled_path}\n"
+                f"Deaktiviert: {disabled_path}"
+            )
+
+        if disabled_path.exists():
+            if self._marker_matches(
+                destination=disabled_path,
+                source=source,
+            ):
+                return False
+
+            raise ModConflictError(
+                "Der deaktivierte Zielordner wird nicht vom "
+                "Manager verwaltet.\n\n"
+                f"Ordner: {disabled_path}"
+            )
+
+        if not enabled_path.exists():
+            return False
+
+        if not self._marker_matches(
+            destination=enabled_path,
+            source=source,
+        ):
+            raise ModConflictError(
+                "Der aktive Ordner besitzt keine gültige "
+                "Manager-Markierung und wird nicht verändert.\n\n"
+                f"Ordner: {enabled_path}"
+            )
+
+        try:
+            enabled_path.rename(
+                disabled_path
+            )
+        except OSError as error:
+            raise ModManagerError(
+                "Der Mod konnte nicht deaktiviert werden.\n\n"
+                "{error}"
+            ) from error
+
+        return True
+
+    def destination_for(
+        self,
+        mod_path: Path | str,
+    ) -> Path:
+        """Gibt den aktiven Zielpfad zurück."""
+        source, _relative_path = self._source_and_relative(
+            mod_path,
+            require_exists=False,
+        )
+
+        active_root = self._get_active_root(
+            create=False,
+        )
+
+        enabled_path, _disabled_path = self._destination_paths(
+            active_root=active_root,
+            source=source,
+        )
+
+        return enabled_path
     def _get_destination(
         self,
         active_root: Path,

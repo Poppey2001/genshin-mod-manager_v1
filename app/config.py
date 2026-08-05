@@ -45,7 +45,7 @@ MOD_LIBRARY_DIR = DATA_DIR / "mods"
 PROFILE_DIR = DATA_DIR / "profiles"
 PREVIEW_DIR = DATA_DIR / "previews"
 BACKUP_DIR = DATA_DIR / "backups"
-
+FIXED_MODS_DIR = DATA_DIR / "fixed-mods"
 
 @dataclass(slots=True)
 class AppConfig:
@@ -330,6 +330,7 @@ def ensure_app_directories() -> None:
         PROFILE_DIR,
         PREVIEW_DIR,
         BACKUP_DIR,
+        FIXED_MODS_DIR,
     )
 
     for directory in directories:
