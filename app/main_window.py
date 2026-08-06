@@ -327,8 +327,10 @@ class MainWindow(QMainWindow):
         """Speichert die Fenstergröße vor dem Beenden."""
         self.library_page.cancel_scan()
         self.library_page.cancel_import()
+        self.library_page.cancel_bulk_action()
         self.config.window_width = self.width()
         self.config.window_height = self.height()
+        self.library_page.cancel_bulk_action()
 
         try:
             self.config.save()
