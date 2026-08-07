@@ -12,33 +12,31 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from app.utils.formatters import (
-    format_file_size,
-    format_timestamp,
-)
+
 from app.widgets.library.library_filter_bar import (
     LibraryFilterBar,
 )
+from app.widgets.library.library_stats import (
+    LibraryStatsWidget,
+)
+from app.widgets.library.library_header import (
+    LibraryHeader,
+)
+from app.widgets.library.mod_details_panel import (
+    ModDetailsPanel,
+)
+from app.widgets.library.library_mod_list import (
+    LibraryModListWidget,
+)
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QApplication,
     QDialog,
     QFileDialog,
-    QFrame,
-    QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
-    QMenu,
     QMessageBox,
     QProgressBar,
-    QPushButton,
-    QScrollArea,
-    QSizePolicy,
     QSplitter,
-    QTableWidget,
-    QTableWidgetItem,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -167,11 +165,7 @@ class LibraryPage(QWidget):
         self.mod_manager = ModManager(
             config=self.config
         )
-        
-        self.mods_by_path: dict[str, ModInfo] = {}
-        
-
-
+              
         self.thread_pool = (
             QThreadPool.globalInstance()
         )
@@ -187,6 +181,63 @@ class LibraryPage(QWidget):
         self.status_label = QLabel()
 
         self.status_label = QLabel()
+
+        self.mod_list_widget = LibraryModListWidget(
+            parent=self
+        )
+
+        self.mod_table = (
+            self.mod_list_widget.table
+        )
+
+        self.bulk_enable_button = (
+            self.mod_list_widget.bulk_enable_button
+        )
+
+        self.bulk_disable_button = (
+            self.mod_list_widget.bulk_disable_button
+        )
+
+        self.bulk_adopt_button = (
+            self.mod_list_widget.bulk_adopt_button
+        )
+
+        self.cancel_bulk_button = (
+            self.mod_list_widget.cancel_bulk_button
+        )
+        
+        self.mod_list_widget.info_requested.connect(
+            self._show_mod_info
+        )
+
+        self.mod_list_widget.enable_requested.connect(
+            partial(
+                self._start_bulk_action,
+                BulkAction.ENABLE,
+            )
+        )
+
+        self.mod_list_widget.disable_requested.connect(
+            partial(
+                self._start_bulk_action,
+                BulkAction.DISABLE,
+            )
+        )
+
+        self.mod_list_widget.adopt_requested.connect(
+            partial(
+                self._start_bulk_action,
+                BulkAction.ADOPT,
+            )
+        )
+
+        self.mod_list_widget.cancel_requested.connect(
+            self.cancel_bulk_action
+        )
+
+        self.mod_list_widget.selection_changed.connect(
+            self._on_mod_selection_changed
+        )
 
         self.filter_bar = LibraryFilterBar(
             parent=self
@@ -214,42 +265,83 @@ class LibraryPage(QWidget):
             self.filter_bar.status_filter
         )
 
-        self.total_stat_value = QLabel("0")
-        self.active_stat_value = QLabel("0")
-        self.conflict_stat_value = QLabel("0")
-        self.character_stat_value = QLabel("0")
+        self.header_widget = LibraryHeader(
+            parent=self
+        )
+
+        self.import_button = (
+            self.header_widget.import_button
+        )
+
+        self.refresh_button = (
+            self.header_widget.refresh_button
+        )
+
+        self.cancel_import_button = (
+            self.header_widget.cancel_import_button
+        )
+
+        self.stats_widget = LibraryStatsWidget(
+            parent=self
+        )
+     
         
+                
         self.mod_type_filter.addItem(
             "Alle Mod-Typen",
             userData=None,
         )
-        self.ignore_conflict_button = QPushButton(
-            "Konflikt übernehmen"
-        )
 
-        self.ignore_conflict_button.setEnabled(
-            False
-        )
-
-        self.ignore_conflict_button.setToolTip(
-            "Übernimmt einen vorhandenen Mod-Ordner, "
-            "ohne seine Dateien zu überschreiben."
-        )
-
-        self.ignore_conflict_button.clicked.connect(
-            self._ignore_selected_conflict
+        self.details_panel = ModDetailsPanel(
+            parent=self
         )
         
-        self.refresh_button = QPushButton(
-            "Neu scannen"
+        self.toggle_button = (
+            self.details_panel.toggle_button
         )
 
+        self.ignore_conflict_button = (
+            self.details_panel.adopt_button
+        )
+
+        self.detail_info_button = (
+            self.details_panel.info_button
+        )
+        
+        self.details_panel.toggle_requested.connect(
+            self._toggle_selected_mod
+        )
+
+        self.details_panel.adopt_requested.connect(
+            self._ignore_selected_conflict
+        )
+
+        self.details_panel.info_requested.connect(
+            self._show_selected_mod_info
+        )       
+                        
         self.progress_bar = QProgressBar()
-        self.mod_table = QTableWidget()
+
         
         self.filter_bar.filters_changed.connect(
             self._apply_mod_filters
-        )        
+        )
+        
+        self.header_widget.import_archives_requested.connect(
+            self._choose_import_archives
+        )
+
+        self.header_widget.import_directory_requested.connect(
+            self._choose_import_directory
+        )
+
+        self.header_widget.scan_requested.connect(
+            self.scan_mods
+        )
+
+        self.header_widget.cancel_import_requested.connect(
+            self.cancel_import
+        )
 
         self._build_ui()
 
@@ -264,10 +356,10 @@ class LibraryPage(QWidget):
         main_layout.setSpacing(16)
 
         main_layout.addWidget(
-            self._create_header_section()
+            self.header_widget
         )
         main_layout.addWidget(
-            self._create_stats_section()
+            self.stats_widget
         )
         main_layout.addWidget(
             self.filter_bar
@@ -276,6 +368,7 @@ class LibraryPage(QWidget):
             self._create_content_splitter(),
             stretch=1,
         )
+        
 
         self.progress_bar.setVisible(False)
         self.progress_bar.setTextVisible(True)
@@ -291,565 +384,63 @@ class LibraryPage(QWidget):
         self.mod_table.viewport().setAcceptDrops(True)
         self.mod_table.viewport().installEventFilter(self)
 
-    def _create_header_section(self) -> QWidget:
-        header = QFrame()
-        header.setObjectName("libraryHeader")
-
-        layout = QHBoxLayout(header)
-        layout.setContentsMargins(2, 0, 2, 0)
-        layout.setSpacing(16)
-
-        title_layout = QVBoxLayout()
-        title_layout.setContentsMargins(0, 0, 0, 0)
-        title_layout.setSpacing(4)
-
-        title_label = QLabel("Mod-Bibliothek")
-        title_label.setObjectName("pageTitle")
-
-        description_label = QLabel(
-            "Verwalte, filtere und organisiere deine Genshin-Mods."
-        )
-        description_label.setObjectName("pageDescription")
-
-        title_layout.addWidget(title_label)
-        title_layout.addWidget(description_label)
-
-        self.import_button = QToolButton()
-        self.import_button.setObjectName("importButton")
-        self.import_button.setText("＋  Importieren")
-        self.import_button.setPopupMode(
-            QToolButton.ToolButtonPopupMode.MenuButtonPopup
-        )
-
-        import_menu = QMenu(self.import_button)
-        import_menu.addAction(
-            "ZIP oder Archiv auswählen",
-            self._choose_import_archives,
-        )
-        import_menu.addAction(
-            "Mod-Ordner auswählen",
-            self._choose_import_directory,
-        )
-        self.import_button.setMenu(import_menu)
-        self.import_button.clicked.connect(
-            self._choose_import_archives
-        )
-
-        self.refresh_button.setObjectName("refreshButton")
-        self.refresh_button.clicked.connect(self.scan_mods)
-
-        self.cancel_import_button = QPushButton(
-            "Import abbrechen"
-        )
-        self.cancel_import_button.setObjectName(
-            "dangerButton"
-        )
-        self.cancel_import_button.setVisible(False)
-        self.cancel_import_button.clicked.connect(
-            self.cancel_import
-        )
-
-        layout.addLayout(title_layout, stretch=1)
-        layout.addWidget(self.cancel_import_button)
-        layout.addWidget(self.refresh_button)
-        layout.addWidget(self.import_button)
-
-        return header
-
-    def _create_stats_section(self) -> QWidget:
-        container = QWidget()
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
-
-        layout.addWidget(
-            self._create_stat_card(
-                "Mods gesamt",
-                self.total_stat_value,
-                "totalStatCard",
-                "Bibliothek",
-            )
-        )
-        layout.addWidget(
-            self._create_stat_card(
-                "Aktiviert",
-                self.active_stat_value,
-                "activeStatCard",
-                "Im Spiel geladen",
-            )
-        )
-        layout.addWidget(
-            self._create_stat_card(
-                "Konflikte",
-                self.conflict_stat_value,
-                "conflictStatCard",
-                "Benötigen Aufmerksamkeit",
-            )
-        )
-        layout.addWidget(
-            self._create_stat_card(
-                "Charaktere",
-                self.character_stat_value,
-                "characterStatCard",
-                "Erkannte Zuordnungen",
-            )
-        )
-
-        return container
-
-    def _create_stat_card(
-        self,
-        title: str,
-        value_label: QLabel,
-        object_name: str,
-        subtitle: str,
-    ) -> QFrame:
-        card = QFrame()
-        card.setObjectName(object_name)
-        card.setProperty("statCard", True)
-        card.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
-        )
-        card.setMinimumHeight(94)
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 13, 16, 13)
-        layout.setSpacing(2)
-
-        title_label = QLabel(title)
-        title_label.setObjectName("statTitle")
-
-        value_label.setObjectName("statValue")
-
-        subtitle_label = QLabel(subtitle)
-        subtitle_label.setObjectName("statSubtitle")
-
-        layout.addWidget(title_label)
-        layout.addWidget(value_label)
-        layout.addWidget(subtitle_label)
-
-        return card
-
     def _create_content_splitter(self) -> QSplitter:
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setObjectName("librarySplitter")
         splitter.setChildrenCollapsible(False)
-        splitter.addWidget(self._create_list_panel())
-        splitter.addWidget(self._create_details_panel())
+        splitter.addWidget(self.mod_list_widget)
+        splitter.addWidget(self.details_panel)
         splitter.setStretchFactor(0, 4)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([1050, 330])
 
         return splitter
 
-    def _create_list_panel(self) -> QWidget:
-        panel = QFrame()
-        panel.setObjectName("listPanel")
-
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        actions = QFrame()
-        actions.setObjectName("selectionToolbar")
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(14, 10, 14, 10)
-        actions_layout.setSpacing(8)
-
-        selection_label = QLabel("Auswahlaktionen")
-        selection_label.setObjectName("sectionLabel")
-
-        self.bulk_enable_button = QPushButton(
-            "Auswahl aktivieren"
-        )
-        self.bulk_enable_button.setObjectName(
-            "bulkEnableButton"
-        )
-        self.bulk_enable_button.setEnabled(False)
-        self.bulk_enable_button.clicked.connect(
-            partial(
-                self._start_bulk_action,
-                BulkAction.ENABLE,
-            )
-        )
-
-        self.bulk_disable_button = QPushButton(
-            "Auswahl deaktivieren"
-        )
-        self.bulk_disable_button.setObjectName(
-            "bulkDisableButton"
-        )
-        self.bulk_disable_button.setEnabled(False)
-        self.bulk_disable_button.clicked.connect(
-            partial(
-                self._start_bulk_action,
-                BulkAction.DISABLE,
-            )
-        )
-
-        self.bulk_adopt_button = QPushButton(
-            "Konflikte übernehmen"
-        )
-        self.bulk_adopt_button.setObjectName(
-            "bulkAdoptButton"
-        )
-        self.bulk_adopt_button.setEnabled(False)
-        self.bulk_adopt_button.clicked.connect(
-            partial(
-                self._start_bulk_action,
-                BulkAction.ADOPT,
-            )
-        )
-
-        self.cancel_bulk_button = QPushButton(
-            "Sammelaktion abbrechen"
-        )
-        self.cancel_bulk_button.setObjectName("dangerButton")
-        self.cancel_bulk_button.setVisible(False)
-        self.cancel_bulk_button.clicked.connect(
-            self.cancel_bulk_action
-        )
-
-        actions_layout.addWidget(selection_label)
-        actions_layout.addStretch()
-        actions_layout.addWidget(self.bulk_enable_button)
-        actions_layout.addWidget(self.bulk_disable_button)
-        actions_layout.addWidget(self.bulk_adopt_button)
-        actions_layout.addWidget(self.cancel_bulk_button)
-
-        self.mod_table.setObjectName("modTable")
-        self.mod_table.setAlternatingRowColors(True)
-        self.mod_table.setShowGrid(False)
-        self.mod_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self.mod_table.setSelectionMode(
-            QAbstractItemView.SelectionMode.ExtendedSelection
-        )
-        self.mod_table.verticalHeader().setVisible(False)
-        self.mod_table.verticalHeader().setDefaultSectionSize(44)
-        self.mod_table.setColumnCount(10)
-
-        headers = [
-            "Mod",
-            "Charakter",
-            "Mod-Typ",
-            "Status",
-            "Speicherort",
-            "Dateien",
-            "INI-Dateien",
-            "Größe",
-            "Geändert",
-            "Pfad",
-        ]
-        self.mod_table.setHorizontalHeaderLabels(headers)
-
-        header = self.mod_table.horizontalHeader()
-        header.setHighlightSections(False)
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(
-            0,
-            QHeaderView.ResizeMode.Stretch,
-        )
-        for column in (1, 2, 3, 7, 8):
-            header.setSectionResizeMode(
-                column,
-                QHeaderView.ResizeMode.ResizeToContents,
-            )
-
-        # Technische Detailspalten bleiben im Modell erhalten,
-        # werden aber im rechten Detailbereich übersichtlicher gezeigt.
-        for column in (4, 5, 6, 9):
-            self.mod_table.setColumnHidden(column, True)
-
-        self.mod_table.itemSelectionChanged.connect(
-            self._on_mod_selection_changed
-        )
-
-        layout.addWidget(actions)
-        layout.addWidget(self.mod_table, stretch=1)
-
-        return panel
-
-    def _create_details_panel(self) -> QWidget:
-        scroll = QScrollArea()
-        scroll.setObjectName("detailsScroll")
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setMinimumWidth(300)
-        scroll.setMaximumWidth(430)
-
-        panel = QFrame()
-        panel.setObjectName("detailsPanel")
-
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
-
-        eyebrow = QLabel("MOD-DETAILS")
-        eyebrow.setObjectName("detailEyebrow")
-
-        self.details_title_label = QLabel(
-            "Kein Mod ausgewählt"
-        )
-        self.details_title_label.setObjectName("detailTitle")
-        self.details_title_label.setWordWrap(True)
-
-        self.details_subtitle_label = QLabel(
-            "Wähle links einen Mod aus, um Details und Aktionen zu sehen."
-        )
-        self.details_subtitle_label.setObjectName("detailSubtitle")
-        self.details_subtitle_label.setWordWrap(True)
-
-        self.details_status_label = QLabel("Keine Auswahl")
-        self.details_status_label.setObjectName("detailStatusBadge")
-        self.details_status_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        divider = QFrame()
-        divider.setObjectName("detailDivider")
-        divider.setFrameShape(QFrame.Shape.HLine)
-
-        detail_grid = QGridLayout()
-        detail_grid.setContentsMargins(0, 0, 0, 0)
-        detail_grid.setHorizontalSpacing(12)
-        detail_grid.setVerticalSpacing(11)
-        detail_grid.setColumnStretch(1, 1)
-
-        self.detail_character_value = self._create_detail_value()
-        self.detail_type_value = self._create_detail_value()
-        self.detail_location_value = self._create_detail_value()
-        self.detail_files_value = self._create_detail_value()
-        self.detail_ini_value = self._create_detail_value()
-        self.detail_size_value = self._create_detail_value()
-        self.detail_modified_value = self._create_detail_value()
-        self.detail_path_value = self._create_detail_value(
-            word_wrap=True,
-            selectable=True,
-        )
-
-        detail_rows = (
-            ("Charakter", self.detail_character_value),
-            ("Mod-Typ", self.detail_type_value),
-            ("Speicherort", self.detail_location_value),
-            ("Dateien", self.detail_files_value),
-            ("INI-Dateien", self.detail_ini_value),
-            ("Größe", self.detail_size_value),
-            ("Geändert", self.detail_modified_value),
-            ("Pfad", self.detail_path_value),
-        )
-
-        for row, (caption, value_label) in enumerate(
-            detail_rows
-        ):
-            caption_label = QLabel(caption)
-            caption_label.setObjectName("detailCaption")
-            caption_label.setAlignment(
-                Qt.AlignmentFlag.AlignTop
-            )
-            detail_grid.addWidget(caption_label, row, 0)
-            detail_grid.addWidget(value_label, row, 1)
-
-        action_title = QLabel("Aktionen")
-        action_title.setObjectName("detailSectionTitle")
-
-        self.toggle_button = QPushButton("Aktivieren")
-        self.toggle_button.setObjectName("primaryActionButton")
-        self.toggle_button.setEnabled(False)
-        self.toggle_button.clicked.connect(
-            self._toggle_selected_mod
-        )
-
-        self.ignore_conflict_button.setObjectName(
-            "warningActionButton"
-        )
-
-        self.detail_info_button = QPushButton(
-            "INI-Steuerung analysieren"
-        )
-        self.detail_info_button.setObjectName(
-            "secondaryActionButton"
-        )
-        self.detail_info_button.setEnabled(False)
-        self.detail_info_button.clicked.connect(
-            self._show_selected_mod_info
-        )
-
-        layout.addWidget(eyebrow)
-        layout.addWidget(self.details_title_label)
-        layout.addWidget(self.details_subtitle_label)
-        layout.addWidget(
-            self.details_status_label,
-            alignment=Qt.AlignmentFlag.AlignLeft,
-        )
-        layout.addWidget(divider)
-        layout.addLayout(detail_grid)
-        layout.addStretch()
-        layout.addWidget(action_title)
-        layout.addWidget(self.toggle_button)
-        layout.addWidget(self.ignore_conflict_button)
-        layout.addWidget(self.detail_info_button)
-
-        scroll.setWidget(panel)
-        return scroll
-
-    def _create_detail_value(
-        self,
-        *,
-        word_wrap: bool = False,
-        selectable: bool = False,
-    ) -> QLabel:
-        label = QLabel("—")
-        label.setObjectName("detailValue")
-        label.setWordWrap(word_wrap)
-
-        if selectable:
-            label.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
-            )
-
-        return label
-
     def _show_selected_mod_info(self) -> None:
         mod = self._selected_mod()
         if mod is not None:
             self._show_mod_info(mod)
 
-    def _update_stats(self) -> None:
-        total = self.mod_table.rowCount()
-        active = 0
-        conflicts = 0
-        characters: set[str] = set()
-
-        for row in range(total):
-            name_item = self.mod_table.item(row, 0)
-            state_item = self.mod_table.item(row, 3)
-
-            if state_item is not None:
-                state_value = state_item.data(
-                    Qt.ItemDataRole.UserRole
-                )
-                if state_value == ModState.ENABLED.value:
-                    active += 1
-                elif state_value == ModState.CONFLICT.value:
-                    conflicts += 1
-
-            if name_item is None:
-                continue
-
-            mod = name_item.data(MOD_OBJECT_ROLE)
-            if isinstance(mod, ModInfo):
-                characters.update(mod.characters)
-
-        self.total_stat_value.setText(str(total))
-        self.active_stat_value.setText(str(active))
-        self.conflict_stat_value.setText(str(conflicts))
-        self.character_stat_value.setText(
-            str(len(characters))
+    def _update_stats(
+        self,
+    ) -> None:
+        stats = (
+            self.mod_list_widget.statistics()
         )
 
-    def _update_details_panel(self) -> None:
+        self.stats_widget.set_values(
+            total=stats.total,
+            active=stats.active,
+            conflicts=stats.conflicts,
+            characters=stats.characters,
+        )
+
+    def _update_details_panel(
+        self,
+    ) -> None:
         selected_mods = self._selected_mods()
 
         if len(selected_mods) > 1:
-            self.details_title_label.setText(
-                f"{len(selected_mods)} Mods ausgewählt"
+            self.details_panel.show_multiple(
+                len(selected_mods)
             )
-            self.details_subtitle_label.setText(
-                "Nutze die Auswahlaktionen oberhalb der Liste."
-            )
-            self.details_status_label.setText("Mehrfachauswahl")
-            self._set_detail_status_style("multiple")
-            self._clear_detail_values()
-            self.detail_info_button.setEnabled(False)
             return
 
         mod = self._selected_mod()
+
         if mod is None:
-            self.details_title_label.setText(
-                "Kein Mod ausgewählt"
-            )
-            self.details_subtitle_label.setText(
-                "Wähle links einen Mod aus, um Details und Aktionen zu sehen."
-            )
-            self.details_status_label.setText("Keine Auswahl")
-            self._set_detail_status_style("none")
-            self._clear_detail_values()
-            self.detail_info_button.setEnabled(False)
+            self.details_panel.show_empty()
             return
 
-        state = self.mod_manager.get_state(mod.path)
-        character_text = (
-            ", ".join(mod.characters)
-            if mod.characters
-            else "Unbekannt"
-        )
-        location_text = (
-            "Netzwerk" if mod.is_network else "Lokal"
-        )
-        if mod.is_symlink:
-            location_text += " · Symlink"
-
-        self.details_title_label.setText(mod.name)
-        self.details_subtitle_label.setText(
-            mod.relative_path or str(mod.path)
-        )
-        self.details_status_label.setText(
-            mod_state_label(state)
-        )
-        self._set_detail_status_style(state.value)
-
-        self.detail_character_value.setText(character_text)
-        self.detail_type_value.setText(mod.mod_type or "Unbekannt")
-        self.detail_location_value.setText(location_text)
-        self.detail_files_value.setText(str(mod.file_count))
-        self.detail_ini_value.setText(str(mod.ini_file_count))
-        self.detail_size_value.setText(
-            format_file_size(mod.total_size)
-        )
-        self.detail_modified_value.setText(
-            format_timestamp(mod.modified_at)
-        )
-        self.detail_path_value.setText(str(mod.path))
-        self.detail_info_button.setEnabled(True)
-
-    def _clear_detail_values(self) -> None:
-        for label in (
-            self.detail_character_value,
-            self.detail_type_value,
-            self.detail_location_value,
-            self.detail_files_value,
-            self.detail_ini_value,
-            self.detail_size_value,
-            self.detail_modified_value,
-            self.detail_path_value,
-        ):
-            label.setText("—")
-
-    def _set_detail_status_style(self, state: str) -> None:
-        colors = {
-            ModState.ENABLED.value: ("#163d2a", "#67e8a5"),
-            ModState.DISABLED.value: ("#28303d", "#b7c0cf"),
-            ModState.CONFLICT.value: ("#4a2f12", "#ffc56d"),
-            ModState.BROKEN.value: ("#4a2027", "#ff8d9a"),
-            ModState.NOT_CONFIGURED.value: ("#3d314c", "#d8b4fe"),
-            "multiple": ("#30275b", "#c4b5fd"),
-            "none": ("#282c34", "#9299a6"),
-        }
-        background, foreground = colors.get(
-            state,
-            colors["none"],
-        )
-        self.details_status_label.setStyleSheet(
-            "background-color: "
-            f"{background}; color: {foreground}; "
-            "border: 1px solid rgba(255, 255, 255, 0.08); "
-            "border-radius: 10px; padding: 5px 10px; "
-            "font-weight: 700;"
+        state = self.mod_manager.get_state(
+            mod.path
         )
 
+        self.details_panel.show_mod(
+            mod=mod,
+            state=state,
+        )
+        
     def dragEnterEvent(
         self,
         event,
@@ -1381,7 +972,12 @@ class LibraryPage(QWidget):
         )
 
         self.current_task = task
-        self.thread_pool.start(task)
+
+        self._update_bulk_buttons()
+
+        self.thread_pool.start(
+            task
+        )
 
     def cancel_scan(self) -> None:
         if self.current_task is not None:
@@ -1460,7 +1056,9 @@ class LibraryPage(QWidget):
 
         self._finish_task()
 
-    def _finish_task(self) -> None:
+    def _finish_task(
+        self,
+    ) -> None:
         self.current_task = None
 
         self.refresh_button.setEnabled(
@@ -1470,6 +1068,12 @@ class LibraryPage(QWidget):
         self.progress_bar.setVisible(
             False
         )
+
+        # Nach dem Scan müssen die Auswahlaktionen
+        # erneut anhand des aktuellen Zustands gesetzt werden.
+        self._update_bulk_buttons()
+        self._update_toggle_button()
+        self._update_details_panel()
 
         if self.scan_again:
             self.scan_again = False
@@ -1483,41 +1087,10 @@ class LibraryPage(QWidget):
         self,
         result: ScanResult,
     ) -> None:
-        self.mods_by_path = {
-            str(mod.path): mod
-            for mod in result.mods
-        }
-
-        self.mod_table.setSortingEnabled(
-            False
+        self.mod_list_widget.set_mods(
+            mods=result.mods,
+            state_provider=self.mod_manager.get_state,
         )
-
-        self.mod_table.setRowCount(
-            len(result.mods)
-        )
-
-        for row, mod in enumerate(
-            result.mods
-        ):
-            self._set_mod_row(
-                row,
-                mod,
-            )
-
-        self.mod_table.setSortingEnabled(
-            True
-        )
-        
-        self.mod_table.verticalHeader().setVisible(
-            False
-        )
-
-        # Legt die Höhe jeder Tabellenzeile fest.
-        self.mod_table.verticalHeader().setDefaultSectionSize(
-            42
-        )
-
-        header = self.mod_table.horizontalHeader()      
 
         self._update_character_filter(
             result.mods
@@ -1675,233 +1248,33 @@ class LibraryPage(QWidget):
         self,
         _value: object | None = None,
     ) -> None:
-        """Wendet Suche, Charakter-, Typ- und Statusfilter an."""
-        selected_character = self.character_filter.currentData()
-        selected_mod_type = self.mod_type_filter.currentData()
-        selected_status = self.status_filter.currentData()
-        search_term = self.search_input.text().strip().casefold()
-
-        visible_mods = 0
-
-        for row in range(self.mod_table.rowCount()):
-            name_item = self.mod_table.item(row, 0)
-            character_item = self.mod_table.item(row, 1)
-            mod_type_item = self.mod_table.item(row, 2)
-            state_item = self.mod_table.item(row, 3)
-
-            if (
-                name_item is None
-                or character_item is None
-                or mod_type_item is None
-                or state_item is None
-            ):
-                self.mod_table.setRowHidden(row, True)
-                continue
-
-            mod = name_item.data(MOD_OBJECT_ROLE)
-            if not isinstance(mod, ModInfo):
-                self.mod_table.setRowHidden(row, True)
-                continue
-
-            characters = character_item.data(
-                Qt.ItemDataRole.UserRole
+        visible_mods = (
+            self.mod_list_widget.apply_filters(
+                search_term=(
+                    self.search_input.text()
+                ),
+                character=(
+                    self.character_filter.currentData()
+                ),
+                mod_type=(
+                    self.mod_type_filter.currentData()
+                ),
+                status=(
+                    self.status_filter.currentData()
+                ),
             )
-            if not isinstance(characters, list):
-                characters = []
+        )
 
-            row_mod_type = mod_type_item.data(
-                Qt.ItemDataRole.UserRole
-            )
-            row_status = state_item.data(
-                Qt.ItemDataRole.UserRole
-            )
-
-            if selected_character is None:
-                matches_character = True
-            elif selected_character == "__unknown__":
-                matches_character = not characters
-            else:
-                matches_character = any(
-                    character.casefold()
-                    == str(selected_character).casefold()
-                    for character in characters
-                )
-
-            matches_mod_type = (
-                selected_mod_type is None
-                or str(row_mod_type).casefold()
-                == str(selected_mod_type).casefold()
-            )
-
-            matches_status = (
-                selected_status is None
-                or row_status == selected_status
-            )
-
-            searchable_text = " ".join(
-                (
-                    mod.name,
-                    " ".join(mod.characters),
-                    mod.mod_type or "",
-                    mod.relative_path or "",
-                    str(mod.path),
-                )
-            ).casefold()
-            matches_search = (
-                not search_term
-                or search_term in searchable_text
-            )
-
-            row_visible = (
-                matches_character
-                and matches_mod_type
-                and matches_status
-                and matches_search
-            )
-            self.mod_table.setRowHidden(row, not row_visible)
-
-            if row_visible:
-                visible_mods += 1
+        total_mods = (
+            self.mod_list_widget.row_count()
+        )
 
         self.status_label.setText(
             f"{visible_mods} von "
-            f"{self.mod_table.rowCount()} Mods werden angezeigt."
+            f"{total_mods} Mods werden angezeigt."
         )
+
         self._update_bulk_buttons()
-
-    def _set_mod_row(
-        self,
-        row: int,
-        mod: ModInfo,
-    ) -> None:
-        state = self.mod_manager.get_state(
-            mod.path
-        )
-
-        # Der sichtbare Name wird vom QLabel im Cell-Widget dargestellt.
-        # Das Tabellen-Item bleibt nur für Pfad, Auswahl und Sortierung bestehen.
-        name_item = QTableWidgetItem("")
-
-        name_item.setData(
-            Qt.ItemDataRole.UserRole,
-            str(mod.path),
-        )
-
-        name_item.setData(
-            MOD_OBJECT_ROLE,
-            mod,
-        )
-
-        name_item.setToolTip(
-            str(mod.path)
-        )
-
-        if mod.error:
-            name_item.setToolTip(
-                mod.error
-            )
-
-        character_text = (
-            ", ".join(mod.characters)
-            if mod.characters
-            else "Unbekannt"
-        )
-
-        character_item = QTableWidgetItem(
-            character_text
-        )   
-
-        character_item.setData(
-            Qt.ItemDataRole.UserRole,
-            list(mod.characters),
-        )
-
-        mod_type_item = QTableWidgetItem(
-            mod.mod_type
-        )
-
-        mod_type_item.setData(
-            Qt.ItemDataRole.UserRole,
-            mod.mod_type,
-        )
-
-        state_item = QTableWidgetItem(
-            mod_state_label(state)
-        )
-
-        state_item.setData(
-            Qt.ItemDataRole.UserRole,
-            state.value,
-        )
-
-        location_parts = [
-            "Netzwerk"
-            if mod.is_network
-            else "Lokal"
-        ]
-
-        if mod.is_symlink:
-            location_parts.append(
-                "Symlink"
-            )
-
-        location_item = QTableWidgetItem(
-            " · ".join(location_parts)
-        )
-
-        file_count_item = QTableWidgetItem(
-            str(mod.file_count)
-        )   
-
-        ini_count_item = QTableWidgetItem(
-            str(mod.ini_file_count)
-        )
-
-        size_item = QTableWidgetItem(
-            format_file_size(
-                mod.total_size
-            )
-        )
-
-        modified_item = QTableWidgetItem(
-            format_timestamp(
-                mod.modified_at
-            )
-        )
-
-        path_item = QTableWidgetItem(
-            mod.relative_path
-            or str(mod.path)
-        )
-
-        path_item.setToolTip(
-            str(mod.path)
-        )
-
-        items = (
-            name_item,
-            character_item,
-            mod_type_item,
-            state_item,
-            location_item,
-            file_count_item,
-            ini_count_item,
-            size_item,
-            modified_item,
-            path_item,
-        )
-
-        for column, item in enumerate(items):
-            self.mod_table.setItem(
-                row,
-                column,
-                item,
-            )
-        
-        self._set_mod_name_widget(
-            row=row,
-            mod=mod,
-        )
 
     def _show_mod_info(
         self,
@@ -1947,124 +1320,14 @@ class LibraryPage(QWidget):
 
         dialog.exec()
      
-    def _set_mod_name_widget(
-        self,
-        row: int,
-        mod: ModInfo,
-    ) -> None:
-        """Zeigt den Modnamen und den Info-Button in einer Zelle."""
-        container = QWidget()
-        container.setObjectName("modNameContainer")
-        container.setAutoFillBackground(False)
-
-        layout = QHBoxLayout(container)
-        layout.setContentsMargins(
-            8,
-            2,
-            6,
-            2,
-        )
-        layout.setSpacing(6)
-
-        name_label = QLabel(mod.name)
-        name_label.setObjectName("modNameLabel")
-        name_label.setToolTip(str(mod.path))
-        
-        name_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Preferred,
-        )
-
-        name_label.setMinimumWidth(0)
-
-        # Der Labeltext soll keine Mausklicks abfangen.
-        name_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
-            True,
-        )
-        
-
-
-        info_button = QToolButton()
-        info_button.setObjectName("modInfoButton")
-        info_button.setText("?")
-        info_button.setFixedSize(24, 24)
-        info_button.setToolTip(
-            "Merge- und Master-INI analysieren"
-        )
-
-        info_button.clicked.connect(
-            partial(
-                self._show_mod_info,
-                mod,
-            )
-        )
-
-        layout.addWidget(
-            name_label,
-            stretch=1,
-        )
-        layout.addWidget(info_button)
-
-        self.mod_table.setCellWidget(
-            row,
-            0,
-            container,
-        )
         
     def _selected_mods(
         self,
     ) -> list[ModInfo]:
-        """
-        Liefert alle ausgewählten und sichtbaren Mods.
-
-        Versteckte Zeilen werden nicht in Sammelaktionen
-        aufgenommen.
-        """
-        selection_model = (
-            self.mod_table.selectionModel()
+        return (
+            self.mod_list_widget.selected_mods()
         )
-
-        if selection_model is None:
-            return []
-
-        selected_rows = sorted(
-            {
-                index.row()
-                for index in selection_model.selectedRows()
-                if not self.mod_table.isRowHidden(
-                    index.row()
-                )
-            }
-        )
-
-        selected_mods: list[ModInfo] = []
-
-        for row in selected_rows:
-            name_item = self.mod_table.item(
-                row,
-                0,
-            )
-
-            if name_item is None:
-                continue
-
-            mod = name_item.data(
-                MOD_OBJECT_ROLE
-            )
-
-            if not isinstance(
-                mod,
-                ModInfo,
-            ):
-                continue
-
-            selected_mods.append(
-                mod
-            )
-
-        return selected_mods
-        
+            
     def _on_mod_selection_changed(
         self,
     ) -> None:
@@ -2291,9 +1554,7 @@ class LibraryPage(QWidget):
                 True
         )
 
-        if not running:
-            self._update_toggle_button()
-            self._update_bulk_buttons()       
+ 
  
     def _on_bulk_progress(
         self,
@@ -2517,28 +1778,8 @@ class LibraryPage(QWidget):
     def _selected_mod(
         self,
     ) -> ModInfo | None:
-        row = self.mod_table.currentRow()
-
-        if row < 0:
-            return None
-
-        name_item = self.mod_table.item(
-            row,
-            0,
-        )
-
-        if name_item is None:
-            return None
-
-        mod_path = name_item.data(
-            Qt.ItemDataRole.UserRole
-        )
-
-        if not isinstance(mod_path, str):
-            return None
-
-        return self.mods_by_path.get(
-            mod_path
+        return (
+            self.mod_list_widget.selected_mod()
         )
 
     def _update_toggle_button(
@@ -2703,54 +1944,9 @@ class LibraryPage(QWidget):
             mod.path
         )
 
-        self.mod_table.setSortingEnabled(
-            False
-        )
-
-        for row in range(
-            self.mod_table.rowCount()
-        ):
-            name_item = self.mod_table.item(
-                row,
-                0,
-            )
-
-            if name_item is None:
-                continue
-
-            item_path = name_item.data(
-                Qt.ItemDataRole.UserRole
-            )
-
-            if item_path != str(mod.path):
-                continue
-
-            state_item = self.mod_table.item(
-                row,
-                3,
-            )
-
-            if state_item is None:
-                state_item = QTableWidgetItem()
-                self.mod_table.setItem(
-                    row,
-                    3,
-                    state_item,
-                )
-
-            state_item.setText(
-                mod_state_label(state)
-            )
-
-            state_item.setData(
-                Qt.ItemDataRole.UserRole,
-                state.value,
-            )
-
-            break
-
-        self.mod_table.setSortingEnabled(
-            True
+        self.mod_list_widget.update_mod_state(
+            mod=mod,
+            state=state,
         )
 
         self._update_stats()
