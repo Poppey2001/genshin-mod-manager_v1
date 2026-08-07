@@ -1,16 +1,11 @@
 from __future__ import annotations
 
-import threading
 from functools import partial
 from PySide6.QtCore import (
-    QObject,
-    QRunnable,
     Qt,
     QThreadPool,
     QTimer,
     QEvent,
-    Signal,
-    Slot,
 )
 
 from app.widgets.library.library_filter_bar import (
@@ -27,6 +22,9 @@ from app.widgets.library.mod_details_panel import (
 )
 from app.widgets.library.library_mod_list import (
     LibraryModListWidget,
+)
+from app.workers.library_scan_worker import (
+    ScanTask,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -64,9 +62,7 @@ from app.workers.import_worker import (
 
 from app.config import AppConfig
 from app.models.mod import ModInfo
-from app.services.mod_scanner import (
-    ModScanner,
-    ScanCancelledError,
+from app.services.mod_scanner import ( 
     ScanResult,
 )
 
@@ -84,73 +80,6 @@ from pathlib import Path
 MOD_OBJECT_ROLE = (
     int(Qt.ItemDataRole.UserRole) + 10
 )
-
-class ScanSignals(QObject):
-    finished = Signal(object)
-    failed = Signal(str)
-    cancelled = Signal()
-    progress = Signal(
-        int,
-        int,
-        str,
-    )
-    
-    
-
-
-class ScanTask(QRunnable):
-    """Führt den Ordnerscan außerhalb des UI-Threads aus."""
-
-    def __init__(
-        self,
-        root_path,
-    ) -> None:
-        super().__init__()
-
-        self.root_path = root_path
-        self.signals = ScanSignals()
-
-        self._cancel_event = (
-            threading.Event()
-        )
-
-        self.setAutoDelete(True)
-
-    def cancel(self) -> None:
-        self._cancel_event.set()
-
-    def is_cancelled(self) -> bool:
-        return self._cancel_event.is_set()
-
-    @Slot()
-    def run(self) -> None:
-        scanner = ModScanner(
-            calculate_network_sizes=False
-        )
-
-        try:
-            result = scanner.scan(
-                root_path=self.root_path,
-                progress_callback=(
-                    self.signals.progress.emit
-                ),
-                cancel_callback=(
-                    self.is_cancelled
-                ),
-            )
-
-        except ScanCancelledError:
-            self.signals.cancelled.emit()
-            return
-
-        except Exception as error:
-            self.signals.failed.emit(
-                f"{type(error).__name__}: {error}"
-            )
-            return
-
-        self.signals.finished.emit(result)
-
 
 class LibraryPage(QWidget):
     """Zeigt die erkannten Mod-Ordner an."""
