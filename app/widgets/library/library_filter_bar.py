@@ -21,7 +21,7 @@ from app.services.mod_manager import (
     ModState,
     mod_state_label,
 )
-
+from app.models.mod import ModInfo
 
 class LibraryFilterBar(QFrame):
     """
@@ -139,6 +139,135 @@ class LibraryFilterBar(QFrame):
         self.reset_button.setObjectName(
             "secondaryButton"
         )
+    
+    def set_mods(
+        self,
+        mods: list[ModInfo],
+    ) -> None:
+        """
+        Aktualisiert die dynamischen Filtereinträge
+        anhand der gefundenen Mods.
+        """
+        self._update_character_options(
+            mods
+        )
+
+        self._update_mod_type_options(
+            mods
+        )
+    
+    def _update_character_options(
+        self,
+        mods: list[ModInfo],
+    ) -> None:
+        selected_character = (
+            self.character_filter.currentData()
+        )
+
+        characters: set[str] = set()
+        has_unknown_mods = False
+
+        for mod in mods:
+            if mod.characters:
+                characters.update(
+                    mod.characters
+                )
+            else:
+                has_unknown_mods = True
+
+        blocker = QSignalBlocker(
+            self.character_filter
+        )
+
+        self.character_filter.clear()
+
+        self.character_filter.addItem(
+            "Alle Charaktere",
+            userData=None,
+        )
+
+        if has_unknown_mods:
+            self.character_filter.addItem(
+                "Unbekannt",
+                userData="__unknown__",
+            )
+
+        for character in sorted(
+            characters,
+            key=str.casefold,
+        ):
+            self.character_filter.addItem(
+                character,
+                userData=character,
+            )
+
+        selected_index = (
+            self.character_filter.findData(
+                selected_character
+            )
+        )
+
+        if selected_index >= 0:
+            self.character_filter.setCurrentIndex(
+                selected_index
+            )
+        else:
+            self.character_filter.setCurrentIndex(
+                0
+            )
+
+        del blocker
+        
+    def _update_mod_type_options(
+        self,
+        mods: list[ModInfo],
+    ) -> None:
+        selected_mod_type = (
+            self.mod_type_filter.currentData()
+        )
+
+        mod_types = {
+            mod.mod_type
+            for mod in mods
+            if mod.mod_type
+        }
+
+        blocker = QSignalBlocker(
+            self.mod_type_filter
+        )
+
+        self.mod_type_filter.clear()
+
+        self.mod_type_filter.addItem(
+            "Alle Mod-Typen",
+            userData=None,
+        )
+
+        for mod_type in sorted(
+            mod_types,
+            key=str.casefold,
+        ):
+            self.mod_type_filter.addItem(
+                mod_type,
+                userData=mod_type,
+            )
+
+        selected_index = (
+            self.mod_type_filter.findData(
+                selected_mod_type
+            )
+        )
+
+        if selected_index >= 0:
+            self.mod_type_filter.setCurrentIndex(
+                selected_index
+            )
+        else:
+            self.mod_type_filter.setCurrentIndex(
+                0
+            )
+
+        del blocker
 
     def _build_ui(self) -> None:
         root_layout = QVBoxLayout(self)

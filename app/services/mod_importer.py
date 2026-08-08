@@ -21,6 +21,11 @@ from app.platform_support import (
     sanitize_path_segment,
 )
 
+from app.services.archive_support import (
+    is_supported_archive,
+    extract_archive,
+)
+
 MAX_ARCHIVE_FILES = 30_000
 MAX_UNPACKED_SIZE = 20 * 1024 * 1024 * 1024
 COPY_BUFFER_SIZE = 1024 * 1024
@@ -36,6 +41,8 @@ SUPPORTED_ARCHIVE_SUFFIXES = (
     ".tbz2",
     ".tar.xz",
     ".txz",
+    ".rar",
+    ".7z",
 )
 
 
@@ -367,35 +374,25 @@ class ModImporter:
             status=ImportStatus.IMPORTED,
             message="Archiv wurde importiert.",
         )
-
+        
     def _extract_archive(
         self,
         archive_path: Path,
         extraction_root: Path,
         cancel_callback: CancelCallback | None,
     ) -> None:
-        if zipfile.is_zipfile(
+        if is_supported_archive(
             archive_path
         ):
-            self._extract_zip(
-                archive_path=archive_path,
-                extraction_root=extraction_root,
-                cancel_callback=cancel_callback,
-            )
-            return
-
-        if tarfile.is_tarfile(
-            archive_path
-        ):
-            self._extract_tar(
-                archive_path=archive_path,
-                extraction_root=extraction_root,
-                cancel_callback=cancel_callback,
+            extract_archive(
+                archive_path,
+                extraction_root,
             )
             return
 
         raise UnsupportedArchiveError(
-            f"Nicht unterstütztes Archiv: {archive_path.name}"
+            f"Nicht unterstütztes Archiv: "
+            f"{archive_path.name}"
         )
 
     def _extract_zip(
@@ -895,18 +892,13 @@ def has_supported_archive_suffix(
 
 
 def is_supported_import_source(
-    path: Path | str,
+    path: Path,
 ) -> bool:
-    candidate = Path(path)
+    if path.is_dir():
+        return True
 
-    return (
-        candidate.is_dir()
-        or (
-            candidate.is_file()
-            and has_supported_archive_suffix(
-                candidate
-            )
-        )
+    return is_supported_archive(
+        path
     )
 
 

@@ -26,38 +26,36 @@ from app.widgets.library.library_mod_list import (
 from app.workers.library_scan_worker import (
     ScanTask,
 )
-from PySide6.QtWidgets import (
-    QApplication,
-    QDialog,
-    QFileDialog,
-    QHBoxLayout,
-    QLabel,
-    QMessageBox,
-    QProgressBar,
-    QSplitter,
-    QVBoxLayout,
-    QWidget,
+from app.controllers.library_import_controller import (
+    LibraryImportController,
 )
-
+from app.dialogs.library_import_picker import (
+    choose_import_archives,
+    choose_import_directory,
+)
+from app.dialogs.library_bulk_confirmation import (
+    confirm_bulk_action,
+)
 from app.workers.bulk_mod_worker import (
     BulkAction,
     BulkBatchResult,
-    BulkItemStatus,
-    BulkModWorker,
 )
 
-from app.dialogs.import_options_dialog import (
-    ImportOptionsDialog,
+from app.controllers.library_bulk_controller import (
+    LibraryBulkController,
+)
+from app.dialogs.library_import_request import (
+    prepare_import_request,
+)
+from app.utils.import_result_formatter import(
+    format_import_result,
+    format_import_status,
 )
 
 from app.services.mod_importer import (
     ImportBatchResult,
-    ImportStatus,
-    is_supported_import_source,
-)
 
-from app.workers.import_worker import (
-    ImportWorker,
+    is_supported_import_source,
 )
 
 from app.config import AppConfig
@@ -66,16 +64,29 @@ from app.services.mod_scanner import (
     ScanResult,
 )
 
+from app.utils.bulk_result_formatter import (
+    bulk_result_requires_warning,
+    format_bulk_result,
+    format_bulk_status,
+)
+
 from app.services.mod_manager import (
     ModManager,
     ModManagerError,
     ModState,
-    mod_state_label,
 )
-
 from app.dialogs.mod_info_dialog import ModInfoDialog
 from app.services.ini_analyzer import analyze_mod_ini
 from pathlib import Path
+from PySide6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QMessageBox,
+    QProgressBar,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
 
 MOD_OBJECT_ROLE = (
     int(Qt.ItemDataRole.UserRole) + 10
@@ -94,14 +105,53 @@ class LibraryPage(QWidget):
         self.mod_manager = ModManager(
             config=self.config
         )
-              
+        
+        self.bulk_controller = (
+            LibraryBulkController(
+                mod_manager=self.mod_manager,
+                parent=self,
+            )
+        )
+
+        self.bulk_controller.progress.connect(
+            self._on_bulk_progress
+        )
+
+        self.bulk_controller.finished.connect(
+            self._on_bulk_finished
+        )
+
+        self.bulk_controller.failed.connect(
+            self._on_bulk_failed
+        )
+               
         self.thread_pool = (
             QThreadPool.globalInstance()
         )
 
         self.current_task: ScanTask | None = None
-        self.current_import_task: ImportWorker | None = None
-        self.current_bulk_task: BulkModWorker | None = None
+
+        self.import_controller = (
+            LibraryImportController(
+                parent=self
+            )
+        )
+        
+        self.import_controller.progress.connect(
+            self._on_import_progress
+        )
+
+        self.import_controller.finished.connect(
+            self._on_import_finished
+        )
+
+        self.import_controller.failed.connect(
+            self._on_import_failed
+        )
+
+        self.import_controller.cancelled.connect(
+            self._on_import_cancelled
+        )
 
         self.scan_again = False
 
@@ -214,8 +264,6 @@ class LibraryPage(QWidget):
             parent=self
         )
      
-        
-                
         self.mod_type_filter.addItem(
             "Alle Mod-Typen",
             userData=None,
@@ -452,7 +500,49 @@ class LibraryPage(QWidget):
             watched,
             event,
         )
+        
+    def _set_import_ui_running(
+        self,
+        running: bool,
+        source_count: int = 0,
+    ) -> None:
+        self.import_button.setEnabled(
+            not running
+        )
 
+        self.refresh_button.setEnabled(
+            not running
+        )
+
+        self.cancel_import_button.setVisible(
+            running
+        )
+
+        if running:
+            self.progress_bar.setVisible(
+                True
+            )
+
+            self.progress_bar.setRange(
+                0,
+                max(source_count, 1),
+            )
+
+            self.progress_bar.setValue(
+                0
+            )
+
+            self.progress_bar.setFormat(
+                "Import wird vorbereitet …"
+            )
+
+        else:
+            self.progress_bar.setVisible(
+                False
+            )
+
+            self._update_bulk_buttons()
+            
     def _import_paths_from_mime(
         self,
         mime_data,
@@ -496,70 +586,47 @@ class LibraryPage(QWidget):
     def _choose_import_archives(
         self,
     ) -> None:
-        selected_files, _selected_filter = (
-            QFileDialog.getOpenFileNames(
-                self,
-                "Mod-Archive auswählen",
-                str(Path.home()),
-                (
-                    "Unterstützte Archive "
-                    "(*.zip *.tar *.tar.gz *.tgz "
-                    "*.tar.bz2 *.tbz2 *.tar.xz *.txz);;"
-                    "ZIP-Archive (*.zip);;"
-                    "TAR-Archive "
-                    "(*.tar *.tar.gz *.tgz "
-                    "*.tar.bz2 *.tbz2 *.tar.xz *.txz);;"
-                    "Alle Dateien (*)"
-                ),
-            )
+        paths = choose_import_archives(
+            parent=self
         )
 
-        if not selected_files:
+        if not paths:
             return
 
         self._request_import(
-            [
-                Path(file_path)
-                for file_path in selected_files
-            ]
+            paths
         )
 
     def _choose_import_directory(
         self,
     ) -> None:
-        selected_directory = (
-            QFileDialog.getExistingDirectory(
-                self,
-                "Mod-Ordner auswählen",
-                str(Path.home()),
-            )
+        paths = choose_import_directory(
+            parent=self
         )
 
-        if not selected_directory:
+        if not paths:
             return
 
         self._request_import(
-            [
-                Path(selected_directory)
-            ]
+            paths
         )
 
     def _request_import(
         self,
         paths: list[Path],
     ) -> None:
-        if self.current_bulk_task is not None:
+        if self.bulk_controller.is_running:
             QMessageBox.information(
                 self,
                 "Sammelaktion läuft",
                 (
-                    "Während einer Sammelaktion können keine "
-                    "Mods importiert werden."
+                    "Während einer Sammelaktion können "
+                    "keine Mods importiert werden."
                 ),
             )
             return
-                
-        if self.current_import_task is not None:
+
+        if self.import_controller.is_running:
             QMessageBox.information(
                 self,
                 "Import läuft",
@@ -572,104 +639,45 @@ class LibraryPage(QWidget):
                 self,
                 "Scan läuft",
                 (
-                    "Warte bitte, bis der aktuelle Bibliotheks-Scan "
-                    "abgeschlossen ist."
+                    "Warte bitte, bis der aktuelle "
+                    "Bibliotheks-Scan abgeschlossen ist."
                 ),
             )
             return
 
-        supported_paths = [
-            path
-            for path in paths
-            if is_supported_import_source(path)
-        ]
-
-        if not supported_paths:
-            QMessageBox.warning(
-                self,
-                "Keine unterstützten Dateien",
-                (
-                    "Es wurden keine unterstützten Mod-Ordner "
-                    "oder Archive ausgewählt."
-                ),
+        prepared_import = (
+            prepare_import_request(
+                paths=paths,
+                parent=self,
             )
-            return
-
-        dialog = ImportOptionsDialog(
-            sources=supported_paths,
-            parent=self,
         )
 
-        if (
-            dialog.exec()
-            != QDialog.DialogCode.Accepted
-        ):
+        if prepared_import is None:
             return
+        self._set_import_ui_running(
+            True,
+            source_count=len(
+                prepared_import.sources
+            ),
+        )
 
-        options = dialog.selected_options()
-
-        worker = ImportWorker(
-            sources=supported_paths,
+        started = self.import_controller.start(
+            sources=prepared_import.sources,
             library_root=(
                 self.config.mod_library_directory
             ),
-            options=options,
+            options=prepared_import.options,
         )
 
-        worker.signals.progress.connect(
-            self._on_import_progress
-        )
-
-        worker.signals.finished.connect(
-            self._on_import_finished
-        )
-
-        worker.signals.failed.connect(
-            self._on_import_failed
-        )
-
-        worker.signals.cancelled.connect(
-            self._on_import_cancelled
-        )
-
-        self.current_import_task = worker
-
-        self.import_button.setEnabled(
-            False
-        )
-
-        self.refresh_button.setEnabled(
-            False
-        )
-
-        self.cancel_import_button.setVisible(
-            True
-        )
-        
-        self.progress_bar.setVisible(
-            True
-        )
-
-        self.progress_bar.setRange(
-            0,
-            len(supported_paths),
-        )
-
-        self.progress_bar.setValue(
-            0
-        )
-
-        self.progress_bar.setFormat(
-            "Import wird vorbereitet …"
-        )
+        if not started:
+            self._set_import_ui_running(
+                False
+            )
+            return
 
         self.status_label.setText(
             "Mod-Import wurde gestartet."
         )
-
-        self.thread_pool.start(
-            worker
-        )    
 
     def _on_import_progress(
         self,
@@ -694,47 +702,12 @@ class LibraryPage(QWidget):
         self,
         result: ImportBatchResult,
     ) -> None:
-        self._finish_import_ui()
-
-        summary_lines: list[str] = []
-
-        for item in result.items[:12]:
-            if item.status == ImportStatus.IMPORTED:
-                destination_name = (
-                    item.destination.name
-                    if item.destination is not None
-                    else "Unbekannt"
-                )
-
-                summary_lines.append(
-                    f"✓ {item.source.name} → {destination_name}"
-                )
-
-            elif item.status == ImportStatus.SKIPPED:
-                summary_lines.append(
-                    f"– {item.source.name}: {item.message}"
-                )
-
-            else:
-                summary_lines.append(
-                    f"✗ {item.source.name}: {item.message}"
-                )
-
-        if len(result.items) > 12:
-            summary_lines.append(
-                f"… und {len(result.items) - 12} weitere"
-            )
-
-        summary_text = "\n".join(
-            summary_lines
+        self._set_import_ui_running(
+            False
         )
 
-        message = (
-            f"Importiert: {result.imported_count}\n"
-            f"Übersprungen: {result.skipped_count}\n"
-            f"Fehlgeschlagen: {result.failed_count}\n"
-            f"Dauer: {result.duration_seconds:.1f} Sekunden\n\n"
-            f"{summary_text}"
+        message = format_import_result(
+            result
         )
 
         if result.failed_count:
@@ -751,19 +724,23 @@ class LibraryPage(QWidget):
             )
 
         self.status_label.setText(
-            f"{result.imported_count} Mod(s) importiert."
+            format_import_status(
+                result
+            )
         )
 
         QTimer.singleShot(
             0,
             self.scan_mods,
         )
-
+        
     def _on_import_failed(
         self,
         message: str,
     ) -> None:
-        self._finish_import_ui()
+        self._set_import_ui_running(
+            False
+        )
 
         QMessageBox.critical(
             self,
@@ -778,46 +755,25 @@ class LibraryPage(QWidget):
     def _on_import_cancelled(
         self,
     ) -> None:
-        self._finish_import_ui()
+        self._set_import_ui_running(
+            False
+        )
 
         self.status_label.setText(
             "Der Mod-Import wurde abgebrochen."
         )
 
-    def _finish_import_ui(
-        self,
-    ) -> None:
-        self.current_import_task = None
-
-        self.import_button.setEnabled(
-            True
-        )
-
-        self.refresh_button.setEnabled(
-            True
-        )
-
-        self.cancel_import_button.setVisible(
-            False
-        )
-
-        self.progress_bar.setVisible(
-            False
-        )
-
     def cancel_import(
         self,
     ) -> None:
-        if self.current_import_task is not None:
-            self.current_import_task.cancel()
-
+        if self.import_controller.cancel:
             self.status_label.setText(
                 "Import wird abgebrochen …"
             )
 
     def scan_mods(self) -> None:
         """Startet einen asynchronen Scan."""
-        if self.current_bulk_task is not None:
+        if self.bulk_controller.is_running:
             self.status_label.setText(
                 (
                     "Während einer Sammelaktion kann die "
@@ -827,7 +783,7 @@ class LibraryPage(QWidget):
             return
                 
         
-        if self.current_import_task is not None:
+        if self.import_controller.is_running:
             self.status_label.setText(
                 "Während eines Imports kann nicht gescannt werden."
             )
@@ -1021,11 +977,7 @@ class LibraryPage(QWidget):
             state_provider=self.mod_manager.get_state,
         )
 
-        self._update_character_filter(
-            result.mods
-        )
-
-        self._update_mod_type_filter(
+        self.filter_bar.set_mods(
             result.mods
         )
 
@@ -1034,71 +986,6 @@ class LibraryPage(QWidget):
         self._update_toggle_button()
         self._update_details_panel()
         
-    def _update_character_filter(
-        self,
-        mods: list[ModInfo],
-    ) -> None:
-        """Erzeugt die Charakterliste aus den gefundenen Mods."""
-        selected_character = (
-            self.character_filter.currentData()
-        )
-
-        characters: set[str] = set()
-        has_unknown_mods = False
-
-        for mod in mods:
-            if mod.characters:
-                characters.update(
-                    mod.characters
-                )
-            else:
-                has_unknown_mods = True
-
-        self.character_filter.blockSignals(
-            True
-        )
-
-        self.character_filter.clear()
-
-        self.character_filter.addItem(
-            "Alle Charaktere",
-            userData=None,
-        )
-
-        if has_unknown_mods:
-            self.character_filter.addItem(
-                "Unbekannt",
-                userData="__unknown__",
-            )
-
-        for character in sorted(
-            characters,
-            key=str.casefold,
-        ):
-            self.character_filter.addItem(
-                character,
-                userData=character,
-            )
-
-        selected_index = (
-            self.character_filter.findData(
-                selected_character
-            )
-        )
-
-        if selected_index >= 0:
-            self.character_filter.setCurrentIndex(
-                selected_index
-            )
-        else:
-            self.character_filter.setCurrentIndex(
-                0
-            )
-
-        self.character_filter.blockSignals(
-            False
-        )
-
     def _ignore_selected_conflict(
         self,
     ) -> None:
@@ -1248,8 +1135,7 @@ class LibraryPage(QWidget):
         )
 
         dialog.exec()
-     
-        
+            
     def _selected_mods(
         self,
     ) -> list[ModInfo]:
@@ -1272,8 +1158,8 @@ class LibraryPage(QWidget):
         operation_running = any(
             (
                 self.current_task is not None,
-                self.current_import_task is not None,
-                self.current_bulk_task is not None,
+                self.import_controller.is_running,
+                self.bulk_controller.is_running,
             )
         )
 
@@ -1297,151 +1183,115 @@ class LibraryPage(QWidget):
         self.bulk_adopt_button.setEnabled(
             enabled
         )
- 
-    def _start_bulk_action(
+
+    def _can_start_bulk_action(
         self,
-        action: BulkAction,
-        _checked: bool = False,
-    ) -> None:
-        if self.current_bulk_task is not None:
+        selected_mods: list[ModInfo],
+    ) -> bool:
+        if self.bulk_controller.is_running:
             QMessageBox.information(
                 self,
                 "Sammelaktion läuft",
                 (
-                    "Es wird bereits eine Sammelaktion "
-                    "ausgeführt."
+                    "Es wird bereits eine "
+                    "Sammelaktion ausgeführt."
                 ),
             )
-            return
+            return False
 
         if self.current_task is not None:
             QMessageBox.information(
                 self,
                 "Scan läuft",
                 (
-                    "Warte bitte, bis der Bibliotheks-Scan "
-                    "abgeschlossen ist."
+                    "Warte bitte, bis der "
+                    "Bibliotheks-Scan abgeschlossen ist."
                 ),
             )
-            return
+            return False
 
-        if self.current_import_task is not None:
+        if self.import_controller.is_running:
             QMessageBox.information(
                 self,
                 "Import läuft",
                 (
-                    "Warte bitte, bis der Mod-Import "
-                    "abgeschlossen ist."
+                    "Warte bitte, bis der "
+                    "Mod-Import abgeschlossen ist."
                 ),
             )
-            return
-
-        selected_mods = self._selected_mods()
+            return False
 
         if not selected_mods:
             QMessageBox.information(
                 self,
                 "Keine Mods ausgewählt",
                 (
-                    "Wähle mindestens einen Mod in der "
-                    "Tabelle aus."
+                    "Wähle mindestens einen Mod "
+                    "in der Tabelle aus."
+                ),
+            )
+            return False
+
+        return True
+
+    def _start_bulk_action(
+        self,
+        action: BulkAction,
+        _checked: bool = False,
+    ) -> None:
+        selected_mods = (
+            self._selected_mods()
+        )
+
+        if not self._can_start_bulk_action(
+            selected_mods
+        ):
+            return
+
+        confirmation = confirm_bulk_action(
+            action=action,
+            selected_count=len(
+                selected_mods
+            ),
+            parent=self,
+        )
+
+        if confirmation is None:
+            return
+
+        started = self.bulk_controller.start(
+            mods=selected_mods,
+            action=action,
+        )
+
+        if not started:
+            QMessageBox.warning(
+                self,
+                "Sammelaktion",
+                (
+                    "Die Sammelaktion konnte "
+                    "nicht gestartet werden."
                 ),
             )
             return
 
-        action_title = {
-            BulkAction.ENABLE: "Mods aktivieren",
-            BulkAction.DISABLE: "Mods deaktivieren",
-            BulkAction.ADOPT: "Konflikte übernehmen",
-        }[action]
-
-        action_description = {
-            BulkAction.ENABLE: (
-                "Die ausgewählten deaktivierten Mods werden "
-                "aktiviert. Bereits aktive Mods werden übersprungen."
-            ),
-            BulkAction.DISABLE: (
-                "Die ausgewählten aktiven Mods werden deaktiviert. "
-                "Bereits deaktivierte Mods werden übersprungen."
-            ),
-            BulkAction.ADOPT: (
-                "Vorhandene Konflikt-Ordner werden in die Verwaltung "
-                "aufgenommen. Mod-Dateien werden nicht überschrieben."
-            ),
-        }[action]
-
-        answer = QMessageBox.question(
-            self,
-            action_title,
-            (
-                f"Ausgewählte Mods: {len(selected_mods)}\n\n"
-                f"{action_description}\n\n"
-                "Möchtest du fortfahren?"
-            ),
-            (
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.No
-            ),
-            QMessageBox.StandardButton.No,
-        )
-
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-
-        worker = BulkModWorker(
-            mods=selected_mods,
-            action=action,
-            mod_manager=self.mod_manager,
-        )
-
-        worker.signals.progress.connect(
-            self._on_bulk_progress
-        )
-
-        worker.signals.finished.connect(
-            self._on_bulk_finished
-        )
-
-        worker.signals.failed.connect(
-            self._on_bulk_failed
-        )
-
-        self.current_bulk_task = worker
-
         self._set_bulk_ui_running(
-            running=True
-        )
-
-
-        self.progress_bar.setVisible(
-            True
-        )
-
-        self.progress_bar.setRange(
-            0,
-            len(selected_mods),
-        )
-
-        self.progress_bar.setValue(
-            0
-        )
-
-        self.progress_bar.setFormat(
-            "Sammelaktion wird vorbereitet …"
+            running=True,
+            item_count=len(
+                selected_mods
+            ),
         )
 
         self.status_label.setText(
-            f"{action_title} wurde gestartet."
+            f"{confirmation.title} wurde gestartet."
         )
-
-        self.thread_pool.start(
-            worker
-        )
-       
+            
     def _set_bulk_ui_running(
         self,
         running: bool,
+        item_count: int = 0,
     ) -> None:
+        # Hauptbereiche während einer Sammelaktion sperren.
         self.mod_table.setEnabled(
             not running
         )
@@ -1454,6 +1304,7 @@ class LibraryPage(QWidget):
             not running
         )
 
+        # Einzel- und Bulk-Aktionen zunächst deaktivieren.
         self.toggle_button.setEnabled(
             False
         )
@@ -1474,17 +1325,55 @@ class LibraryPage(QWidget):
             False
         )
 
+        # Abbrechen ist ausschließlich während
+        # einer laufenden Sammelaktion verfügbar.
         self.cancel_bulk_button.setVisible(
             running
         )
 
-        if running:
-            self.cancel_bulk_button.setEnabled(
-                True
+        self.cancel_bulk_button.setEnabled(
+            running
         )
 
- 
- 
+        if running:
+            self.progress_bar.setVisible(
+                True
+            )
+
+            self.progress_bar.setRange(
+                0,
+                max(item_count, 1),
+            )
+
+            self.progress_bar.setValue(
+                0
+            )
+
+            self.progress_bar.setFormat(
+                "Sammelaktion wird vorbereitet …"
+            )
+
+            return
+
+        # Sammelaktion beendet.
+        self.progress_bar.setVisible(
+            False
+        )
+
+        self.progress_bar.setValue(
+            0
+        )
+
+        self.progress_bar.setFormat(
+            ""
+        )
+
+        # Buttons anhand des aktuellen Zustands
+        # und der aktuellen Auswahl neu berechnen.
+        self._update_toggle_button()
+        self._update_bulk_buttons()
+        self._update_details_panel()
+
     def _on_bulk_progress(
         self,
         current: int,
@@ -1512,8 +1401,6 @@ class LibraryPage(QWidget):
         self,
         result: BulkBatchResult,
     ) -> None:
-        self.current_bulk_task = None
-
         self._set_bulk_ui_running(
             running=False
         )
@@ -1522,62 +1409,12 @@ class LibraryPage(QWidget):
             False
         )
 
-        action_text = {
-            BulkAction.ENABLE: "Aktivieren",
-            BulkAction.DISABLE: "Deaktivieren",
-            BulkAction.ADOPT: "Übernehmen",
-        }[result.action]
-
-        detail_lines: list[str] = []
-
-        for item in result.items[:15]:
-            if item.status == BulkItemStatus.SUCCESS:
-                symbol = "✓"
-
-            elif item.status == BulkItemStatus.SKIPPED:
-                symbol = "–"
-
-            elif item.status == BulkItemStatus.CONFLICT:
-                symbol = "!"
-
-            else:
-                symbol = "✗"
-
-            detail_lines.append(
-                f"{symbol} {item.mod_name}: {item.message}"
-            )
-
-        if len(result.items) > 15:
-            detail_lines.append(
-                f"… und {len(result.items) - 15} weitere"
-            )
-
-        details = "\n".join(
-            detail_lines
+        message = format_bulk_result(
+            result
         )
 
-        cancelled_text = ""
-
-        if result.cancelled:
-            cancelled_text = (
-                "\n\nDie Sammelaktion wurde vorzeitig abgebrochen."
-            )
-
-        message = (
-            f"Aktion: {action_text}\n\n"
-            f"Erfolgreich: {result.success_count}\n"
-            f"Übersprungen: {result.skipped_count}\n"
-            f"Konflikte: {result.conflict_count}\n"
-            f"Fehlgeschlagen: {result.failed_count}\n"
-            f"Dauer: {result.duration_seconds:.1f} Sekunden"
-            f"{cancelled_text}\n\n"
-            f"{details}"
-        )
-
-        if (
-            result.failed_count > 0
-            or result.conflict_count > 0
-            or result.cancelled
+        if bulk_result_requires_warning(
+            result
         ):
             QMessageBox.warning(
                 self,
@@ -1591,17 +1428,11 @@ class LibraryPage(QWidget):
                 message,
             )
 
-        if result.cancelled:
-            self.status_label.setText(
-                "Die Sammelaktion wurde abgebrochen."
+        self.status_label.setText(
+            format_bulk_status(
+                result
             )
-        else:
-            self.status_label.setText(
-                (
-                    "Sammelaktion abgeschlossen: "
-                    f"{result.success_count} erfolgreich."
-                )
-            )
+        )
 
         QTimer.singleShot(
             0,
@@ -1612,14 +1443,8 @@ class LibraryPage(QWidget):
         self,
         message: str,
     ) -> None:
-        self.current_bulk_task = None
-
         self._set_bulk_ui_running(
             running=False
-        )
-
-        self.progress_bar.setVisible(
-            False
         )
 
         QMessageBox.critical(
@@ -1635,10 +1460,8 @@ class LibraryPage(QWidget):
     def cancel_bulk_action(
         self,
     ) -> None:
-        if self.current_bulk_task is None:
+        if not self.bulk_controller.cancel():
             return
-
-        self.current_bulk_task.cancel()
 
         self.cancel_bulk_button.setEnabled(
             False
@@ -1646,62 +1469,10 @@ class LibraryPage(QWidget):
 
         self.status_label.setText(
             (
-                "Sammelaktion wird nach dem aktuell "
-                "bearbeiteten Mod abgebrochen …"
+                "Sammelaktion wird nach dem "
+                "aktuell bearbeiteten Mod "
+                "abgebrochen …"
             )
-        )
-            
-    def _update_mod_type_filter(
-        self,
-        mods: list[ModInfo],
-    ) -> None:
-        selected_mod_type = (
-            self.mod_type_filter.currentData()
-        )
-
-        mod_types = {
-            mod.mod_type
-            for mod in mods
-            if mod.mod_type
-        }
-
-        self.mod_type_filter.blockSignals(
-            True
-        )
-
-        self.mod_type_filter.clear()
-
-        self.mod_type_filter.addItem(
-            "Alle Mod-Typen",
-            userData=None,
-        )
-
-        for mod_type in sorted(
-            mod_types,
-            key=str.casefold,
-        ):
-            self.mod_type_filter.addItem(
-                mod_type,
-                userData=mod_type,
-            )
-
-        selected_index = (
-            self.mod_type_filter.findData(
-                selected_mod_type
-            )
-        )
-
-        if selected_index >= 0:
-            self.mod_type_filter.setCurrentIndex(
-                selected_index
-            )
-        else:
-            self.mod_type_filter.setCurrentIndex(
-                0
-            )
-
-        self.mod_type_filter.blockSignals(
-            False
         )
     
     def _selected_mod(
