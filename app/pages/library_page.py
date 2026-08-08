@@ -26,6 +26,10 @@ from app.widgets.library.library_mod_list import (
 from app.workers.library_scan_worker import (
     ScanTask,
 )
+from app.controllers.library_scan_controller import (
+    LibraryScanController,
+    ScanRequestStatus,
+)
 from app.controllers.library_import_controller import (
     LibraryImportController,
 )
@@ -106,6 +110,28 @@ class LibraryPage(QWidget):
             config=self.config
         )
         
+        self.scan_controller = (
+            LibraryScanController(
+                parent=self
+            )
+        )
+
+        self.scan_controller.progress.connect(
+            self._on_scan_progress
+        )
+
+        self.scan_controller.finished.connect(
+            self._on_scan_finished
+        )
+
+        self.scan_controller.failed.connect(
+            self._on_scan_failed
+        )
+
+        self.scan_controller.cancelled.connect(
+            self._on_scan_cancelled
+        )
+                
         self.bulk_controller = (
             LibraryBulkController(
                 mod_manager=self.mod_manager,
@@ -129,7 +155,7 @@ class LibraryPage(QWidget):
             QThreadPool.globalInstance()
         )
 
-        self.current_task: ScanTask | None = None
+
 
         self.import_controller = (
             LibraryImportController(
@@ -152,8 +178,6 @@ class LibraryPage(QWidget):
         self.import_controller.cancelled.connect(
             self._on_import_cancelled
         )
-
-        self.scan_again = False
 
         self.path_label = QLabel()
         self.location_label = QLabel()
@@ -634,7 +658,7 @@ class LibraryPage(QWidget):
             )
             return
 
-        if self.current_task is not None:
+        if self.scan_controller.is_running:
             QMessageBox.information(
                 self,
                 "Scan läuft",
@@ -771,50 +795,60 @@ class LibraryPage(QWidget):
                 "Import wird abgebrochen …"
             )
 
-    def scan_mods(self) -> None:
-        """Startet einen asynchronen Scan."""
-        if self.bulk_controller.is_running:
-            self.status_label.setText(
-                (
-                    "Während einer Sammelaktion kann die "
-                    "Bibliothek nicht gescannt werden."
-                )
-            )
-            return
-                
-        
-        if self.import_controller.is_running:
-            self.status_label.setText(
-                "Während eines Imports kann nicht gescannt werden."
-            )
-            return
-        
-        if self.current_task is not None:
-            self.scan_again = True
-            self.current_task.cancel()
+    def scan_mods(
+        self,
+    ) -> None:
+        if not self._prepare_scan_start():
             return
 
         mods_directory = (
             self.config.mod_library_directory
         )
+
         if not mods_directory.exists():
-            self.path_label.setText(
-                str(mods_directory)
-            )
-
-            self.location_label.setText(
-                "Nicht erreichbar"
-            )
-
             self.status_label.setText(
-                "Die Mod-Bibliothek existiert nicht oder "
-                "das Netzlaufwerk ist momentan nicht eingehängt."
+                (
+                    "Das Mod-Bibliotheksverzeichnis "
+                    "existiert nicht."
+                )
             )
-
-            self.mod_table.setRowCount(0)
-            self._update_stats()
-            self._update_details_panel()
             return
+
+        request_status = (
+            self.scan_controller.request_scan(
+                root_path=mods_directory
+            )
+        )
+
+        if (
+            request_status
+            == ScanRequestStatus.FAILED
+        ):
+            self.status_label.setText(
+                (
+                    "Der Bibliotheks-Scan konnte "
+                    "nicht gestartet werden."
+                )
+            )
+            return
+
+        if (
+            request_status
+            == ScanRequestStatus.RESTART_QUEUED
+        ):
+            self.status_label.setText(
+                (
+                    "Laufender Scan wird "
+                    "abgebrochen und anschließend "
+                    "neu gestartet …"
+                )
+            )
+            return
+
+        self._set_scan_ui_running(
+            True
+        )
+
         self.path_label.setText(
             str(mods_directory)
         )
@@ -827,47 +861,82 @@ class LibraryPage(QWidget):
             "Ordner wird gescannt …"
         )
 
+    def _set_scan_ui_running(
+        self,
+        running: bool,
+    ) -> None:
         self.refresh_button.setEnabled(
+            not running
+        )
+
+        self.import_button.setEnabled(
+            not running
+        )
+
+        if running:
+            self.progress_bar.setVisible(
+                True
+            )
+
+            self.progress_bar.setRange(
+                0,
+                0,
+            )
+
+            self.progress_bar.setValue(
+                0
+            )
+
+            self.progress_bar.setFormat(
+                "Bibliothek wird gescannt …"
+            )
+
+            return
+
+        self.progress_bar.setVisible(
             False
         )
 
-        self.progress_bar.setVisible(
-            True
-        )
-        self.progress_bar.setRange(
-            0,
-            0,
+        self.progress_bar.setValue(
+            0
         )
 
-        task = ScanTask(
-            root_path=mods_directory
+        self.progress_bar.setFormat(
+            ""
         )
-
-        task.signals.progress.connect(
-            self._on_scan_progress
-        )
-        task.signals.finished.connect(
-            self._on_scan_finished
-        )
-        task.signals.failed.connect(
-            self._on_scan_failed
-        )
-        task.signals.cancelled.connect(
-            self._on_scan_cancelled
-        )
-
-        self.current_task = task
 
         self._update_bulk_buttons()
-
-        self.thread_pool.start(
-            task
-        )
+        self._update_toggle_button()
+        self._update_details_panel()
 
     def cancel_scan(self) -> None:
-        if self.current_task is not None:
-            self.current_task.cancel()
+        self.scan_controller.cancel()
 
+    def _prepare_scan_start(
+        self,
+    ) -> bool:
+        if self.bulk_controller.is_running:
+            self.status_label.setText(
+                (
+                    "Während einer Sammelaktion "
+                    "kann die Bibliothek nicht "
+                    "gescannt werden."
+                )
+            )
+            return False
+
+        if self.import_controller.is_running:
+            self.status_label.setText(
+                (
+                    "Während eines Imports kann "
+                    "die Bibliothek nicht "
+                    "gescannt werden."
+                )
+            )
+            return False
+
+        return True
+        
     def _on_scan_progress(
         self,
         current: int,
@@ -879,8 +948,13 @@ class LibraryPage(QWidget):
                 0,
                 total,
             )
+
             self.progress_bar.setValue(
                 current
+            )
+
+            self.progress_bar.setFormat(
+                f"{current}/{total} – {mod_name}"
             )
         else:
             self.progress_bar.setRange(
@@ -888,10 +962,13 @@ class LibraryPage(QWidget):
                 0,
             )
 
-        if mod_name:
             self.progress_bar.setFormat(
-                f"{current}/{total} – {mod_name}"
+                f"Scanne – {mod_name}"
             )
+
+        self.status_label.setText(
+            f"Scanne „{mod_name}“ …"
+        )
 
     def _on_scan_finished(
         self,
@@ -920,53 +997,33 @@ class LibraryPage(QWidget):
         self,
         message: str,
     ) -> None:
-        self.location_label.setText(
-            "Nicht erreichbar"
-        )
-
-        self.status_label.setText(
-            f"Scan fehlgeschlagen: {message}"
-        )
-
-        self.mod_table.setRowCount(0)
-        self._update_stats()
-        self._update_details_panel()
-
         self._finish_task()
 
-    def _on_scan_cancelled(self) -> None:
         self.status_label.setText(
-            "Scan wurde abgebrochen."
+            "Der Bibliotheks-Scan ist fehlgeschlagen."
         )
 
+        QMessageBox.critical(
+            self,
+            "Scan fehlgeschlagen",
+            message,
+        )
+
+    def _on_scan_cancelled(
+        self,
+    ) -> None:
         self._finish_task()
+
+        self.status_label.setText(
+            "Der Bibliotheks-Scan wurde abgebrochen."
+        )
 
     def _finish_task(
         self,
     ) -> None:
-        self.current_task = None
-
-        self.refresh_button.setEnabled(
-            True
-        )
-
-        self.progress_bar.setVisible(
+        self._set_scan_ui_running(
             False
         )
-
-        # Nach dem Scan müssen die Auswahlaktionen
-        # erneut anhand des aktuellen Zustands gesetzt werden.
-        self._update_bulk_buttons()
-        self._update_toggle_button()
-        self._update_details_panel()
-
-        if self.scan_again:
-            self.scan_again = False
-
-            QTimer.singleShot(
-                0,
-                self.scan_mods,
-            )
 
     def _display_result(
         self,
@@ -1157,7 +1214,7 @@ class LibraryPage(QWidget):
 
         operation_running = any(
             (
-                self.current_task is not None,
+                self.scan_controller.is_running,
                 self.import_controller.is_running,
                 self.bulk_controller.is_running,
             )
@@ -1199,7 +1256,7 @@ class LibraryPage(QWidget):
             )
             return False
 
-        if self.current_task is not None:
+        if self.scan_controller.is_running:
             QMessageBox.information(
                 self,
                 "Scan läuft",
