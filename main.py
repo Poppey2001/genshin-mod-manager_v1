@@ -33,7 +33,7 @@ from app.platform_support import (
 
 
 APP_NAME = "Genshin Mod Manager"
-APP_VERSION = "0.4.0"
+APP_VERSION =  "0.4.0-alpha.1"
 
 
 def configure_logging(

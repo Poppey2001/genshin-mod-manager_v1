@@ -50,8 +50,7 @@ logger = logging.getLogger(
 )
 
 
-APP_VERSION = "0.4.0"
-
+APP_VERSION = "0.4.0-alpha.1"
 
 class MainWindow(QMainWindow):
     """Hauptfenster des Genshin Mod Managers."""
