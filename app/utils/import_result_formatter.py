@@ -4,17 +4,27 @@ from app.services.mod_importer import (
     ImportBatchResult,
     ImportStatus,
 )
+from app.i18n import tr
 
+def _format_mod_count(
+    count: int,
+) -> str:
+    key = (
+        "common.mod_count.one"
+        if count == 1
+        else "common.mod_count.other"
+    )
+
+    return tr(
+        key,
+        count=count,
+    )
 
 def format_import_result(
     result: ImportBatchResult,
     *,
     max_items: int = 12,
 ) -> str:
-    """
-    Erstellt den Text für die
-    Import-Ergebnisanzeige.
-    """
     summary_lines: list[str] = []
 
     for item in result.items[:max_items]:
@@ -25,7 +35,7 @@ def format_import_result(
             destination_name = (
                 item.destination.name
                 if item.destination is not None
-                else "Unbekannt"
+                else tr("common.unknown")
             )
 
             summary_lines.append(
@@ -55,58 +65,68 @@ def format_import_result(
 
     if remaining_count > 0:
         summary_lines.append(
-            f"… und {remaining_count} weitere"
+            tr(
+                "library.result.remaining",
+                count=remaining_count,
+            )
         )
 
-    summary_text = "\n".join(
-        summary_lines
+    lines = [
+        tr(
+            "library.import_result.imported",
+            count=result.imported_count,
+        ),
+        tr(
+            "library.import_result.skipped",
+            count=result.skipped_count,
+        ),
+        tr(
+            "library.import_result.failed",
+            count=result.failed_count,
+        ),
+        tr(
+            "library.import_result.duration",
+            seconds=result.duration_seconds,
+        ),
+    ]
+
+    if summary_lines:
+        lines.extend(
+            (
+                "",
+                *summary_lines,
+            )
+        )
+
+    return "\n".join(
+        lines
     )
-
-    header = (
-        f"Importiert: "
-        f"{result.imported_count}\n"
-        f"Übersprungen: "
-        f"{result.skipped_count}\n"
-        f"Fehlgeschlagen: "
-        f"{result.failed_count}\n"
-        f"Dauer: "
-        f"{result.duration_seconds:.1f} "
-        "Sekunden"
-    )
-
-    if not summary_text:
-        return header
-
-    return (
-        f"{header}\n\n"
-        f"{summary_text}"
-    )
-
 
 def format_import_status(
     result: ImportBatchResult,
 ) -> str:
-    """
-    Kurzer Text für die Statusleiste
-    der Bibliothek.
-    """
+    imported = _format_mod_count(
+        result.imported_count
+    )
+
     if result.failed_count:
-        return (
-            f"{result.imported_count} Mod(s) "
-            "importiert, "
-            f"{result.failed_count} "
-            "fehlgeschlagen."
+        return tr(
+            "library.import_result."
+            "status_failed",
+            imported=imported,
+            failed=result.failed_count,
         )
 
     if result.skipped_count:
-        return (
-            f"{result.imported_count} Mod(s) "
-            "importiert, "
-            f"{result.skipped_count} "
-            "übersprungen."
+        return tr(
+            "library.import_result."
+            "status_skipped",
+            imported=imported,
+            skipped=result.skipped_count,
         )
 
-    return (
-        f"{result.imported_count} "
-        "Mod(s) importiert."
+    return tr(
+        "library.import_result."
+        "status_success",
+        imported=imported,
     )

@@ -1,0 +1,315 @@
+{
+    "app.name": "Genshin Mod Manager",
+
+    "common.cancel": "Abbrechen",
+    "common.close": "Schließen",
+    "common.enabled": "Aktiviert",
+    "common.disabled": "Deaktiviert",
+    "common.unknown": "Unbekannt",
+
+    "library.title": "Mod-Bibliothek",
+    "library.description": "Gefundene Mod-Ordner aus dem eingestellten Mods-Verzeichnis.",
+
+    "library.action.scan": "Neu scannen",
+    "library.action.import": "Importieren",
+    "library.action.cancel_import": "Import abbrechen",
+
+    "library.status.import_started": "Mod-Import wurde gestartet.",
+    "library.status.import_failed": "Der Mod-Import ist fehlgeschlagen.",
+    "library.status.import_cancelled": "Der Mod-Import wurde abgebrochen.",
+    "library.status.import_cancelling": "Import wird abgebrochen …",
+
+    "library.status.scan_started": "Ordner wird gescannt …",
+    "library.status.scan_failed": "Der Bibliotheks-Scan ist fehlgeschlagen.",
+    "library.status.scan_cancelled": "Der Bibliotheks-Scan wurde abgebrochen.",
+    "library.status.scan_start_failed": "Der Bibliotheks-Scan konnte nicht gestartet werden.",
+    "library.status.scan_restart": "Laufender Scan wird abgebrochen und anschließend neu gestartet …",
+    "library.status.library_missing": "Das Mod-Bibliotheksverzeichnis existiert nicht.",
+    "library.status.scan_result": "{count} Mods in {seconds:.2f} Sekunden gefunden.",
+
+    "library.status.filter_result": "{visible} von {total} Mods werden angezeigt.",
+
+    "library.status.bulk_failed": "Die Sammelaktion ist fehlgeschlagen.",
+    "library.status.bulk_cancelling": "Sammelaktion wird nach dem aktuell bearbeiteten Mod abgebrochen …",
+
+    "library.location.checking": "Wird geprüft",
+    "library.location.local": "Lokaler Ordner",
+    "library.location.network": "Netzlaufwerk",
+
+    "mod.state.enabled": "Aktiviert",
+    "mod.state.disabled": "Deaktiviert",
+    "mod.state.conflict": "Konflikt",
+    "mod.state.broken": "Defekt",
+    "mod.state.not_configured": "Nicht konfiguriert",
+
+    "library.import.archive": "ZIP oder Archiv auswählen",
+    "library.import.directory": "Mod-Ordner auswählen",
+
+    "library.filter.library": "Bibliothek",
+    "library.filter.search_placeholder": "Mods, Charaktere oder Pfade durchsuchen …",
+    "library.filter.all_characters": "Alle Charaktere",
+    "library.filter.all_mod_types": "Alle Mod-Typen",
+    "library.filter.all_statuses": "Alle Status",
+    "library.filter.reset": "Zurücksetzen",
+
+
+    "common.local": "Lokal",
+    "common.network": "Netzwerk",
+    "common.symlink": "Symlink",
+
+    "library.list.selection_actions": "Auswahlaktionen",
+    "library.list.enable_selected": "Auswahl aktivieren",
+    "library.list.disable_selected": "Auswahl deaktivieren",
+    "library.list.adopt_selected": "Konflikte übernehmen",
+    "library.list.cancel_bulk": "Sammelaktion abbrechen",
+    "library.list.info_tooltip": "Merge- und Master-INI analysieren",
+
+    "library.column.mod": "Mod",
+    "library.column.character": "Charakter",
+    "library.column.mod_type": "Mod-Typ",
+    "library.column.status": "Status",
+    "library.column.location": "Speicherort",
+    "library.column.files": "Dateien",
+    "library.column.ini_files": "INI-Dateien",
+    "library.column.size": "Größe",
+    "library.column.modified": "Geändert",
+    "library.column.path": "Pfad",
+
+    "library.details.eyebrow": "MOD-DETAILS",
+    "library.details.character": "Charakter",
+    "library.details.mod_type": "Mod-Typ",
+    "library.details.location": "Speicherort",
+    "library.details.files": "Dateien",
+    "library.details.ini_files": "INI-Dateien",
+    "library.details.size": "Größe",
+    "library.details.modified": "Geändert",
+    "library.details.path": "Pfad",
+    "library.details.actions": "Aktionen",
+
+    "library.details.empty_title": "Kein Mod ausgewählt",
+    "library.details.empty_description": "Wähle links einen Mod aus, um Details und Aktionen zu sehen.",
+    "library.details.no_selection": "Keine Auswahl",
+
+    "library.details.multiple_title": "{count} Mods ausgewählt",
+    "library.details.multiple_description": "Nutze die Auswahlaktionen oberhalb der Liste.",
+    "library.details.multiple_status": "Mehrfachauswahl",
+
+    "library.details.action.enable": "Aktivieren",
+    "library.details.action.disable": "Deaktivieren",
+    "library.details.action.remove_broken": "Defekten Link entfernen",
+    "library.details.action.not_configured": "Mods-Ordner fehlt",
+    "library.details.action.conflict": "Konflikt",
+    "library.details.action.adopt": "Konflikt übernehmen",
+    "library.details.action.info": "INI-Steuerung analysieren",
+    "library.details.action.adopt_tooltip": "Übernimmt einen vorhandenen Mod-Ordner, ohne seine Dateien zu überschreiben.",
+
+    "library.stats.total.title": "Mods gesamt",
+    "library.stats.total.subtitle": "Bibliothek",
+    "library.stats.active.title": "Aktiviert",
+    "library.stats.active.subtitle": "Im Spiel geladen",
+    "library.stats.conflicts.title": "Konflikte",
+    "library.stats.conflicts.subtitle": "Benötigen Aufmerksamkeit",
+    "library.stats.characters.title": "Charaktere",
+    "library.stats.characters.subtitle": "Erkannte Zuordnungen",
+
+    "common.mod_count.one": "{count} Mod",
+    "common.mod_count.other": "{count} Mods",
+
+    "library.import_picker.archive_title": "Mod-Archive auswählen",
+    "library.import_picker.directory_title": "Mod-Ordner auswählen",
+    "library.import_picker.supported_archives": "Unterstützte Archive (*.zip *.7z *.rar *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz2 *.tar.xz *.txz)",
+    "library.import_picker.zip_archives": "ZIP-Archive (*.zip)",
+    "library.import_picker.seven_zip_archives": "7-Zip-Archive (*.7z)",
+    "library.import_picker.rar_archives": "RAR-Archive (*.rar)",
+    "library.import_picker.tar_archives": "TAR-Archive (*.tar *.tar.gz *.tgz *.tar.bz2 *.tbz2 *.tar.xz *.txz)",
+    "library.import_picker.all_files": "Alle Dateien (*)",
+
+    "library.import.unsupported_title": "Keine unterstützten Dateien",
+    "library.import.unsupported_message": "Es wurden keine unterstützten Mod-Ordner oder Archive ausgewählt.",
+
+    "library.progress.import_preparing": "Import wird vorbereitet …",
+    "library.progress.scan_preparing": "Bibliothek wird gescannt …",
+    "library.progress.scan_indeterminate": "Scanne – {name}",
+    "library.progress.scan_processing": "Scanne „{name}“ …",
+    "library.progress.bulk_preparing": "Sammelaktion wird vorbereitet …",
+    "library.progress.bulk_processing": "Bearbeite „{name}“ …",
+
+    "library.operation.scan_running": "Scan läuft",
+    "library.operation.import_running": "Import läuft",
+    "library.operation.bulk_running": "Sammelaktion läuft",
+    "library.operation.action_running": "Aktion läuft",
+
+    "library.operation.block.import_by_bulk": "Während einer Sammelaktion können keine Mods importiert werden.",
+    "library.operation.block.import_by_import": "Es läuft bereits ein Mod-Import.",
+    "library.operation.block.import_by_scan": "Warte bitte, bis der aktuelle Bibliotheks-Scan abgeschlossen ist.",
+    "library.operation.block.bulk_by_bulk": "Es wird bereits eine Sammelaktion ausgeführt.",
+    "library.operation.block.bulk_by_scan": "Warte bitte, bis der Bibliotheks-Scan abgeschlossen ist.",
+    "library.operation.block.bulk_by_import": "Warte bitte, bis der Mod-Import abgeschlossen ist.",
+    "library.operation.block.scan_by_bulk": "Während einer Sammelaktion kann die Bibliothek nicht gescannt werden.",
+    "library.operation.block.scan_by_import": "Während eines Imports kann die Bibliothek nicht gescannt werden.",
+    "library.operation.block.default": "Die gewünschte Aktion kann momentan nicht gestartet werden.",
+
+    "library.bulk.action.enable_title": "Mods aktivieren",
+    "library.bulk.action.disable_title": "Mods deaktivieren",
+    "library.bulk.action.adopt_title": "Konflikte übernehmen",
+
+    "library.bulk.action.enable_description": "Die ausgewählten deaktivierten Mods werden aktiviert. Bereits aktive Mods werden übersprungen.",
+    "library.bulk.action.disable_description": "Die ausgewählten aktiven Mods werden deaktiviert. Bereits deaktivierte Mods werden übersprungen.",
+    "library.bulk.action.adopt_description": "Vorhandene Konflikt-Ordner werden in die Verwaltung aufgenommen. Mod-Dateien werden nicht überschrieben.",
+
+    "library.bulk.confirmation": "Ausgewählte Mods: {count}\n\n{description}\n\nMöchtest du fortfahren?",
+
+    "library.bulk_result.action.enable": "Aktivieren",
+    "library.bulk_result.action.disable": "Deaktivieren",
+    "library.bulk_result.action.adopt": "Übernehmen",
+    "library.bulk_result.action": "Aktion: {action}",
+    "library.bulk_result.success": "Erfolgreich: {count}",
+    "library.bulk_result.skipped": "Übersprungen: {count}",
+    "library.bulk_result.conflicts": "Konflikte: {count}",
+    "library.bulk_result.failed": "Fehlgeschlagen: {count}",
+    "library.bulk_result.duration": "Dauer: {seconds:.1f} Sekunden",
+    "library.bulk_result.cancelled_detail": "Die Sammelaktion wurde vorzeitig abgebrochen.",
+    "library.bulk_result.status_cancelled": "Die Sammelaktion wurde abgebrochen.",
+    "library.bulk_result.status_completed": "Sammelaktion abgeschlossen: {count} erfolgreich.",
+
+    "library.import_result.imported": "Importiert: {count}",
+    "library.import_result.skipped": "Übersprungen: {count}",
+    "library.import_result.failed": "Fehlgeschlagen: {count}",
+    "library.import_result.duration": "Dauer: {seconds:.1f} Sekunden",
+    "library.import_result.status_failed": "{imported} importiert, {failed} fehlgeschlagen.",
+    "library.import_result.status_skipped": "{imported} importiert, {skipped} übersprungen.",
+    "library.import_result.status_success": "{imported} importiert.",
+
+    "library.result.remaining": "… und {count} weitere",
+
+    "library.mod_action.enabled": "„{mod_name}“ wurde aktiviert: {destination}",
+    "library.mod_action.disabled": "„{mod_name}“ wurde deaktiviert und die reparierte Version wurde gespeichert.",
+    "library.mod_action.not_configured": "Wähle unter Einstellungen zuerst den aktiven Mods-Ordner aus.",
+    "library.mod_action.conflict": "Am Ziel befindet sich bereits ein fremder Ordner oder eine fremde Verknüpfung.\n\nDer Manager überschreibt diese Daten nicht.",
+    "library.mod_action.not_conflict": "Der ausgewählte Mod besitzt aktuell keinen Konflikt.",
+    "library.mod_action.adopted_enabled": "„{mod_name}“ wurde als vorhandener aktivierter Mod übernommen.",
+    "library.mod_action.adopted_disabled": "„{mod_name}“ wurde als vorhandener deaktivierter Mod übernommen.",
+
+    "library.mod_action.dialog.missing_folder_title": "Aktiver Mods-Ordner fehlt",
+    "library.mod_action.dialog.conflict_title": "Mod-Konflikt",
+    "library.mod_action.dialog.no_conflict_title": "Kein Konflikt",
+    "library.mod_action.dialog.adopt_title": "Vorhandenen Mod übernehmen",
+    "library.mod_action.dialog.adopt_message": "Der vorhandene Ordner für „{mod_name}“ wird als vom Genshin Mod Manager verwaltet markiert.\n\nDabei werden keine Mod-Dateien überschrieben, verschoben oder gelöscht.\n\nDanach kann der Manager den Ordner durch Umbenennen aktivieren und deaktivieren.\n\nMöchtest du fortfahren?",
+
+    "library.dialog.import.title": "Mod-Import",
+    "library.dialog.import.completed": "Mod-Import abgeschlossen",
+    "library.dialog.import.failed": "Mod-Import fehlgeschlagen",
+    "library.dialog.scan.failed": "Scan fehlgeschlagen",
+    "library.dialog.bulk.title": "Sammelaktion",
+    "library.dialog.bulk.completed": "Sammelaktion abgeschlossen",
+    "library.dialog.bulk.failed": "Sammelaktion fehlgeschlagen",
+    "library.dialog.no_selection.title": "Keine Mods ausgewählt",
+    "library.dialog.no_selection.message": "Wähle mindestens einen Mod in der Tabelle aus.",
+    "library.dialog.mod_management_failed": "Mod-Verwaltung fehlgeschlagen",
+    "library.dialog.adopt_failed": "Konflikt konnte nicht übernommen werden",
+
+    "library.status.import_start_failed": "Der Mod-Import konnte nicht gestartet werden.",
+    "library.status.bulk_start_failed": "Die Sammelaktion konnte nicht gestartet werden.",
+    "library.status.bulk_enable_started": "Aktivieren der Mods wurde gestartet.",
+    "library.status.bulk_disable_started": "Deaktivieren der Mods wurde gestartet.",
+    "library.status.bulk_adopt_started": "Übernehmen der Konflikte wurde gestartet.",
+
+    "library.error.stylesheet_load": "Das Stylesheet der Mod-Bibliothek konnte nicht geladen werden: {path}",
+
+    "main.window_title": "Genshin Mod Manager",
+
+    "main.sidebar.title": "Genshin",
+    "main.sidebar.subtitle": "Mod Manager",
+    "main.sidebar.version": "Version {version}",
+
+    "main.navigation.library": "Bibliothek",
+    "main.navigation.profiles": "Profile",
+    "main.navigation.conflicts": "Konflikte",
+    "main.navigation.settings": "Einstellungen",
+
+    "main.status.active_profile": "Aktives Profil: {profile}",
+
+    "main.page.profiles.title": "Profile",
+    "main.page.profiles.description": "Hier kannst du später verschiedene Mod-Zusammenstellungen speichern.",
+
+    "main.page.conflicts.title": "Konflikte",
+    "main.page.conflicts.description": "Hier zeigt der Manager später mögliche Datei- und Mod-Konflikte an.",
+
+    "main.launcher.missing.title": "Kein Launcher ausgewählt",
+    "main.launcher.missing.message": "Wähle zuerst in den Einstellungen einen Launcher aus.",
+    "main.launcher.start_failed.title": "Launcher konnte nicht gestartet werden",
+
+    "settings.title": "Einstellungen",
+    "settings.description": "Lege die Mod-Bibliothek, den aktiven Mods-Ordner, den Launcher und das Verhalten des Mod Managers fest.",
+
+    "settings.group.library": "Mod-Bibliothek",
+    "settings.group.paths": "Pfade",
+    "settings.group.behavior": "Verhalten",
+
+    "settings.library.description": "Hier liegen alle vom Manager verwalteten Mods. Der Ordner kann lokal oder auf einem eingehängten Netzlaufwerk liegen.",
+    "settings.library.placeholder": "Standard: ~/.local/share/genshin-mod-manager/mods",
+
+    "settings.active_mods.label": "Aktiver Mods-Ordner",
+    "settings.active_mods.description": "Der Ordner, aus dem der verwendete Mod-Loader seine Mods lädt.",
+    "settings.active_mods.placeholder": "Noch kein Mods-Ordner ausgewählt",
+
+    "settings.launcher.label": "Launcher",
+    "settings.launcher.description": "Optionaler Pfad zu einem AppImage, Shell-Skript, Wine-Programm oder Mod-Loader.",
+    "settings.launcher.placeholder": "Noch kein Launcher ausgewählt",
+
+    "settings.symlinks.label": "Mods über symbolische Links aktivieren",
+    "settings.symlinks.description": "Bei symbolischen Links bleiben die Mods in der zentralen Bibliothek und werden nicht dupliziert.",
+
+    "settings.backups.label": "Vor Änderungen automatisch Backups erstellen",
+    "settings.backups.description": "Backups schützen vorhandene Dateien vor versehentlichem Überschreiben.",
+
+    "settings.appearance.label": "Darstellung",
+    "settings.language.label": "Sprache",
+
+    "settings.theme.dark": "Dunkel",
+    "settings.theme.light": "Hell",
+    "settings.theme.system": "Systemeinstellung",
+
+    "settings.language.de": "Deutsch",
+    "settings.language.en": "English",
+
+    "settings.button.choose": "Auswählen",
+    "settings.button.default": "Standard",
+    "settings.button.clear": "Leeren",
+    "settings.button.reset": "Zurücksetzen",
+    "settings.button.save": "Einstellungen speichern",
+
+    "settings.dialog.choose_library": "Mod-Bibliothek auswählen",
+    "settings.dialog.choose_active_mods": "Aktiven Mods-Ordner auswählen",
+    "settings.dialog.choose_launcher": "Launcher auswählen",
+
+    "settings.warning.network.title": "Netzwerkadresse nicht unterstützt",
+    "settings.warning.network.message": "Adressen wie smb:// oder nfs:// können nicht direkt verwendet werden.\n\nBinde das Netzlaufwerk zuerst unter /mnt, /media oder über deinen Dateimanager ein.",
+
+    "settings.warning.invalid_mods.title": "Ungültiger Mods-Ordner",
+    "settings.warning.mods_missing": "Der ausgewählte Mods-Ordner existiert nicht.",
+    "settings.warning.mods_not_directory": "Der ausgewählte Pfad ist kein Verzeichnis.",
+
+    "settings.library_create.title": "Bibliothek erstellen",
+    "settings.library_create.message": "Der ausgewählte Bibliotheksordner existiert noch nicht.\n\nSoll er jetzt erstellt werden?",
+
+    "settings.error.create_directory.title": "Ordner konnte nicht erstellt werden",
+
+    "settings.warning.invalid_library.title": "Ungültige Mod-Bibliothek",
+    "settings.warning.invalid_library.message": "Der Bibliothekspfad ist kein Verzeichnis.",
+
+    "settings.warning.invalid_launcher.title": "Ungültiger Launcher",
+    "settings.warning.launcher_missing": "Die ausgewählte Launcher-Datei existiert nicht.",
+    "settings.warning.launcher_not_file": "Der ausgewählte Launcher-Pfad ist keine Datei.",
+
+    "settings.error.save.title": "Speicherfehler",
+    "settings.error.save.message": "Die Einstellungen konnten nicht gespeichert werden.\n\n{error}",
+
+    "settings.status.saved": "Einstellungen wurden gespeichert.",
+    "settings.status.reset": "Nicht gespeicherte Änderungen wurden verworfen.",
+
+    "app.error.unexpected.title": "Unerwarteter Fehler",
+    "app.error.unexpected.message": "Der Genshin Mod Manager musste wegen eines Fehlers beendet werden.\n\n{error_type}: {error}",
+
+    "library.details.action.unavailable": "Nicht verfügbar"
+}

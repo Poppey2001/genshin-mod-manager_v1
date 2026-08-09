@@ -11,6 +11,7 @@ from app.workers.bulk_mod_worker import (
     BulkAction,
 )
 
+from app.i18n import tr
 
 @dataclass(
     frozen=True,
@@ -45,11 +46,10 @@ def confirm_bulk_action(
     answer = QMessageBox.question(
         parent,
         title,
-        (
-            f"Ausgewählte Mods: "
-            f"{selected_count}\n\n"
-            f"{description}\n\n"
-            "Möchtest du fortfahren?"
+        tr(
+            "library.bulk.confirmation",
+            count=selected_count,
+            description=description,
         ),
         (
             QMessageBox.StandardButton.Yes
@@ -72,38 +72,41 @@ def confirm_bulk_action(
 def _action_title(
     action: BulkAction,
 ) -> str:
-    return {
-        BulkAction.ENABLE: (
-            "Mods aktivieren"
-        ),
-        BulkAction.DISABLE: (
-            "Mods deaktivieren"
-        ),
-        BulkAction.ADOPT: (
-            "Konflikte übernehmen"
-        ),
+    key = {
+        BulkAction.ENABLE:
+            "library.bulk.action.enable_title",
+
+        BulkAction.DISABLE:
+            "library.bulk.action.disable_title",
+
+        BulkAction.ADOPT:
+            "library.bulk.action.adopt_title",
     }[action]
+
+    return tr(key)
 
 
 def _action_description(
     action: BulkAction,
 ) -> str:
-    return {
-        BulkAction.ENABLE: (
-            "Die ausgewählten deaktivierten "
-            "Mods werden aktiviert. Bereits "
-            "aktive Mods werden übersprungen."
-        ),
-        BulkAction.DISABLE: (
-            "Die ausgewählten aktiven Mods "
-            "werden deaktiviert. Bereits "
-            "deaktivierte Mods werden "
-            "übersprungen."
-        ),
-        BulkAction.ADOPT: (
-            "Vorhandene Konflikt-Ordner "
-            "werden in die Verwaltung "
-            "aufgenommen. Mod-Dateien werden "
-            "nicht überschrieben."
-        ),
+    key = {
+        BulkAction.ENABLE:
+            (
+                "library.bulk.action."
+                "enable_description"
+            ),
+
+        BulkAction.DISABLE:
+            (
+                "library.bulk.action."
+                "disable_description"
+            ),
+
+        BulkAction.ADOPT:
+            (
+                "library.bulk.action."
+                "adopt_description"
+            ),
     }[action]
+
+    return tr(key)

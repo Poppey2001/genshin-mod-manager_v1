@@ -22,6 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.i18n import (
+    tr,
+    translation_manager,
+)
 from app.models.mod import ModInfo
 
 from app.services.mod_manager import (
@@ -37,7 +41,22 @@ from app.utils.formatters import (
 MOD_OBJECT_ROLE = (
     int(Qt.ItemDataRole.UserRole) + 10
 )
+MOD_STATE_TRANSLATION_KEYS = {
+    ModState.ENABLED.value:
+        "mod.state.enabled",
 
+    ModState.DISABLED.value:
+        "mod.state.disabled",
+
+    ModState.CONFLICT.value:
+        "mod.state.conflict",
+
+    ModState.BROKEN.value:
+        "mod.state.broken",
+
+    ModState.NOT_CONFIGURED.value:
+        "mod.state.not_configured",
+}
 @dataclass(frozen=True, slots=True)
 class ModListStatistics:
     total: int
@@ -74,28 +93,23 @@ class LibraryModListWidget(QFrame):
             "listPanel"
         )
 
-        self.bulk_enable_button = QPushButton(
-            "Auswahl aktivieren"
-        )
-
-        self.bulk_disable_button = QPushButton(
-            "Auswahl deaktivieren"
-        )
-
-        self.bulk_adopt_button = QPushButton(
-            "Konflikte übernehmen"
-        )
-
-        self.cancel_bulk_button = QPushButton(
-            "Sammelaktion abbrechen"
-        )
-
+        self.bulk_enable_button = QPushButton()
+        self.bulk_disable_button = QPushButton()
+        self.bulk_adopt_button = QPushButton()
+        self.cancel_bulk_button = QPushButton()
+                
         self.table = QTableWidget()
 
         self._configure_buttons()
         self._configure_table()
         self._build_ui()
         self._connect_signals()
+        
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
+
+        self.retranslate_ui()
 
     def statistics(
         self,
@@ -229,16 +243,16 @@ class LibraryModListWidget(QFrame):
         )
 
         headers = [
-            "Mod",
-            "Charakter",
-            "Mod-Typ",
-            "Status",
-            "Speicherort",
-            "Dateien",
-            "INI-Dateien",
-            "Größe",
-            "Geändert",
-            "Pfad",
+            tr("library.column.mod"),
+            tr("library.column.character"),
+            tr("library.column.mod_type"),
+            tr("library.column.status"),
+            tr("library.column.location"),
+            tr("library.column.files"),
+            tr("library.column.ini_files"),
+            tr("library.column.size"),
+            tr("library.column.modified"),
+            tr("library.column.path"),
         ]
 
         self.table.setHorizontalHeaderLabels(
@@ -319,16 +333,13 @@ class LibraryModListWidget(QFrame):
             8
         )
 
-        selection_label = QLabel(
-            "Auswahlaktionen"
-        )
-
-        selection_label.setObjectName(
+        self.selection_label = QLabel()
+        self.selection_label.setObjectName(
             "sectionLabel"
         )
 
         actions_layout.addWidget(
-            selection_label
+            self.selection_label
         )
 
         actions_layout.addStretch()
@@ -451,7 +462,7 @@ class LibraryModListWidget(QFrame):
         character_text = (
             ", ".join(mod.characters)
             if mod.characters
-            else "Unbekannt"
+            else tr("common.unknown")
         )
 
         character_item = QTableWidgetItem(
@@ -465,7 +476,7 @@ class LibraryModListWidget(QFrame):
 
         mod_type_item = QTableWidgetItem(
             mod.mod_type
-            or "Unbekannt"
+            or tr("common.unknown")
         )
 
         mod_type_item.setData(
@@ -474,23 +485,26 @@ class LibraryModListWidget(QFrame):
         )
 
         state_item = QTableWidgetItem(
-            mod_state_label(state)
+            tr(
+                MOD_STATE_TRANSLATION_KEYS[
+                    state.value
+                ]
+            )
         )
-
         state_item.setData(
             Qt.ItemDataRole.UserRole,
             state.value,
         )
 
         location_parts = [
-            "Netzwerk"
+            tr("common.network")
             if mod.is_network
-            else "Lokal"
+            else tr("common.local")
         ]
 
         if mod.is_symlink:
             location_parts.append(
-                "Symlink"
+                tr("common.symlink")
             )
 
         location_item = QTableWidgetItem(
@@ -632,7 +646,7 @@ class LibraryModListWidget(QFrame):
         )
 
         info_button.setToolTip(
-            "Merge- und Master-INI analysieren"
+            tr("library.list.info_tooltip")
         )
 
         info_button.clicked.connect(
@@ -787,9 +801,13 @@ class LibraryModListWidget(QFrame):
                         state_item,
                     )
 
-                state_item.setText(
-                    mod_state_label(state)
-                )
+                    state_item.setText(
+                        tr(
+                            MOD_STATE_TRANSLATION_KEYS[
+                                state.value
+                            ]
+                        )
+                    )
 
                 state_item.setData(
                     Qt.ItemDataRole.UserRole,
@@ -961,6 +979,229 @@ class LibraryModListWidget(QFrame):
 
         return visible_mods
 
+
+    def set_bulk_operation_running(
+        self,
+        running: bool,
+    ) -> None:
+        self.table.setEnabled(
+            not running
+        )
+
+        self.cancel_bulk_button.setVisible(
+            running
+        )
+
+        self.cancel_bulk_button.setEnabled(
+            running
+        )
+
+    def mark_bulk_cancel_requested(
+        self,
+    ) -> None:
+        self.cancel_bulk_button.setEnabled(
+            False
+        )
+
+    def drop_target(
+        self,
+    ):
+        return self.table.viewport()
+    
+    def retranslate_ui(
+    self,
+    _language: str | None = None,
+    ) -> None:
+        self.selection_label.setText(
+            tr("library.list.selection_actions")
+        )
+
+        self.bulk_enable_button.setText(
+            tr("library.list.enable_selected")
+        )
+
+        self.bulk_disable_button.setText(
+            tr("library.list.disable_selected")
+        )
+
+        self.bulk_adopt_button.setText(
+            tr("library.list.adopt_selected")
+        )
+
+        self.cancel_bulk_button.setText(
+            tr("library.list.cancel_bulk")
+        )
+
+        headers = [
+            tr("library.column.mod"),
+            tr("library.column.character"),
+            tr("library.column.mod_type"),
+            tr("library.column.status"),
+            tr("library.column.location"),
+            tr("library.column.files"),
+            tr("library.column.ini_files"),
+            tr("library.column.size"),
+            tr("library.column.modified"),
+            tr("library.column.path"),
+        ]
+
+        for column, text in enumerate(
+            headers
+        ):
+            header_item = (
+                self.table.horizontalHeaderItem(
+                    column
+                )
+            )
+
+            if header_item is not None:
+                header_item.setText(
+                    text
+                )
+
+        sorting_enabled = (
+            self.table.isSortingEnabled()
+        )
+
+        self.table.setSortingEnabled(
+            False
+        )
+
+        try:
+            for row in range(
+                self.table.rowCount()
+            ):
+                name_item = self.table.item(
+                    row,
+                    0,
+                )
+
+                if name_item is None:
+                    continue
+
+                mod = name_item.data(
+                    MOD_OBJECT_ROLE
+                )
+
+                if not isinstance(
+                    mod,
+                    ModInfo,
+                ):
+                    continue
+
+                character_item = (
+                    self.table.item(
+                        row,
+                        1,
+                    )
+                )
+
+                if character_item is not None:
+                    character_item.setText(
+                        (
+                            ", ".join(
+                                mod.characters
+                            )
+                            if mod.characters
+                            else tr(
+                                "common.unknown"
+                            )
+                        )
+                    )
+
+                mod_type_item = (
+                    self.table.item(
+                        row,
+                        2,
+                    )
+                )
+
+                if mod_type_item is not None:
+                    mod_type_item.setText(
+                        mod.mod_type
+                        or tr("common.unknown")
+                    )
+
+                state_item = (
+                    self.table.item(
+                        row,
+                        3,
+                    )
+                )
+
+                if state_item is not None:
+                    state_value = (
+                        state_item.data(
+                            Qt.ItemDataRole.UserRole
+                        )
+                    )
+
+                    translation_key = (
+                        MOD_STATE_TRANSLATION_KEYS.get(
+                            str(state_value)
+                        )
+                    )
+
+                    if translation_key is not None:
+                        state_item.setText(
+                            tr(translation_key)
+                        )
+
+                location_item = (
+                    self.table.item(
+                        row,
+                        4,
+                    )
+                )
+
+                if location_item is not None:
+                    location_parts = [
+                        (
+                            tr("common.network")
+                            if mod.is_network
+                            else tr("common.local")
+                        )
+                    ]
+
+                    if mod.is_symlink:
+                        location_parts.append(
+                            tr("common.symlink")
+                        )
+
+                    location_item.setText(
+                        " · ".join(
+                            location_parts
+                        )
+                    )
+
+                name_widget = (
+                    self.table.cellWidget(
+                        row,
+                        0,
+                    )
+                )
+
+                if name_widget is not None:
+                    info_button = (
+                        name_widget.findChild(
+                            QToolButton,
+                            "modInfoButton",
+                        )
+                    )
+
+                    if info_button is not None:
+                        info_button.setToolTip(
+                            tr(
+                                "library.list."
+                                "info_tooltip"
+                            )
+                        )
+
+        finally:
+            self.table.setSortingEnabled(
+                sorting_enabled
+            )
+
     def _emit_enable_requested(
         self,
         _checked: bool = False,
@@ -984,3 +1225,4 @@ class LibraryModListWidget(QFrame):
         _checked: bool = False,
     ) -> None:
         self.cancel_requested.emit()
+        

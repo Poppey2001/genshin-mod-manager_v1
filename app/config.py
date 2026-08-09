@@ -65,7 +65,8 @@ class AppConfig:
     create_backups: bool = True
 
     theme: str = "dark"
-
+    language: str = "de"
+    
     window_width: int = 1200
     window_height: int = 760
 
@@ -161,7 +162,18 @@ class AppConfig:
                 self.theme,
             )
             self.theme = "dark"
+        valid_languages = {
+            "de",
+            "en",
+        }
 
+        if self.language not in valid_languages:
+            logger.warning(
+                "Ungültige Sprache '%s'. Verwende 'de'.",
+                self.language,
+            )
+
+            self.language = "de"
         if self.window_width < 800:
             self.window_width = 800
 
@@ -194,6 +206,7 @@ class AppConfig:
         string_fields = (
             "selected_profile",
             "theme",
+            "language",
         )
 
         boolean_fields = (

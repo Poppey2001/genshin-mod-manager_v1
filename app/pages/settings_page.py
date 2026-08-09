@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import logging
+
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import (
+    QSignalBlocker,
+    Signal,
+)
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -12,7 +17,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
-    QFileDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -23,12 +27,21 @@ from PySide6.QtWidgets import (
 )
 
 from app.config import AppConfig
+
+from app.i18n import (
+    set_language,
+    tr,
+    translation_manager,
+)
+
 from app.platform_support import (
     launcher_file_filter,
 )
-from pathlib import Path
-logger = logging.getLogger(__name__)
 
+
+logger = logging.getLogger(
+    __name__
+)
 
 
 class SettingsPage(QWidget):
@@ -36,96 +49,685 @@ class SettingsPage(QWidget):
 
     settings_saved = Signal(str)
 
-    def __init__(self, config: AppConfig) -> None:
+    THEME_TRANSLATION_KEYS = {
+        "dark": "settings.theme.dark",
+        "light": "settings.theme.light",
+        "system": "settings.theme.system",
+    }
+
+    LANGUAGE_TRANSLATION_KEYS = {
+        "de": "settings.language.de",
+        "en": "settings.language.en",
+    }
+
+    def __init__(
+        self,
+        config: AppConfig,
+    ) -> None:
         super().__init__()
 
         self.config = config
-        self.library_input = QLineEdit()
-        self.active_mods_input = QLineEdit()
-        self.launcher_input = QLineEdit()
+
+        # --------------------------------------------------
+        # Eingabefelder
+        # --------------------------------------------------
+
+        self.library_input = QLineEdit(
+            self
+        )
+
+        self.active_mods_input = QLineEdit(
+            self
+        )
+
+        self.launcher_input = QLineEdit(
+            self
+        )
+
+        # --------------------------------------------------
+        # Optionen
+        # --------------------------------------------------
 
         self.use_symlinks_checkbox = QCheckBox(
-            "Mods über symbolische Links aktivieren"
+            self
         )
+
         self.create_backups_checkbox = QCheckBox(
-            "Vor Änderungen automatisch Backups erstellen"
+            self
         )
 
-        self.theme_combobox = QComboBox()
+        self.theme_combobox = QComboBox(
+            self
+        )
 
-        self.status_label = QLabel()
+        self.language_combobox = QComboBox(
+            self
+        )
+
+        # --------------------------------------------------
+        # Status
+        # --------------------------------------------------
+
+        self.status_label = QLabel(
+            self
+        )
+
+        # --------------------------------------------------
+        # Übersetzbare Widgets
+        # --------------------------------------------------
+
+        self.title_label: QLabel
+        self.description_label: QLabel
+
+        self.library_group: QGroupBox
+        self.library_description_label: QLabel
+        self.library_choose_button: QPushButton
+        self.library_default_button: QPushButton
+
+        self.paths_group: QGroupBox
+        self.active_mods_label: QLabel
+        self.active_mods_description_label: QLabel
+        self.active_mods_choose_button: QPushButton
+        self.active_mods_clear_button: QPushButton
+
+        self.launcher_label: QLabel
+        self.launcher_description_label: QLabel
+        self.launcher_choose_button: QPushButton
+        self.launcher_clear_button: QPushButton
+
+        self.options_group: QGroupBox
+        self.symlink_description_label: QLabel
+        self.backup_description_label: QLabel
+        self.theme_label: QLabel
+        self.language_label: QLabel
+
+        self.reset_button: QPushButton
+        self.save_button: QPushButton
+
+        # --------------------------------------------------
+        # Aufbau
+        # --------------------------------------------------
 
         self._build_ui()
+
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
+
+        self.retranslate_ui()
         self._load_config_values()
 
-    def _build_ui(self) -> None:
-        """Erstellt die Oberfläche der Einstellungsseite."""
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(40, 36, 40, 36)
-        main_layout.setSpacing(22)
+    # ==================================================
+    # UI
+    # ==================================================
 
-        title_label = QLabel("Einstellungen")
-        title_label.setObjectName("pageTitle")
-
-        description_label = QLabel(
-            "Lege den aktiven Mods-Ordner, den Launcher "
-            "und das Verhalten des Mod Managers fest."
+    def _build_ui(
+        self,
+    ) -> None:
+        main_layout = QVBoxLayout(
+            self
         )
-        description_label.setObjectName("pageDescription")
-        description_label.setWordWrap(True)
 
-        main_layout.addWidget(title_label)
-        main_layout.addWidget(description_label)
-        main_layout.addWidget(self._create_library_group())
-                    
-        main_layout.addWidget(self._create_paths_group())
-        main_layout.addWidget(self._create_options_group())
+        main_layout.setContentsMargins(
+            40,
+            36,
+            40,
+            36,
+        )
+
+        main_layout.setSpacing(
+            22
+        )
+
+        # --------------------------------------------------
+        # Titel
+        # --------------------------------------------------
+
+        self.title_label = QLabel(
+            self
+        )
+
+        self.title_label.setObjectName(
+            "pageTitle"
+        )
+
+        self.description_label = QLabel(
+            self
+        )
+
+        self.description_label.setObjectName(
+            "pageDescription"
+        )
+
+        self.description_label.setWordWrap(
+            True
+        )
+
+        main_layout.addWidget(
+            self.title_label
+        )
+
+        main_layout.addWidget(
+            self.description_label
+        )
+
+        # --------------------------------------------------
+        # Gruppen
+        # --------------------------------------------------
+
+        main_layout.addWidget(
+            self._create_library_group()
+        )
+
+        main_layout.addWidget(
+            self._create_paths_group()
+        )
+
+        main_layout.addWidget(
+            self._create_options_group()
+        )
 
         main_layout.addStretch()
 
-        bottom_layout = QHBoxLayout()
-        bottom_layout.setSpacing(12)
+        # --------------------------------------------------
+        # Untere Leiste
+        # --------------------------------------------------
 
-        self.status_label.setObjectName("settingsStatus")
+        bottom_layout = QHBoxLayout()
+
+        bottom_layout.setSpacing(
+            12
+        )
+
+        self.status_label.setObjectName(
+            "settingsStatus"
+        )
+
         self.status_label.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
 
-        reset_button = QPushButton("Zurücksetzen")
-        reset_button.setObjectName("secondaryButton")
-        reset_button.clicked.connect(
+        self.reset_button = QPushButton(
+            self
+        )
+
+        self.reset_button.setObjectName(
+            "secondaryButton"
+        )
+
+        self.reset_button.clicked.connect(
             self._reset_form
         )
 
-        save_button = QPushButton("Einstellungen speichern")
-        save_button.setObjectName("primaryButton")
-        save_button.clicked.connect(
+        self.save_button = QPushButton(
+            self
+        )
+
+        self.save_button.setObjectName(
+            "primaryButton"
+        )
+
+        self.save_button.clicked.connect(
             self._save_settings
         )
 
-        bottom_layout.addWidget(self.status_label)
-        bottom_layout.addWidget(reset_button)
-        bottom_layout.addWidget(save_button)
+        bottom_layout.addWidget(
+            self.status_label
+        )
 
-        main_layout.addLayout(bottom_layout)
+        bottom_layout.addWidget(
+            self.reset_button
+        )
+
+        bottom_layout.addWidget(
+            self.save_button
+        )
+
+        main_layout.addLayout(
+            bottom_layout
+        )
 
         self._apply_local_stylesheet()
-        
-    def _choose_launcher(self) -> None:
-        current_path = self.launcher_input.text().strip()
+
+    # ==================================================
+    # Bibliothek
+    # ==================================================
+
+    def _create_library_group(
+        self,
+    ) -> QGroupBox:
+        self.library_group = QGroupBox(
+            self
+        )
+
+        layout = QVBoxLayout(
+            self.library_group
+        )
+
+        layout.setContentsMargins(
+            18,
+            24,
+            18,
+            18,
+        )
+
+        layout.setSpacing(
+            12
+        )
+
+        self.library_description_label = QLabel(
+            self.library_group
+        )
+
+        self.library_description_label.setObjectName(
+            "settingsDescription"
+        )
+
+        self.library_description_label.setWordWrap(
+            True
+        )
+
+        self.library_input.setReadOnly(
+            False
+        )
+
+        self.library_choose_button = QPushButton(
+            self.library_group
+        )
+
+        self.library_choose_button.clicked.connect(
+            self._choose_library_directory
+        )
+
+        self.library_default_button = QPushButton(
+            self.library_group
+        )
+
+        self.library_default_button.clicked.connect(
+            self.library_input.clear
+        )
+
+        path_layout = QHBoxLayout()
+
+        path_layout.setSpacing(
+            8
+        )
+
+        path_layout.addWidget(
+            self.library_input,
+            stretch=1,
+        )
+
+        path_layout.addWidget(
+            self.library_choose_button
+        )
+
+        path_layout.addWidget(
+            self.library_default_button
+        )
+
+        layout.addWidget(
+            self.library_description_label
+        )
+
+        layout.addLayout(
+            path_layout
+        )
+
+        return self.library_group
+
+    def _choose_library_directory(
+        self,
+    ) -> None:
+        current_path = (
+            self.library_input.text().strip()
+        )
 
         if current_path:
-            start_directory = str(
-                Path(current_path).expanduser().parent
-            )
+            start_directory = current_path
+
         else:
-            start_directory = str(Path.home())
+            start_directory = str(
+                self.config.mod_library_directory
+            )
+
+        selected_directory = (
+            QFileDialog.getExistingDirectory(
+                self,
+                tr(
+                    "settings.dialog."
+                    "choose_library"
+                ),
+                start_directory,
+            )
+        )
+
+        if not selected_directory:
+            return
+
+        self.library_input.setText(
+            selected_directory
+        )
+
+        self.status_label.clear()
+
+    # ==================================================
+    # Pfade
+    # ==================================================
+
+    def _create_paths_group(
+        self,
+    ) -> QGroupBox:
+        self.paths_group = QGroupBox(
+            self
+        )
+
+        layout = QGridLayout(
+            self.paths_group
+        )
+
+        layout.setContentsMargins(
+            18,
+            24,
+            18,
+            18,
+        )
+
+        layout.setHorizontalSpacing(
+            12
+        )
+
+        layout.setVerticalSpacing(
+            16
+        )
+
+        # --------------------------------------------------
+        # Aktiver Mods-Ordner
+        # --------------------------------------------------
+
+        self.active_mods_label = QLabel(
+            self.paths_group
+        )
+
+        self.active_mods_label.setObjectName(
+            "settingsLabel"
+        )
+
+        self.active_mods_description_label = QLabel(
+            self.paths_group
+        )
+
+        self.active_mods_description_label.setObjectName(
+            "settingsDescription"
+        )
+
+        self.active_mods_description_label.setWordWrap(
+            True
+        )
+
+        self.active_mods_input.setReadOnly(
+            False
+        )
+
+        self.active_mods_choose_button = QPushButton(
+            self.paths_group
+        )
+
+        self.active_mods_choose_button.clicked.connect(
+            self._choose_active_mods_directory
+        )
+
+        self.active_mods_clear_button = QPushButton(
+            self.paths_group
+        )
+
+        self.active_mods_clear_button.clicked.connect(
+            self.active_mods_input.clear
+        )
+
+        mods_button_layout = QHBoxLayout()
+
+        mods_button_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+
+        mods_button_layout.setSpacing(
+            8
+        )
+
+        mods_button_layout.addWidget(
+            self.active_mods_choose_button
+        )
+
+        mods_button_layout.addWidget(
+            self.active_mods_clear_button
+        )
+
+        # --------------------------------------------------
+        # Launcher
+        # --------------------------------------------------
+
+        self.launcher_label = QLabel(
+            self.paths_group
+        )
+
+        self.launcher_label.setObjectName(
+            "settingsLabel"
+        )
+
+        self.launcher_description_label = QLabel(
+            self.paths_group
+        )
+
+        self.launcher_description_label.setObjectName(
+            "settingsDescription"
+        )
+
+        self.launcher_description_label.setWordWrap(
+            True
+        )
+
+        self.launcher_input.setReadOnly(
+            True
+        )
+
+        self.launcher_choose_button = QPushButton(
+            self.paths_group
+        )
+
+        self.launcher_choose_button.clicked.connect(
+            self._choose_launcher
+        )
+
+        self.launcher_clear_button = QPushButton(
+            self.paths_group
+        )
+
+        self.launcher_clear_button.clicked.connect(
+            self.launcher_input.clear
+        )
+
+        launcher_button_layout = QHBoxLayout()
+
+        launcher_button_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+
+        launcher_button_layout.setSpacing(
+            8
+        )
+
+        launcher_button_layout.addWidget(
+            self.launcher_choose_button
+        )
+
+        launcher_button_layout.addWidget(
+            self.launcher_clear_button
+        )
+
+        # --------------------------------------------------
+        # Layout
+        # --------------------------------------------------
+
+        layout.addWidget(
+            self.active_mods_label,
+            0,
+            0,
+            1,
+            2,
+        )
+
+        layout.addWidget(
+            self.active_mods_description_label,
+            1,
+            0,
+            1,
+            2,
+        )
+
+        layout.addWidget(
+            self.active_mods_input,
+            2,
+            0,
+        )
+
+        layout.addLayout(
+            mods_button_layout,
+            2,
+            1,
+        )
+
+        separator = QFrame(
+            self.paths_group
+        )
+
+        separator.setFrameShape(
+            QFrame.Shape.HLine
+        )
+
+        separator.setObjectName(
+            "settingsSeparator"
+        )
+
+        layout.addWidget(
+            separator,
+            3,
+            0,
+            1,
+            2,
+        )
+
+        layout.addWidget(
+            self.launcher_label,
+            4,
+            0,
+            1,
+            2,
+        )
+
+        layout.addWidget(
+            self.launcher_description_label,
+            5,
+            0,
+            1,
+            2,
+        )
+
+        layout.addWidget(
+            self.launcher_input,
+            6,
+            0,
+        )
+
+        layout.addLayout(
+            launcher_button_layout,
+            6,
+            1,
+        )
+
+        layout.setColumnStretch(
+            0,
+            1,
+        )
+
+        return self.paths_group
+
+    def _choose_active_mods_directory(
+        self,
+    ) -> None:
+        current_path = (
+            self.active_mods_input.text().strip()
+        )
+
+        if current_path:
+            start_directory = current_path
+
+        else:
+            start_directory = str(
+                Path.home()
+            )
+
+        selected_directory = (
+            QFileDialog.getExistingDirectory(
+                self,
+                tr(
+                    "settings.dialog."
+                    "choose_active_mods"
+                ),
+                start_directory,
+            )
+        )
+
+        if not selected_directory:
+            return
+
+        self.active_mods_input.setText(
+            selected_directory
+        )
+
+        self.status_label.clear()
+
+    def _choose_launcher(
+        self,
+    ) -> None:
+        current_path = (
+            self.launcher_input.text().strip()
+        )
+
+        if current_path:
+            current_file = Path(
+                current_path
+            ).expanduser()
+
+            if current_file.is_file():
+                start_directory = str(
+                    current_file.parent
+                )
+
+            else:
+                start_directory = str(
+                    Path.home()
+                )
+
+        else:
+            start_directory = str(
+                Path.home()
+            )
 
         selected_file, _selected_filter = (
             QFileDialog.getOpenFileName(
                 self,
-                "Launcher auswählen",
+                tr(
+                    "settings.dialog."
+                    "choose_launcher"
+                ),
                 start_directory,
                 launcher_file_filter(),
             )
@@ -137,316 +739,430 @@ class SettingsPage(QWidget):
         self.launcher_input.setText(
             selected_file
         )
-        
-    def _create_library_group(self) -> QGroupBox:
-        """Erstellt die Einstellungen für die zentrale Mod-Bibliothek."""
-        group = QGroupBox("Mod-Bibliothek")
 
-        layout = QVBoxLayout(group)
+        self.status_label.clear()
+
+    # ==================================================
+    # Verhalten / Sprache
+    # ==================================================
+
+    def _create_options_group(
+        self,
+    ) -> QGroupBox:
+        self.options_group = QGroupBox(
+            self
+        )
+
+        layout = QVBoxLayout(
+            self.options_group
+        )
+
         layout.setContentsMargins(
             18,
             24,
             18,
             18,
         )
-        layout.setSpacing(12)
 
-        description_label = QLabel(
-            "Hier liegen alle vom Manager verwalteten Mods. "
-            "Der Ordner kann lokal oder auf einem eingehängten "
-            "Netzlaufwerk liegen."
+        layout.setSpacing(
+            14
         )
-        description_label.setObjectName(
+
+        self.symlink_description_label = QLabel(
+            self.options_group
+        )
+
+        self.symlink_description_label.setObjectName(
             "settingsDescription"
         )
-        description_label.setWordWrap(True)
 
-        self.library_input.setReadOnly(False)
-        self.library_input.setPlaceholderText(
-            "Standard: ~/.local/share/genshin-mod-manager/mods"
+        self.symlink_description_label.setWordWrap(
+            True
         )
 
-        choose_button = QPushButton(
-            "Auswählen"
-        )
-        choose_button.clicked.connect(
-            self._choose_library_directory
+        self.backup_description_label = QLabel(
+            self.options_group
         )
 
-        default_button = QPushButton(
-            "Standard"
-        )
-        default_button.clicked.connect(
-            self.library_input.clear
-        )
-
-        path_layout = QHBoxLayout()
-        path_layout.setSpacing(8)
-
-        path_layout.addWidget(
-            self.library_input,
-            stretch=1,
-        )
-        path_layout.addWidget(
-            choose_button
-        )
-        path_layout.addWidget(
-            default_button
-        )
-
-        layout.addWidget(
-            description_label
-        )
-        layout.addLayout(
-            path_layout
-        )
-
-        return group      
-        
-    def _choose_library_directory(self) -> None:
-        """Wählt einen lokalen oder eingehängten Netzwerkordner."""
-        current_path = (
-            self.library_input.text().strip()
-        )
-
-        if current_path:
-            start_directory = current_path
-        else:
-            start_directory = str(
-                self.config.mod_library_directory
-            )
-
-        selected_directory = (
-            QFileDialog.getExistingDirectory(
-                self,
-                "Mod-Bibliothek auswählen",
-                start_directory,
-            )
-        )
-
-        if selected_directory:
-            self.library_input.setText(
-                selected_directory
-            )
-            self.status_label.clear()
-        
-    def _create_paths_group(self) -> QGroupBox:
-        """Erstellt den Bereich für Mods- und Launcher-Pfade."""
-        group = QGroupBox("Pfade")
-        layout = QGridLayout(group)
-
-        layout.setContentsMargins(18, 24, 18, 18)
-        layout.setHorizontalSpacing(12)
-        layout.setVerticalSpacing(16)
-
-        active_mods_label = QLabel("Aktiver Mods-Ordner")
-        active_mods_label.setObjectName("settingsLabel")
-
-        active_mods_description = QLabel(
-            "Der Ordner, aus dem der verwendete Mod-Loader "
-            "seine Mods lädt."
-        )
-        active_mods_description.setObjectName(
+        self.backup_description_label.setObjectName(
             "settingsDescription"
         )
-        active_mods_description.setWordWrap(True)
 
-        self.active_mods_input.setReadOnly(False)
-        self.active_mods_input.setPlaceholderText(
-            "Noch kein Mods-Ordner ausgewählt"
+        self.backup_description_label.setWordWrap(
+            True
         )
 
-        choose_mods_button = QPushButton("Auswählen")
-        choose_mods_button.clicked.connect(
-            self._choose_active_mods_directory
-        )
-
-        clear_mods_button = QPushButton("Leeren")
-        clear_mods_button.clicked.connect(
-            self.active_mods_input.clear
-        )
-
-        mods_button_layout = QHBoxLayout()
-        mods_button_layout.setContentsMargins(0, 0, 0, 0)
-        mods_button_layout.setSpacing(8)
-        mods_button_layout.addWidget(choose_mods_button)
-        mods_button_layout.addWidget(clear_mods_button)
-
-        launcher_label = QLabel("Launcher")
-        launcher_label.setObjectName("settingsLabel")
-
-        launcher_description = QLabel(
-            "Optionaler Pfad zu einem AppImage, Shell-Skript, "
-            "Wine-Programm oder Mod-Loader."
-        )
-        launcher_description.setObjectName(
-            "settingsDescription"
-        )
-        launcher_description.setWordWrap(True)
-
-        self.launcher_input.setReadOnly(True)
-        self.launcher_input.setPlaceholderText(
-            "Noch kein Launcher ausgewählt"
-        )
-
-        choose_launcher_button = QPushButton("Auswählen")
-        choose_launcher_button.clicked.connect(
-            self._choose_launcher
-        )
-
-        clear_launcher_button = QPushButton("Leeren")
-        clear_launcher_button.clicked.connect(
-            self.launcher_input.clear
-        )
-
-        launcher_button_layout = QHBoxLayout()
-        launcher_button_layout.setContentsMargins(0, 0, 0, 0)
-        launcher_button_layout.setSpacing(8)
-        launcher_button_layout.addWidget(
-            choose_launcher_button
-        )
-        launcher_button_layout.addWidget(
-            clear_launcher_button
-        )
-
-        layout.addWidget(active_mods_label, 0, 0, 1, 2)
-        layout.addWidget(
-            active_mods_description,
-            1,
-            0,
-            1,
-            2,
-        )
-        layout.addWidget(
-            self.active_mods_input,
-            2,
-            0,
-        )
-        layout.addLayout(
-            mods_button_layout,
-            2,
-            1,
-        )
-
-        separator = QFrame()
-        separator.setFrameShape(
-            QFrame.Shape.HLine
-        )
-        separator.setObjectName("settingsSeparator")
-
-        layout.addWidget(separator, 3, 0, 1, 2)
-
-        layout.addWidget(launcher_label, 4, 0, 1, 2)
-        layout.addWidget(
-            launcher_description,
-            5,
-            0,
-            1,
-            2,
-        )
-        layout.addWidget(
-            self.launcher_input,
-            6,
-            0,
-        )
-        layout.addLayout(
-            launcher_button_layout,
-            6,
-            1,
-        )
-
-        layout.setColumnStretch(0, 1)
-
-        return group
-    
-
-    def _create_options_group(self) -> QGroupBox:
-        """Erstellt den Bereich für allgemeine Optionen."""
-        group = QGroupBox("Verhalten")
-        layout = QVBoxLayout(group)
-
-        layout.setContentsMargins(18, 24, 18, 18)
-        layout.setSpacing(14)
-
-        symlink_description = QLabel(
-            "Bei symbolischen Links bleiben die Mods in der "
-            "zentralen Bibliothek und werden nicht dupliziert."
-        )
-        symlink_description.setObjectName(
-            "settingsDescription"
-        )
-        symlink_description.setWordWrap(True)
-
-        backup_description = QLabel(
-            "Backups schützen vorhandene Dateien vor "
-            "versehentlichem Überschreiben."
-        )
-        backup_description.setObjectName(
-            "settingsDescription"
-        )
-        backup_description.setWordWrap(True)
+        # --------------------------------------------------
+        # Theme
+        # --------------------------------------------------
 
         theme_layout = QHBoxLayout()
 
-        theme_label = QLabel("Darstellung")
-        theme_label.setObjectName("settingsLabel")
+        self.theme_label = QLabel(
+            self.options_group
+        )
+
+        self.theme_label.setObjectName(
+            "settingsLabel"
+        )
 
         self.theme_combobox.addItem(
-            "Dunkel",
+            "",
             userData="dark",
         )
+
         self.theme_combobox.addItem(
-            "Hell",
+            "",
             userData="light",
         )
+
         self.theme_combobox.addItem(
-            "Systemeinstellung",
+            "",
             userData="system",
         )
 
-        theme_layout.addWidget(theme_label)
+        theme_layout.addWidget(
+            self.theme_label
+        )
+
         theme_layout.addStretch()
-        theme_layout.addWidget(self.theme_combobox)
+
+        theme_layout.addWidget(
+            self.theme_combobox
+        )
+
+        # --------------------------------------------------
+        # Sprache
+        # --------------------------------------------------
+
+        language_layout = QHBoxLayout()
+
+        self.language_label = QLabel(
+            self.options_group
+        )
+
+        self.language_label.setObjectName(
+            "settingsLabel"
+        )
+
+        self.language_combobox.addItem(
+            "",
+            userData="de",
+        )
+
+        self.language_combobox.addItem(
+            "",
+            userData="en",
+        )
+
+        language_layout.addWidget(
+            self.language_label
+        )
+
+        language_layout.addStretch()
+
+        language_layout.addWidget(
+            self.language_combobox
+        )
+
+        # --------------------------------------------------
+        # Gruppenlayout
+        # --------------------------------------------------
 
         layout.addWidget(
             self.use_symlinks_checkbox
         )
-        layout.addWidget(symlink_description)
 
-        layout.addSpacing(8)
+        layout.addWidget(
+            self.symlink_description_label
+        )
+
+        layout.addSpacing(
+            8
+        )
 
         layout.addWidget(
             self.create_backups_checkbox
         )
-        layout.addWidget(backup_description)
 
-        layout.addSpacing(8)
-        layout.addLayout(theme_layout)
-
-        return group
-
-    def _load_config_values(self) -> None:
-        """Übernimmt die gespeicherten Werte in das Formular."""
-        self.library_input.setText(
-            self.config.library_path or ""
+        layout.addWidget(
+            self.backup_description_label
         )
-        
+
+        layout.addSpacing(
+            8
+        )
+
+        layout.addLayout(
+            theme_layout
+        )
+
+        layout.addSpacing(
+            8
+        )
+
+        layout.addLayout(
+            language_layout
+        )
+
+        return self.options_group
+
+    # ==================================================
+    # Übersetzung
+    # ==================================================
+
+    def retranslate_ui(
+        self,
+        _language: str | None = None,
+    ) -> None:
+        self.title_label.setText(
+            tr("settings.title")
+        )
+
+        self.description_label.setText(
+            tr("settings.description")
+        )
+
+        self.library_group.setTitle(
+            tr("settings.group.library")
+        )
+
+        self.paths_group.setTitle(
+            tr("settings.group.paths")
+        )
+
+        self.options_group.setTitle(
+            tr("settings.group.behavior")
+        )
+
+        self.library_description_label.setText(
+            tr(
+                "settings.library."
+                "description"
+            )
+        )
+
+        self.library_input.setPlaceholderText(
+            tr(
+                "settings.library."
+                "placeholder"
+            )
+        )
+
+        self.active_mods_label.setText(
+            tr(
+                "settings.active_mods."
+                "label"
+            )
+        )
+
+        self.active_mods_description_label.setText(
+            tr(
+                "settings.active_mods."
+                "description"
+            )
+        )
+
+        self.active_mods_input.setPlaceholderText(
+            tr(
+                "settings.active_mods."
+                "placeholder"
+            )
+        )
+
+        self.launcher_label.setText(
+            tr(
+                "settings.launcher."
+                "label"
+            )
+        )
+
+        self.launcher_description_label.setText(
+            tr(
+                "settings.launcher."
+                "description"
+            )
+        )
+
+        self.launcher_input.setPlaceholderText(
+            tr(
+                "settings.launcher."
+                "placeholder"
+            )
+        )
+
+        self.use_symlinks_checkbox.setText(
+            tr(
+                "settings.symlinks."
+                "label"
+            )
+        )
+
+        self.symlink_description_label.setText(
+            tr(
+                "settings.symlinks."
+                "description"
+            )
+        )
+
+        self.create_backups_checkbox.setText(
+            tr(
+                "settings.backups."
+                "label"
+            )
+        )
+
+        self.backup_description_label.setText(
+            tr(
+                "settings.backups."
+                "description"
+            )
+        )
+
+        self.theme_label.setText(
+            tr(
+                "settings.appearance."
+                "label"
+            )
+        )
+
+        self.language_label.setText(
+            tr(
+                "settings.language."
+                "label"
+            )
+        )
+
+        self.library_choose_button.setText(
+            tr("settings.button.choose")
+        )
+
+        self.library_default_button.setText(
+            tr("settings.button.default")
+        )
+
+        self.active_mods_choose_button.setText(
+            tr("settings.button.choose")
+        )
+
+        self.active_mods_clear_button.setText(
+            tr("settings.button.clear")
+        )
+
+        self.launcher_choose_button.setText(
+            tr("settings.button.choose")
+        )
+
+        self.launcher_clear_button.setText(
+            tr("settings.button.clear")
+        )
+
+        self.reset_button.setText(
+            tr("settings.button.reset")
+        )
+
+        self.save_button.setText(
+            tr("settings.button.save")
+        )
+
+        # --------------------------------------------------
+        # Theme-Combobox
+        # --------------------------------------------------
+
+        theme_blocker = QSignalBlocker(
+            self.theme_combobox
+        )
+
+        for index in range(
+            self.theme_combobox.count()
+        ):
+            value = (
+                self.theme_combobox.itemData(
+                    index
+                )
+            )
+
+            key = (
+                self.THEME_TRANSLATION_KEYS.get(
+                    str(value)
+                )
+            )
+
+            if key is not None:
+                self.theme_combobox.setItemText(
+                    index,
+                    tr(key),
+                )
+
+        del theme_blocker
+
+        # --------------------------------------------------
+        # Sprach-Combobox
+        # --------------------------------------------------
+
+        language_blocker = QSignalBlocker(
+            self.language_combobox
+        )
+
+        for index in range(
+            self.language_combobox.count()
+        ):
+            value = (
+                self.language_combobox.itemData(
+                    index
+                )
+            )
+
+            key = (
+                self.LANGUAGE_TRANSLATION_KEYS.get(
+                    str(value)
+                )
+            )
+
+            if key is not None:
+                self.language_combobox.setItemText(
+                    index,
+                    tr(key),
+                )
+
+        del language_blocker
+
+    # ==================================================
+    # Config laden
+    # ==================================================
+
+    def _load_config_values(
+        self,
+    ) -> None:
+        self.library_input.setText(
+            self.config.library_path
+            or ""
+        )
+
         self.active_mods_input.setText(
-            self.config.active_mods_path or ""
+            self.config.active_mods_path
+            or ""
         )
 
         self.launcher_input.setText(
-            self.config.launcher_path or ""
+            self.config.launcher_path
+            or ""
         )
 
-        self.use_symlinks_checkbox.setChecked(False)
+        # Symlinks sind aktuell keine
+        # Aktivierungsstrategie des Managers.
+        self.use_symlinks_checkbox.setChecked(
+            False
+        )
 
         self.create_backups_checkbox.setChecked(
             self.config.create_backups
         )
 
-        theme_index = self.theme_combobox.findData(
-            self.config.theme
+        theme_index = (
+            self.theme_combobox.findData(
+                self.config.theme
+            )
         )
 
         if theme_index >= 0:
@@ -454,74 +1170,30 @@ class SettingsPage(QWidget):
                 theme_index
             )
 
+        language_index = (
+            self.language_combobox.findData(
+                self.config.language
+            )
+        )
+
+        if language_index >= 0:
+            self.language_combobox.setCurrentIndex(
+                language_index
+            )
+
         self.status_label.clear()
 
-    def _choose_active_mods_directory(self) -> None:
-        """Öffnet einen Dialog zur Auswahl des Mods-Ordners."""
-        current_path = self.active_mods_input.text().strip()
+    # ==================================================
+    # Speichern
+    # ==================================================
 
-        if current_path:
-            start_directory = current_path
-        else:
-            start_directory = str(Path.home())
-
-        selected_directory = QFileDialog.getExistingDirectory(
-            self,
-            "Aktiven Mods-Ordner auswählen",
-            start_directory,
-        )
-
-        if selected_directory:
-            self.active_mods_input.setText(
-                selected_directory
-            )
-            self.status_label.clear()
-
-    def _choose_launcher(self) -> None:
-        """Öffnet einen Dialog zur Auswahl des Launchers."""
-        current_path = self.launcher_input.text().strip()
-
-        if current_path:
-            current_file = Path(
-                current_path
-            ).expanduser()
-
-            if current_file.is_file():
-                start_directory = str(
-                    current_file.parent
-                )
-            else:
-                start_directory = str(
-                    Path.home()
-                )
-        else:
-            start_directory = str(
-                Path.home()
-            )
-
-        selected_file, _ = QFileDialog.getOpenFileName(
-            self,
-            "Launcher auswählen",
-            start_directory,
-            (
-                "Launcher und Programme "
-                "(*.AppImage *.sh *.exe);;"
-                "Alle Dateien (*)"
-            ),
-        )
-
-        if selected_file:
-            self.launcher_input.setText(
-                selected_file
-            )
-            self.status_label.clear()
-
-    def _save_settings(self) -> None:
-        """Prüft und speichert die Einstellungen."""
+    def _save_settings(
+        self,
+    ) -> None:
         library_path_text = (
             self.library_input.text().strip()
         )
-        
+
         mods_path_text = (
             self.active_mods_input.text().strip()
         )
@@ -529,45 +1201,72 @@ class SettingsPage(QWidget):
         launcher_path_text = (
             self.launcher_input.text().strip()
         )
-    
+
+        # --------------------------------------------------
+        # Keine smb:// / nfs:// URLs
+        # --------------------------------------------------
+
+        if (
+            "://" in library_path_text
+            or "://" in mods_path_text
+        ):
+            QMessageBox.warning(
+                self,
+                tr(
+                    "settings.warning."
+                    "network.title"
+                ),
+                tr(
+                    "settings.warning."
+                    "network.message"
+                ),
+            )
+
+            return
+
+        # --------------------------------------------------
+        # Aktiver Mods-Ordner
+        # --------------------------------------------------
+
         if mods_path_text:
             mods_path = Path(
                 mods_path_text
             ).expanduser()
-            if ("://" in mods_path_text
-                or "://" in library_path_text
-            ):
-                QMessageBox.warning(
-                    self,
-                    "Netzlaufwerk wird Benutzt",
-                    (
-                        "Adressen wie smb:// oder nfs:// koennnen nicht"
-                        "direkt verwendet werden. \n\n"
-                        "Binde das Netzlaufwerk zuerst unter /mnt /media"
-                        "oder ueber deinen Dateimanager ein."
-                    )
-                )
+
             if not mods_path.exists():
                 QMessageBox.warning(
                     self,
-                    "Ungültiger Mods-Ordner",
-                    (
-                        "Der ausgewählte Mods-Ordner "
-                        "existiert nicht."
+                    tr(
+                        "settings.warning."
+                        "invalid_mods.title"
+                    ),
+                    tr(
+                        "settings.warning."
+                        "mods_missing"
                     ),
                 )
+
                 return
 
             if not mods_path.is_dir():
                 QMessageBox.warning(
                     self,
-                    "Ungültiger Mods-Ordner",
-                    (
-                        "Der ausgewählte Pfad ist "
-                        "kein Verzeichnis."
+                    tr(
+                        "settings.warning."
+                        "invalid_mods.title"
+                    ),
+                    tr(
+                        "settings.warning."
+                        "mods_not_directory"
                     ),
                 )
+
                 return
+
+        # --------------------------------------------------
+        # Bibliothek
+        # --------------------------------------------------
+
         if library_path_text:
             library_path = Path(
                 library_path_text
@@ -576,11 +1275,13 @@ class SettingsPage(QWidget):
             if not library_path.exists():
                 answer = QMessageBox.question(
                     self,
-                    "Bibliothek erstellen",
-                    (
-                        "Der ausgewählte Bibliotheksordner existiert "
-                        "noch nicht.\n\n"
-                        "Soll er jetzt erstellt werden?"
+                    tr(
+                        "settings."
+                        "library_create.title"
+                    ),
+                    tr(
+                        "settings."
+                        "library_create.message"
                     ),
                     (
                         QMessageBox.StandardButton.Yes
@@ -600,21 +1301,38 @@ class SettingsPage(QWidget):
                         parents=True,
                         exist_ok=True,
                     )
+
                 except OSError as error:
                     QMessageBox.critical(
                         self,
-                        "Ordner konnte nicht erstellt werden",
+                        tr(
+                            "settings.error."
+                            "create_directory.title"
+                        ),
                         str(error),
                     )
+
+                    return
+
+            if not library_path.is_dir():
+                QMessageBox.warning(
+                    self,
+                    tr(
+                        "settings.warning."
+                        "invalid_library.title"
+                    ),
+                    tr(
+                        "settings.warning."
+                        "invalid_library.message"
+                    ),
+                )
+
                 return
 
-        if not library_path.is_dir():
-            QMessageBox.warning(
-                self,
-                "Ungültige Mod-Bibliothek",
-                "Der Bibliothekspfad ist kein Verzeichnis.",
-            )
-            return
+        # --------------------------------------------------
+        # Launcher
+        # --------------------------------------------------
+
         if launcher_path_text:
             launcher_path = Path(
                 launcher_path_text
@@ -623,30 +1341,50 @@ class SettingsPage(QWidget):
             if not launcher_path.exists():
                 QMessageBox.warning(
                     self,
-                    "Ungültiger Launcher",
-                    (
-                        "Die ausgewählte Launcher-Datei "
-                        "existiert nicht."
+                    tr(
+                        "settings.warning."
+                        "invalid_launcher.title"
+                    ),
+                    tr(
+                        "settings.warning."
+                        "launcher_missing"
                     ),
                 )
+
                 return
 
             if not launcher_path.is_file():
                 QMessageBox.warning(
                     self,
-                    "Ungültiger Launcher",
-                    (
-                        "Der ausgewählte Launcher-Pfad "
-                        "ist keine Datei."
+                    tr(
+                        "settings.warning."
+                        "invalid_launcher.title"
+                    ),
+                    tr(
+                        "settings.warning."
+                        "launcher_not_file"
                     ),
                 )
+
                 return
+
+        # --------------------------------------------------
+        # Config übernehmen
+        # --------------------------------------------------
+
+        selected_theme = (
+            self.theme_combobox.currentData()
+        )
+
+        selected_language = (
+            self.language_combobox.currentData()
+        )
 
         try:
             self.config.set_mod_library_directory(
                 library_path_text or None
             )
-            
+
             self.config.set_active_mods_directory(
                 mods_path_text or None
             )
@@ -661,14 +1399,24 @@ class SettingsPage(QWidget):
                 self.create_backups_checkbox.isChecked()
             )
 
-            selected_theme = (
-                self.theme_combobox.currentData()
-            )
+            if isinstance(
+                selected_theme,
+                str,
+            ):
+                self.config.theme = (
+                    selected_theme
+                )
 
-            if isinstance(selected_theme, str):
-                self.config.theme = selected_theme
+            if isinstance(
+                selected_language,
+                str,
+            ):
+                self.config.language = (
+                    selected_language
+                )
 
             self.config.first_start = False
+
             self.config.save()
 
         except OSError as error:
@@ -678,40 +1426,65 @@ class SettingsPage(QWidget):
 
             QMessageBox.critical(
                 self,
-                "Speicherfehler",
-                (
-                    "Die Einstellungen konnten nicht "
-                    "gespeichert werden.\n\n"
-                    f"{error}"
+                tr(
+                    "settings.error."
+                    "save.title"
+                ),
+                tr(
+                    "settings.error."
+                    "save.message",
+                    error=error,
                 ),
             )
+
             return
 
+        # --------------------------------------------------
+        # Sprache SOFORT anwenden
+        # --------------------------------------------------
+
+        set_language(
+            self.config.language
+        )
+
+        message = tr(
+            "settings.status.saved"
+        )
+
         self.status_label.setText(
-            "Einstellungen wurden gespeichert."
+            message
         )
 
         self.settings_saved.emit(
-            "Einstellungen wurden gespeichert."
+            message
         )
 
         logger.info(
             "Einstellungen erfolgreich gespeichert."
         )
 
-    def _reset_form(self) -> None:
-        """
-        Setzt das Formular auf den zuletzt gespeicherten
-        Konfigurationsstand zurück.
-        """
+    # ==================================================
+    # Formular zurücksetzen
+    # ==================================================
+
+    def _reset_form(
+        self,
+    ) -> None:
         self._load_config_values()
 
         self.status_label.setText(
-            "Nicht gespeicherte Änderungen wurden verworfen."
+            tr(
+                "settings.status.reset"
+            )
         )
 
-    def _apply_local_stylesheet(self) -> None:
-        """Ergänzt die Gestaltung der Einstellungsseite."""
+    # ==================================================
+    # Stylesheet
+    # ==================================================
+
+    def _apply_local_stylesheet(
+        self,
+    ) -> None:
         self.setStyleSheet(
             """
             QGroupBox {

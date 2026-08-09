@@ -1,0 +1,315 @@
+{
+    "app.name": "Genshin Mod Manager",
+
+    "common.cancel": "Cancel",
+    "common.close": "Close",
+    "common.enabled": "Enabled",
+    "common.disabled": "Disabled",
+    "common.unknown": "Unknown",
+
+    "library.title": "Mod Library",
+    "library.description": "Detected mod folders from the configured mod library directory.",
+
+    "library.action.scan": "Scan again",
+    "library.action.import": "Import",
+    "library.action.cancel_import": "Cancel import",
+
+    "library.status.import_started": "Mod import started.",
+    "library.status.import_failed": "The mod import failed.",
+    "library.status.import_cancelled": "The mod import was cancelled.",
+    "library.status.import_cancelling": "Cancelling import …",
+
+    "library.status.scan_started": "Scanning folder …",
+    "library.status.scan_failed": "The library scan failed.",
+    "library.status.scan_cancelled": "The library scan was cancelled.",
+    "library.status.scan_start_failed": "The library scan could not be started.",
+    "library.status.scan_restart": "Cancelling the current scan and starting a new scan …",
+    "library.status.library_missing": "The mod library directory does not exist.",
+    "library.status.scan_result": "{count} mods found in {seconds:.2f} seconds.",
+
+    "library.status.filter_result": "Showing {visible} of {total} mods.",
+
+    "library.status.bulk_failed": "The bulk operation failed.",
+    "library.status.bulk_cancelling": "The bulk operation will be cancelled after the current mod has been processed …",
+
+    "library.location.checking": "Checking",
+    "library.location.local": "Local folder",
+    "library.location.network": "Network drive",
+
+
+    "library.import.archive": "Select ZIP or archive",
+    "library.import.directory": "Select mod folder",
+
+    "library.filter.library": "Library",
+    "library.filter.search_placeholder": "Search mods, characters or paths …",
+    "library.filter.all_characters": "All characters",
+    "library.filter.all_mod_types": "All mod types",
+    "library.filter.all_statuses": "All statuses",
+    "library.filter.reset": "Reset",
+
+    "mod.state.enabled": "Enabled",
+    "mod.state.disabled": "Disabled",
+    "mod.state.conflict": "Conflict",
+    "mod.state.broken": "Broken",
+    "mod.state.not_configured": "Not configured",
+
+    "common.local": "Local",
+    "common.network": "Network",
+    "common.symlink": "Symlink",
+
+    "library.list.selection_actions": "Selection actions",
+    "library.list.enable_selected": "Enable selected",
+    "library.list.disable_selected": "Disable selected",
+    "library.list.adopt_selected": "Adopt conflicts",
+    "library.list.cancel_bulk": "Cancel bulk operation",
+    "library.list.info_tooltip": "Analyze Merge and Master INI",
+
+    "library.column.mod": "Mod",
+    "library.column.character": "Character",
+    "library.column.mod_type": "Mod type",
+    "library.column.status": "Status",
+    "library.column.location": "Location",
+    "library.column.files": "Files",
+    "library.column.ini_files": "INI files",
+    "library.column.size": "Size",
+    "library.column.modified": "Modified",
+    "library.column.path": "Path",
+
+    "library.details.eyebrow": "MOD DETAILS",
+    "library.details.character": "Character",
+    "library.details.mod_type": "Mod type",
+    "library.details.location": "Location",
+    "library.details.files": "Files",
+    "library.details.ini_files": "INI files",
+    "library.details.size": "Size",
+    "library.details.modified": "Modified",
+    "library.details.path": "Path",
+    "library.details.actions": "Actions",
+
+    "library.details.empty_title": "No mod selected",
+    "library.details.empty_description": "Select a mod on the left to view its details and actions.",
+    "library.details.no_selection": "No selection",
+
+    "library.details.multiple_title": "{count} mods selected",
+    "library.details.multiple_description": "Use the selection actions above the list.",
+    "library.details.multiple_status": "Multiple selection",
+
+    "library.details.action.enable": "Enable",
+    "library.details.action.disable": "Disable",
+    "library.details.action.remove_broken": "Remove broken link",
+    "library.details.action.not_configured": "Mods folder missing",
+    "library.details.action.conflict": "Conflict",
+    "library.details.action.adopt": "Adopt conflict",
+    "library.details.action.info": "Analyze INI control",
+    "library.details.action.adopt_tooltip": "Adopts an existing mod folder without overwriting its files.",
+
+    "library.stats.total.title": "Total mods",
+    "library.stats.total.subtitle": "Library",
+    "library.stats.active.title": "Enabled",
+    "library.stats.active.subtitle": "Loaded in game",
+    "library.stats.conflicts.title": "Conflicts",
+    "library.stats.conflicts.subtitle": "Require attention",
+    "library.stats.characters.title": "Characters",
+    "library.stats.characters.subtitle": "Detected assignments",
+
+    "common.mod_count.one": "{count} mod",
+    "common.mod_count.other": "{count} mods",
+
+    "library.import_picker.archive_title": "Select mod archives",
+    "library.import_picker.directory_title": "Select mod folder",
+    "library.import_picker.supported_archives": "Supported archives (*.zip *.7z *.rar *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz2 *.tar.xz *.txz)",
+    "library.import_picker.zip_archives": "ZIP archives (*.zip)",
+    "library.import_picker.seven_zip_archives": "7-Zip archives (*.7z)",
+    "library.import_picker.rar_archives": "RAR archives (*.rar)",
+    "library.import_picker.tar_archives": "TAR archives (*.tar *.tar.gz *.tgz *.tar.bz2 *.tbz2 *.tar.xz *.txz)",
+    "library.import_picker.all_files": "All files (*)",
+
+    "library.import.unsupported_title": "No supported files",
+    "library.import.unsupported_message": "No supported mod folders or archives were selected.",
+
+    "library.progress.import_preparing": "Preparing import …",
+    "library.progress.scan_preparing": "Scanning library …",
+    "library.progress.scan_indeterminate": "Scanning – {name}",
+    "library.progress.scan_processing": "Scanning “{name}” …",
+    "library.progress.bulk_preparing": "Preparing bulk operation …",
+    "library.progress.bulk_processing": "Processing “{name}” …",
+
+    "library.operation.scan_running": "Scan in progress",
+    "library.operation.import_running": "Import in progress",
+    "library.operation.bulk_running": "Bulk operation in progress",
+    "library.operation.action_running": "Operation in progress",
+
+    "library.operation.block.import_by_bulk": "Mods cannot be imported while a bulk operation is running.",
+    "library.operation.block.import_by_import": "A mod import is already running.",
+    "library.operation.block.import_by_scan": "Wait until the current library scan has finished.",
+    "library.operation.block.bulk_by_bulk": "A bulk operation is already running.",
+    "library.operation.block.bulk_by_scan": "Wait until the library scan has finished.",
+    "library.operation.block.bulk_by_import": "Wait until the mod import has finished.",
+    "library.operation.block.scan_by_bulk": "The library cannot be scanned while a bulk operation is running.",
+    "library.operation.block.scan_by_import": "The library cannot be scanned while an import is running.",
+    "library.operation.block.default": "The requested operation cannot be started right now.",
+
+    "library.bulk.action.enable_title": "Enable mods",
+    "library.bulk.action.disable_title": "Disable mods",
+    "library.bulk.action.adopt_title": "Adopt conflicts",
+
+    "library.bulk.action.enable_description": "The selected disabled mods will be enabled. Mods that are already enabled will be skipped.",
+    "library.bulk.action.disable_description": "The selected enabled mods will be disabled. Mods that are already disabled will be skipped.",
+    "library.bulk.action.adopt_description": "Existing conflict folders will be added to management. Mod files will not be overwritten.",
+
+    "library.bulk.confirmation": "Selected mods: {count}\n\n{description}\n\nDo you want to continue?",
+
+    "library.bulk_result.action.enable": "Enable",
+    "library.bulk_result.action.disable": "Disable",
+    "library.bulk_result.action.adopt": "Adopt",
+    "library.bulk_result.action": "Action: {action}",
+    "library.bulk_result.success": "Successful: {count}",
+    "library.bulk_result.skipped": "Skipped: {count}",
+    "library.bulk_result.conflicts": "Conflicts: {count}",
+    "library.bulk_result.failed": "Failed: {count}",
+    "library.bulk_result.duration": "Duration: {seconds:.1f} seconds",
+    "library.bulk_result.cancelled_detail": "The bulk operation was cancelled before completion.",
+    "library.bulk_result.status_cancelled": "The bulk operation was cancelled.",
+    "library.bulk_result.status_completed": "Bulk operation completed: {count} successful.",
+
+    "library.import_result.imported": "Imported: {count}",
+    "library.import_result.skipped": "Skipped: {count}",
+    "library.import_result.failed": "Failed: {count}",
+    "library.import_result.duration": "Duration: {seconds:.1f} seconds",
+    "library.import_result.status_failed": "{imported} imported, {failed} failed.",
+    "library.import_result.status_skipped": "{imported} imported, {skipped} skipped.",
+    "library.import_result.status_success": "{imported} imported.",
+
+    "library.result.remaining": "… and {count} more",
+
+    "library.mod_action.enabled": "“{mod_name}” was enabled: {destination}",
+    "library.mod_action.disabled": "“{mod_name}” was disabled and the repaired version was saved.",
+    "library.mod_action.not_configured": "Select the active mods folder in Settings first.",
+    "library.mod_action.conflict": "A foreign folder or link already exists at the destination.\n\nThe manager will not overwrite this data.",
+    "library.mod_action.not_conflict": "The selected mod does not currently have a conflict.",
+    "library.mod_action.adopted_enabled": "“{mod_name}” was adopted as an existing enabled mod.",
+    "library.mod_action.adopted_disabled": "“{mod_name}” was adopted as an existing disabled mod.",
+
+    "library.mod_action.dialog.missing_folder_title": "Active mods folder missing",
+    "library.mod_action.dialog.conflict_title": "Mod conflict",
+    "library.mod_action.dialog.no_conflict_title": "No conflict",
+    "library.mod_action.dialog.adopt_title": "Adopt existing mod",
+    "library.mod_action.dialog.adopt_message": "The existing folder for “{mod_name}” will be marked as managed by Genshin Mod Manager.\n\nNo mod files will be overwritten, moved or deleted.\n\nAfterwards, the manager can enable and disable the folder by renaming it.\n\nDo you want to continue?",
+
+    "library.dialog.import.title": "Mod import",
+    "library.dialog.import.completed": "Mod import completed",
+    "library.dialog.import.failed": "Mod import failed",
+    "library.dialog.scan.failed": "Scan failed",
+    "library.dialog.bulk.title": "Bulk operation",
+    "library.dialog.bulk.completed": "Bulk operation completed",
+    "library.dialog.bulk.failed": "Bulk operation failed",
+    "library.dialog.no_selection.title": "No mods selected",
+    "library.dialog.no_selection.message": "Select at least one mod in the table.",
+    "library.dialog.mod_management_failed": "Mod management failed",
+    "library.dialog.adopt_failed": "Conflict could not be adopted",
+
+    "library.status.import_start_failed": "The mod import could not be started.",
+    "library.status.bulk_start_failed": "The bulk operation could not be started.",
+    "library.status.bulk_enable_started": "Enabling mods started.",
+    "library.status.bulk_disable_started": "Disabling mods started.",
+    "library.status.bulk_adopt_started": "Adopting conflicts started.",
+
+    "library.error.stylesheet_load": "The mod library stylesheet could not be loaded: {path}",
+    
+    "main.window_title": "Genshin Mod Manager",
+
+    "main.sidebar.title": "Genshin",
+    "main.sidebar.subtitle": "Mod Manager",
+    "main.sidebar.version": "Version {version}",
+
+    "main.navigation.library": "Library",
+    "main.navigation.profiles": "Profiles",
+    "main.navigation.conflicts": "Conflicts",
+    "main.navigation.settings": "Settings",
+
+    "main.status.active_profile": "Active profile: {profile}",
+
+    "main.page.profiles.title": "Profiles",
+    "main.page.profiles.description": "Here you will be able to save different mod setups.",
+
+    "main.page.conflicts.title": "Conflicts",
+    "main.page.conflicts.description": "This page will show possible file and mod conflicts.",
+
+    "main.launcher.missing.title": "No launcher selected",
+    "main.launcher.missing.message": "Select a launcher in Settings first.",
+    "main.launcher.start_failed.title": "Launcher could not be started",
+
+    "settings.title": "Settings",
+    "settings.description": "Configure the mod library, active mods folder, launcher and Mod Manager behavior.",
+
+    "settings.group.library": "Mod Library",
+    "settings.group.paths": "Paths",
+    "settings.group.behavior": "Behavior",
+
+    "settings.library.description": "All mods managed by the manager are stored here. The folder can be local or located on a mounted network drive.",
+    "settings.library.placeholder": "Default: ~/.local/share/genshin-mod-manager/mods",
+
+    "settings.active_mods.label": "Active Mods Folder",
+    "settings.active_mods.description": "The folder from which the active mod loader loads its mods.",
+    "settings.active_mods.placeholder": "No mods folder selected",
+
+    "settings.launcher.label": "Launcher",
+    "settings.launcher.description": "Optional path to an AppImage, shell script, Wine program or mod loader.",
+    "settings.launcher.placeholder": "No launcher selected",
+
+    "settings.symlinks.label": "Enable mods using symbolic links",
+    "settings.symlinks.description": "With symbolic links, mods remain in the central library and are not duplicated.",
+
+    "settings.backups.label": "Automatically create backups before changes",
+    "settings.backups.description": "Backups protect existing files from accidental overwriting.",
+
+    "settings.appearance.label": "Appearance",
+    "settings.language.label": "Language",
+
+    "settings.theme.dark": "Dark",
+    "settings.theme.light": "Light",
+    "settings.theme.system": "System",
+
+    "settings.language.de": "Deutsch",
+    "settings.language.en": "English",
+
+    "settings.button.choose": "Choose",
+    "settings.button.default": "Default",
+    "settings.button.clear": "Clear",
+    "settings.button.reset": "Reset",
+    "settings.button.save": "Save settings",
+
+    "settings.dialog.choose_library": "Select mod library",
+    "settings.dialog.choose_active_mods": "Select active mods folder",
+    "settings.dialog.choose_launcher": "Select launcher",
+
+    "settings.warning.network.title": "Network address not supported",
+    "settings.warning.network.message": "Addresses such as smb:// or nfs:// cannot be used directly.\n\nMount the network drive under /mnt, /media or through your file manager first.",
+
+    "settings.warning.invalid_mods.title": "Invalid mods folder",
+    "settings.warning.mods_missing": "The selected mods folder does not exist.",
+    "settings.warning.mods_not_directory": "The selected path is not a directory.",
+
+    "settings.library_create.title": "Create library",
+    "settings.library_create.message": "The selected library folder does not exist yet.\n\nDo you want to create it now?",
+
+    "settings.error.create_directory.title": "Folder could not be created",
+
+    "settings.warning.invalid_library.title": "Invalid mod library",
+    "settings.warning.invalid_library.message": "The library path is not a directory.",
+
+    "settings.warning.invalid_launcher.title": "Invalid launcher",
+    "settings.warning.launcher_missing": "The selected launcher file does not exist.",
+    "settings.warning.launcher_not_file": "The selected launcher path is not a file.",
+
+    "settings.error.save.title": "Save error",
+    "settings.error.save.message": "The settings could not be saved.\n\n{error}",
+
+    "settings.status.saved": "Settings saved.",
+    "settings.status.reset": "Unsaved changes were discarded.",
+
+    "app.error.unexpected.title": "Unexpected error",
+    "app.error.unexpected.message": "Genshin Mod Manager had to close because of an error.\n\n{error_type}: {error}",
+
+    "library.details.action.unavailable": "Unavailable"
+}

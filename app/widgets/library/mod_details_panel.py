@@ -23,8 +23,26 @@ from app.utils.formatters import (
     format_file_size,
     format_timestamp,
 )
+from app.i18n import (
+    tr,
+    translation_manager,
+)
+MOD_STATE_TRANSLATION_KEYS = {
+    ModState.ENABLED.value:
+        "mod.state.enabled",
 
+    ModState.DISABLED.value:
+        "mod.state.disabled",
 
+    ModState.CONFLICT.value:
+        "mod.state.conflict",
+
+    ModState.BROKEN.value:
+        "mod.state.broken",
+
+    ModState.NOT_CONFIGURED.value:
+        "mod.state.not_configured",
+}
 class ModDetailsPanel(QScrollArea):
     """
     Rechter Detailbereich der Mod-Bibliothek.
@@ -43,6 +61,12 @@ class ModDetailsPanel(QScrollArea):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+
+        self._display_mode = "empty"
+
+        self._current_mod: ModInfo | None = None
+        self._current_state: ModState | None = None
+        self._multiple_count = 0
 
         self.setObjectName(
             "detailsScroll"
@@ -77,23 +101,21 @@ class ModDetailsPanel(QScrollArea):
             selectable=True,
         )
 
-        self.toggle_button = QPushButton(
-            "Aktivieren"
-        )
-
-        self.adopt_button = QPushButton(
-            "Konflikt übernehmen"
-        )
-
-        self.info_button = QPushButton(
-            "INI-Steuerung analysieren"
-        )
+        self.toggle_button = QPushButton()
+        self.adopt_button = QPushButton()
+        self.info_button = QPushButton()
 
         self._configure_widgets()
         self._build_ui()
         self._connect_signals()
-        self.show_empty()
 
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
+
+        self.show_empty()
+        self.retranslate_ui()
+        
     def _configure_widgets(self) -> None:
         self.title_label.setObjectName(
             "detailTitle"
@@ -129,10 +151,6 @@ class ModDetailsPanel(QScrollArea):
         self.adopt_button.setEnabled(
             False
         )
-        self.adopt_button.setToolTip(
-            "Übernimmt einen vorhandenen Mod-Ordner, "
-            "ohne seine Dateien zu überschreiben."
-        )
 
         self.info_button.setObjectName(
             "secondaryActionButton"
@@ -158,10 +176,9 @@ class ModDetailsPanel(QScrollArea):
             14
         )
 
-        eyebrow = QLabel(
-            "MOD-DETAILS"
-        )
-        eyebrow.setObjectName(
+        self.eyebrow_label = QLabel()
+
+        self.eyebrow_label.setObjectName(
             "detailEyebrow"
         )
 
@@ -193,46 +210,53 @@ class ModDetailsPanel(QScrollArea):
 
         detail_rows = (
             (
-                "Charakter",
+                "character",
                 self.character_value,
             ),
             (
-                "Mod-Typ",
+                "mod_type",
                 self.type_value,
             ),
             (
-                "Speicherort",
+                "location",
                 self.location_value,
             ),
             (
-                "Dateien",
+                "files",
                 self.files_value,
             ),
             (
-                "INI-Dateien",
+                "ini_files",
                 self.ini_value,
             ),
             (
-                "Größe",
+                "size",
                 self.size_value,
             ),
             (
-                "Geändert",
+                "modified",
                 self.modified_value,
             ),
             (
-                "Pfad",
+                "path",
                 self.path_value,
             ),
         )
 
+        self.caption_labels: dict[
+            str,
+            QLabel,
+        ] = {}
+
         for row, (
-            caption,
+            caption_key,
             value_label,
         ) in enumerate(detail_rows):
-            caption_label = QLabel(
-                caption
-            )
+            caption_label = QLabel()
+
+            self.caption_labels[
+                caption_key
+            ] = caption_label
             caption_label.setObjectName(
                 "detailCaption"
             )
@@ -251,18 +275,18 @@ class ModDetailsPanel(QScrollArea):
                 1,
             )
 
-        action_title = QLabel(
-            "Aktionen"
-        )
-        action_title.setObjectName(
+        self.action_title_label = QLabel()
+
+        self.action_title_label.setObjectName(
             "detailSectionTitle"
         )
+        self.eyebrow_label = QLabel()
 
         layout.addWidget(
-            eyebrow
+            self.eyebrow_label
         )
         layout.addWidget(
-            self.title_label
+            self.action_title_label
         )
         layout.addWidget(
             self.subtitle_label
@@ -279,7 +303,7 @@ class ModDetailsPanel(QScrollArea):
         )
         layout.addStretch()
         layout.addWidget(
-            action_title
+            self.action_title_label
         )
         layout.addWidget(
             self.toggle_button
@@ -349,26 +373,37 @@ class ModDetailsPanel(QScrollArea):
 
         return label
 
-    def show_empty(self) -> None:
-        """
-        Zeigt den Zustand ohne ausgewählten Mod.
-        """
+    def show_empty(
+        self,
+    ) -> None:
+        self._display_mode = "empty"
+        self._current_mod = None
+        self._current_state = None
+        self._multiple_count = 0
+
         self.title_label.setText(
-            "Kein Mod ausgewählt"
+            tr("library.details.empty_title")
         )
 
         self.subtitle_label.setText(
-            "Wähle links einen Mod aus, um "
-            "Details und Aktionen zu sehen."
+            tr(
+                "library.details."
+                "empty_description"
+            )
         )
 
         self.status_label.setText(
-            "Keine Auswahl"
+            tr("library.details.no_selection")
+        )
+
+        self.toggle_button.setText(
+            tr("library.details.action.enable")
         )
 
         self._set_status_style(
             "none"
         )
+
         self._clear_values()
 
         self.info_button.setEnabled(
@@ -379,25 +414,36 @@ class ModDetailsPanel(QScrollArea):
         self,
         count: int,
     ) -> None:
-        """
-        Zeigt den Zustand für eine Mehrfachauswahl.
-        """
+        self._display_mode = "multiple"
+        self._current_mod = None
+        self._current_state = None
+        self._multiple_count = count
+
         self.title_label.setText(
-            f"{count} Mods ausgewählt"
+            tr(
+                "library.details.multiple_title",
+                count=count,
+            )
         )
 
         self.subtitle_label.setText(
-            "Nutze die Auswahlaktionen "
-            "oberhalb der Liste."
+            tr(
+                "library.details."
+                "multiple_description"
+            )
         )
 
         self.status_label.setText(
-            "Mehrfachauswahl"
+            tr(
+                "library.details."
+                "multiple_status"
+            )
         )
 
         self._set_status_style(
             "multiple"
         )
+
         self._clear_values()
 
         self.info_button.setEnabled(
@@ -409,23 +455,27 @@ class ModDetailsPanel(QScrollArea):
         mod: ModInfo,
         state: ModState,
     ) -> None:
-        """
-        Zeigt die Informationen eines einzelnen Mods.
-        """
+        self._display_mode = "mod"
+        self._current_mod = mod
+        self._current_state = state
+        self._multiple_count = 0
+
         character_text = (
             ", ".join(mod.characters)
             if mod.characters
-            else "Unbekannt"
+            else tr("common.unknown")
         )
 
         location_text = (
-            "Netzwerk"
+            tr("common.network")
             if mod.is_network
-            else "Lokal"
+            else tr("common.local")
         )
 
         if mod.is_symlink:
-            location_text += " · Symlink"
+            location_text += (
+                f" · {tr('common.symlink')}"
+            )
 
         self.title_label.setText(
             mod.name
@@ -436,8 +486,14 @@ class ModDetailsPanel(QScrollArea):
             or str(mod.path)
         )
 
+        translation_key = (
+            MOD_STATE_TRANSLATION_KEYS[
+                state.value
+            ]
+        )
+
         self.status_label.setText(
-            mod_state_label(state)
+            tr(translation_key)
         )
 
         self._set_status_style(
@@ -450,7 +506,7 @@ class ModDetailsPanel(QScrollArea):
 
         self.type_value.setText(
             mod.mod_type
-            or "Unbekannt"
+            or tr("common.unknown")
         )
 
         self.location_value.setText(
@@ -481,6 +537,30 @@ class ModDetailsPanel(QScrollArea):
             str(mod.path)
         )
 
+        toggle_key = {
+            ModState.DISABLED:
+                "library.details.action.enable",
+
+            ModState.ENABLED:
+                "library.details.action.disable",
+
+            ModState.BROKEN:
+                "library.details.action.remove_broken",
+
+            ModState.NOT_CONFIGURED:
+                "library.details.action.not_configured",
+
+            ModState.CONFLICT:
+                "library.details.action.conflict",
+        }.get(
+            state,
+            "library.details.action.enable",
+        )
+
+        self.toggle_button.setText(
+            tr(toggle_key)
+        )
+
         self.info_button.setEnabled(
             True
         )
@@ -501,6 +581,96 @@ class ModDetailsPanel(QScrollArea):
             label.setText(
                 "—"
             )
+
+    def retranslate_ui(
+        self,
+        _language: str | None = None,
+    ) -> None:
+        self.eyebrow_label.setText(
+            tr("library.details.eyebrow")
+        )
+
+        caption_keys = {
+            "character":
+                "library.details.character",
+
+            "mod_type":
+                "library.details.mod_type",
+
+            "location":
+                "library.details.location",
+
+            "files":
+                "library.details.files",
+
+            "ini_files":
+                "library.details.ini_files",
+
+            "size":
+                "library.details.size",
+
+            "modified":
+                "library.details.modified",
+
+            "path":
+                "library.details.path",
+        }
+
+        for name, translation_key in (
+            caption_keys.items()
+        ):
+            label = self.caption_labels.get(
+                name
+            )
+
+            if label is not None:
+                label.setText(
+                    tr(translation_key)
+                )
+
+        self.action_title_label.setText(
+            tr("library.details.actions")
+        )
+
+        self.adopt_button.setText(
+            tr(
+                "library.details."
+                "action.adopt"
+            )
+        )
+
+        self.adopt_button.setToolTip(
+            tr(
+                "library.details."
+                "action.adopt_tooltip"
+            )
+        )
+
+        self.info_button.setText(
+            tr(
+                "library.details."
+                "action.info"
+            )
+        )
+
+        if (
+            self._display_mode == "mod"
+            and self._current_mod is not None
+            and self._current_state is not None
+        ):
+            self.show_mod(
+                self._current_mod,
+                self._current_state,
+            )
+            return
+
+        if self._display_mode == "multiple":
+            self.show_multiple(
+                self._multiple_count
+            )
+            return
+
+        self.show_empty()
 
     def _set_status_style(
         self,

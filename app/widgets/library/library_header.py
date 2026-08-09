@@ -1,5 +1,8 @@
 from __future__ import annotations
-
+from app.i18n import (
+    tr,
+    translation_manager,
+)
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFrame,
@@ -37,52 +40,54 @@ class LibraryHeader(QFrame):
         )
 
         self.import_button = QToolButton()
-        self.refresh_button = QPushButton(
-            "Neu scannen"
-        )
-        self.cancel_import_button = QPushButton(
-            "Import abbrechen"
-        )
+        self.refresh_button = QPushButton()
+        self.cancel_import_button = QPushButton()
 
         self._configure_widgets()
         self._build_ui()
         self._connect_signals()
+        
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
 
-    def _configure_widgets(self) -> None:
+        self.retranslate_ui()
+
+    def _configure_widgets(
+        self,
+    ) -> None:
         self.import_button.setObjectName(
             "importButton"
         )
-        self.import_button.setText(
-            "＋  Importieren"
-        )
+
         self.import_button.setPopupMode(
             QToolButton.ToolButtonPopupMode.MenuButtonPopup
         )
 
-        import_menu = QMenu(
+        self.import_menu = QMenu(
             self.import_button
         )
 
-        archive_action = import_menu.addAction(
-            "ZIP oder Archiv auswählen"
+        self.archive_action = (
+            self.import_menu.addAction("")
         )
 
-        directory_action = import_menu.addAction(
-            "Mod-Ordner auswählen"
+        self.directory_action = (
+            self.import_menu.addAction("")
         )
 
-        archive_action.triggered.connect(
+        self.archive_action.triggered.connect(
             lambda _checked=False:
             self.import_archives_requested.emit()
         )
 
-        directory_action.triggered.connect(
+        self.directory_action.triggered.connect(
             lambda _checked=False:
             self.import_directory_requested.emit()
         )
 
         self.import_button.setMenu(
-            import_menu
+            self.import_menu
         )
 
         self.refresh_button.setObjectName(
@@ -92,6 +97,7 @@ class LibraryHeader(QFrame):
         self.cancel_import_button.setObjectName(
             "dangerButton"
         )
+
         self.cancel_import_button.setVisible(
             False
         )
@@ -119,26 +125,21 @@ class LibraryHeader(QFrame):
             4
         )
 
-        title_label = QLabel(
-            "Mod-Bibliothek"
-        )
-        title_label.setObjectName(
+        self.title_label = QLabel()
+        self.title_label.setObjectName(
             "pageTitle"
         )
 
-        description_label = QLabel(
-            "Verwalte, filtere und organisiere "
-            "deine Genshin-Mods."
-        )
-        description_label.setObjectName(
+        self.description_label = QLabel()
+        self.description_label.setObjectName(
             "pageDescription"
         )
 
         title_layout.addWidget(
-            title_label
+            self.title_label
         )
         title_layout.addWidget(
-            description_label
+            self.description_label
         )
 
         layout.addLayout(
@@ -169,4 +170,36 @@ class LibraryHeader(QFrame):
         self.cancel_import_button.clicked.connect(
             lambda _checked=False:
             self.cancel_import_requested.emit()
+        )
+        
+    def retranslate_ui(
+        self,
+        _language: str | None = None,
+    ) -> None:
+        self.title_label.setText(
+            tr("library.title")
+        )
+
+        self.description_label.setText(
+            tr("library.description")
+        )
+
+        self.import_button.setText(
+            f"＋  {tr('library.action.import')}"
+        )
+
+        self.refresh_button.setText(
+            tr("library.action.scan")
+        )
+
+        self.cancel_import_button.setText(
+            tr("library.action.cancel_import")
+        )
+
+        self.archive_action.setText(
+            tr("library.import.archive")
+        )
+
+        self.directory_action.setText(
+            tr("library.import.directory")
         )

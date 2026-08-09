@@ -5,23 +5,27 @@ from app.workers.bulk_mod_worker import (
     BulkBatchResult,
     BulkItemStatus,
 )
-
+from app.i18n import tr
 
 def format_bulk_result(
     result: BulkBatchResult,
     *,
     max_items: int = 15,
 ) -> str:
-    """
-    Erstellt den ausführlichen Ergebnistext
-    einer Sammelaktion.
-    """
+    action_key = {
+        BulkAction.ENABLE:
+            "library.bulk_result.action.enable",
 
-    action_text = {
-        BulkAction.ENABLE: "Aktivieren",
-        BulkAction.DISABLE: "Deaktivieren",
-        BulkAction.ADOPT: "Übernehmen",
+        BulkAction.DISABLE:
+            "library.bulk_result.action.disable",
+
+        BulkAction.ADOPT:
+            "library.bulk_result.action.adopt",
     }[result.action]
+
+    action_text = tr(
+        action_key
+    )
 
     detail_lines: list[str] = []
 
@@ -51,66 +55,77 @@ def format_bulk_result(
 
     if remaining_count > 0:
         detail_lines.append(
-            f"… und {remaining_count} weitere"
+            tr(
+                "library.result.remaining",
+                count=remaining_count,
+            )
         )
 
-    details = "\n".join(
-        detail_lines
-    )
-
-    cancelled_text = ""
+    lines = [
+        tr(
+            "library.bulk_result.action",
+            action=action_text,
+        ),
+        "",
+        tr(
+            "library.bulk_result.success",
+            count=result.success_count,
+        ),
+        tr(
+            "library.bulk_result.skipped",
+            count=result.skipped_count,
+        ),
+        tr(
+            "library.bulk_result.conflicts",
+            count=result.conflict_count,
+        ),
+        tr(
+            "library.bulk_result.failed",
+            count=result.failed_count,
+        ),
+        tr(
+            "library.bulk_result.duration",
+            seconds=result.duration_seconds,
+        ),
+    ]
 
     if result.cancelled:
-        cancelled_text = (
-            "\n\n"
-            "Die Sammelaktion wurde "
-            "vorzeitig abgebrochen."
+        lines.extend(
+            (
+                "",
+                tr(
+                    "library.bulk_result."
+                    "cancelled_detail"
+                ),
+            )
         )
 
-    message = (
-        f"Aktion: {action_text}\n\n"
-        f"Erfolgreich: "
-        f"{result.success_count}\n"
-        f"Übersprungen: "
-        f"{result.skipped_count}\n"
-        f"Konflikte: "
-        f"{result.conflict_count}\n"
-        f"Fehlgeschlagen: "
-        f"{result.failed_count}\n"
-        f"Dauer: "
-        f"{result.duration_seconds:.1f} "
-        f"Sekunden"
-        f"{cancelled_text}"
+    if detail_lines:
+        lines.extend(
+            (
+                "",
+                *detail_lines,
+            )
+        )
+
+    return "\n".join(
+        lines
     )
-
-    if details:
-        message += (
-            "\n\n"
-            f"{details}"
-        )
-
-    return message
-
 
 def format_bulk_status(
     result: BulkBatchResult,
 ) -> str:
-    """
-    Kurzer Status für die LibraryPage.
-    """
-
     if result.cancelled:
-        return (
-            "Die Sammelaktion wurde "
-            "abgebrochen."
+        return tr(
+            "library.bulk_result."
+            "status_cancelled"
         )
 
-    return (
-        "Sammelaktion abgeschlossen: "
-        f"{result.success_count} "
-        "erfolgreich."
+    return tr(
+        "library.bulk_result."
+        "status_completed",
+        count=result.success_count,
     )
-
 
 def bulk_result_requires_warning(
     result: BulkBatchResult,

@@ -6,23 +6,38 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QWidget,
 )
+from app.i18n import tr
 
-
-ARCHIVE_FILE_FILTER = (
-    "Unterstützte Archive "
-    "(*.zip *.7z *.rar "
-    "*.tar *.tar.gz *.tgz "
-    "*.tar.bz2 *.tbz2 "
-    "*.tar.xz *.txz);;"
-    "ZIP-Archive (*.zip);;"
-    "7-Zip-Archive (*.7z);;"
-    "RAR-Archive (*.rar);;"
-    "TAR-Archive "
-    "(*.tar *.tar.gz *.tgz "
-    "*.tar.bz2 *.tbz2 "
-    "*.tar.xz *.txz);;"
-    "Alle Dateien (*)"
-)
+def _archive_file_filter(
+) -> str:
+    return ";;".join(
+        (
+            tr(
+                "library.import_picker."
+                "supported_archives"
+            ),
+            tr(
+                "library.import_picker."
+                "zip_archives"
+            ),
+            tr(
+                "library.import_picker."
+                "seven_zip_archives"
+            ),
+            tr(
+                "library.import_picker."
+                "rar_archives"
+            ),
+            tr(
+                "library.import_picker."
+                "tar_archives"
+            ),
+            tr(
+                "library.import_picker."
+                "all_files"
+            ),
+        )
+    )
 
 
 def choose_import_archives(
@@ -35,9 +50,12 @@ def choose_import_archives(
     selected_files, _selected_filter = (
         QFileDialog.getOpenFileNames(
             parent,
-            "Mod-Archive auswählen",
+            tr(
+                "library.import_picker."
+                "archive_title"
+            ),
             str(Path.home()),
-            ARCHIVE_FILE_FILTER,
+            _archive_file_filter(),
         )
     )
 
@@ -57,7 +75,10 @@ def choose_import_directory(
     selected_directory = (
         QFileDialog.getExistingDirectory(
             parent,
-            "Mod-Ordner auswählen",
+            tr(
+                "library.import_picker."
+                "directory_title"
+            ),
             str(Path.home()),
         )
     )

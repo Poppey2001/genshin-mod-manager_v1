@@ -21,7 +21,28 @@ from app.services.mod_manager import (
     ModState,
     mod_state_label,
 )
+from app.i18n import (
+    tr,
+    translation_manager,
+)
 from app.models.mod import ModInfo
+
+MOD_STATE_TRANSLATION_KEYS = {
+    ModState.ENABLED.value:
+        "mod.state.enabled",
+
+    ModState.DISABLED.value:
+        "mod.state.disabled",
+
+    ModState.CONFLICT.value:
+        "mod.state.conflict",
+
+    ModState.BROKEN.value:
+        "mod.state.broken",
+
+    ModState.NOT_CONFIGURED.value:
+        "mod.state.not_configured",
+}
 
 class LibraryFilterBar(QFrame):
     """
@@ -50,14 +71,18 @@ class LibraryFilterBar(QFrame):
         self.mod_type_filter = QComboBox()
         self.status_filter = QComboBox()
 
-        self.reset_button = QPushButton(
-            "Zurücksetzen"
-        )
+        self.reset_button = QPushButton()
 
         self._configure_widgets()
         self._build_ui()
         self._connect_signals()
 
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
+
+        self.retranslate_ui()
+        
     def _configure_widgets(self) -> None:
         self.path_label.setObjectName(
             "libraryPath"
@@ -77,9 +102,7 @@ class LibraryFilterBar(QFrame):
         self.search_input.setObjectName(
             "searchInput"
         )
-        self.search_input.setPlaceholderText(
-            "Mods, Charaktere oder Pfade durchsuchen …"
-        )
+
         self.search_input.setClearButtonEnabled(
             True
         )
@@ -94,14 +117,14 @@ class LibraryFilterBar(QFrame):
             170
         )
         self.character_filter.addItem(
-            "Alle Charaktere",
+            tr("library.filter.all_characters"),
             userData=None,
         )
+
         self.character_filter.addItem(
-            "Unbekannt",
+            tr("common.unknown"),
             userData="__unknown__",
         )
-
         self.mod_type_filter.setObjectName(
             "filterCombo"
         )
@@ -109,18 +132,20 @@ class LibraryFilterBar(QFrame):
             160
         )
         self.mod_type_filter.addItem(
-            "Alle Mod-Typen",
+            tr("library.filter.all_mod_types"),
             userData=None,
         )
 
         self.status_filter.setObjectName(
             "filterCombo"
         )
+
         self.status_filter.setMinimumWidth(
             150
         )
+
         self.status_filter.addItem(
-            "Alle Status",
+            tr("library.filter.all_statuses"),
             userData=None,
         )
 
@@ -131,8 +156,14 @@ class LibraryFilterBar(QFrame):
             ModState.BROKEN,
             ModState.NOT_CONFIGURED,
         ):
+            translation_key = (
+                MOD_STATE_TRANSLATION_KEYS[
+                    state.value
+                ]
+            )
+
             self.status_filter.addItem(
-                mod_state_label(state),
+                tr(translation_key),
                 userData=state.value,
             )
 
@@ -180,15 +211,15 @@ class LibraryFilterBar(QFrame):
         )
 
         self.character_filter.clear()
-
+        
         self.character_filter.addItem(
-            "Alle Charaktere",
+            tr("library.filter.all_characters"),
             userData=None,
         )
 
         if has_unknown_mods:
             self.character_filter.addItem(
-                "Unbekannt",
+                tr("common.unknown"),
                 userData="__unknown__",
             )
 
@@ -239,7 +270,7 @@ class LibraryFilterBar(QFrame):
         self.mod_type_filter.clear()
 
         self.mod_type_filter.addItem(
-            "Alle Mod-Typen",
+            tr("library.filter.all_mod_types"),
             userData=None,
         )
 
@@ -286,15 +317,13 @@ class LibraryFilterBar(QFrame):
             10
         )
 
-        folder_caption = QLabel(
-            "Bibliothek"
-        )
-        folder_caption.setObjectName(
+        self.folder_caption = QLabel()
+        self.folder_caption.setObjectName(
             "fieldCaption"
         )
 
         location_layout.addWidget(
-            folder_caption
+            self.folder_caption
         )
         location_layout.addWidget(
             self.path_label,
@@ -395,13 +424,19 @@ class LibraryFilterBar(QFrame):
 
         self.filters_changed.emit()
 
-    def search_text(self) -> str:
-        return self.search_input.text().strip()
+    def search_term(
+        self,
+    ) -> str:
+        return (
+            self.search_input.text().strip()
+        )
 
     def selected_character(
         self,
     ) -> str | None:
-        value = self.character_filter.currentData()
+        value = (
+            self.character_filter.currentData()
+        )
 
         if value is None:
             return None
@@ -411,7 +446,9 @@ class LibraryFilterBar(QFrame):
     def selected_mod_type(
         self,
     ) -> str | None:
-        value = self.mod_type_filter.currentData()
+        value = (
+            self.mod_type_filter.currentData()
+        )
 
         if value is None:
             return None
@@ -421,9 +458,155 @@ class LibraryFilterBar(QFrame):
     def selected_status(
         self,
     ) -> str | None:
-        value = self.status_filter.currentData()
+        value = (
+            self.status_filter.currentData()
+        )
 
         if value is None:
             return None
 
         return str(value)
+
+    def set_path_text(
+        self,
+        text: str,
+    ) -> None:
+        self.path_label.setText(
+            text
+        )
+
+    def set_location_text(
+        self,
+        text: str,
+    ) -> None:
+        self.location_label.setText(
+            text
+        )
+    
+    def set_path_text(
+        self,
+        text: str,
+    ) -> None:
+        self.path_label.setText(
+            text
+        )
+
+    def set_location_text(
+        self,
+        text: str,
+    ) -> None:
+        self.location_label.setText(
+            text
+        )
+
+    def retranslate_ui(
+        self,
+        _language: str | None = None,
+    ) -> None:
+        self.folder_caption.setText(
+            tr("library.filter.library")
+        )
+
+        self.search_input.setPlaceholderText(
+            tr(
+                "library.filter."
+                "search_placeholder"
+            )
+        )
+
+        self.reset_button.setText(
+            tr("library.filter.reset")
+        )
+
+        character_blocker = QSignalBlocker(
+            self.character_filter
+        )
+
+        for index in range(
+            self.character_filter.count()
+        ):
+            value = (
+                self.character_filter.itemData(
+                    index
+                )
+            )
+
+            if value is None:
+                self.character_filter.setItemText(
+                    index,
+                    tr(
+                        "library.filter."
+                        "all_characters"
+                    ),
+                )
+
+            elif value == "__unknown__":
+                self.character_filter.setItemText(
+                    index,
+                    tr("common.unknown"),
+                )
+
+        del character_blocker
+
+        mod_type_blocker = QSignalBlocker(
+            self.mod_type_filter
+        )
+
+        for index in range(
+            self.mod_type_filter.count()
+        ):
+            value = (
+                self.mod_type_filter.itemData(
+                    index
+                )
+            )
+
+            if value is None:
+                self.mod_type_filter.setItemText(
+                    index,
+                    tr(
+                        "library.filter."
+                        "all_mod_types"
+                    ),
+                )
+
+        del mod_type_blocker
+
+        status_blocker = QSignalBlocker(
+            self.status_filter
+        )
+
+        for index in range(
+            self.status_filter.count()
+        ):
+            value = (
+                self.status_filter.itemData(
+                    index
+                )
+            )
+
+            if value is None:
+                self.status_filter.setItemText(
+                    index,
+                    tr(
+                        "library.filter."
+                        "all_statuses"
+                    ),
+                )
+                continue
+
+            translation_key = (
+                MOD_STATE_TRANSLATION_KEYS.get(
+                    str(value)
+                )
+            )
+
+            if translation_key is None:
+                continue
+
+            self.status_filter.setItemText(
+                index,
+                tr(translation_key),
+            )
+
+        del status_blocker

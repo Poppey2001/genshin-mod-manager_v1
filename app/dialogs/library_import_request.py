@@ -17,7 +17,7 @@ from app.dialogs.import_options_dialog import (
 from app.services.mod_importer import (
     is_supported_import_source,
 )
-
+from app.i18n import tr
 
 @dataclass(
     frozen=True,
@@ -57,12 +57,16 @@ def prepare_import_request(
     if not supported_paths:
         QMessageBox.warning(
             parent,
-            "Keine unterstützten Dateien",
-            (
-                "Es wurden keine unterstützten "
-                "Mod-Ordner oder Archive ausgewählt."
+            tr(
+                "library.import."
+                "unsupported_title"
+            ),
+            tr(
+                "library.import."
+                "unsupported_message"
             ),
         )
+                
 
         return None
 
