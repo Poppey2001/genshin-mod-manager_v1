@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import (
     QSignalBlocker,
     Signal,
+    Qt,
 )
 
 from PySide6.QtWidgets import (
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QVBoxLayout,
     QWidget,
+    QScrollArea,
 )
 from app.widgets.settings.update_settings_group import (
     UpdateSettingsGroup,
@@ -179,18 +181,81 @@ class SettingsPage(QWidget):
     def _build_ui(
         self,
     ) -> None:
-        main_layout = QVBoxLayout(
+        # ==================================================
+        # Äußeres Layout
+        #
+        # Der eigentliche Inhalt wird scrollbar.
+        # Die Speichern-/Zurücksetzen-Leiste bleibt immer
+        # unten sichtbar.
+        # ==================================================
+
+        root_layout = QVBoxLayout(
             self
         )
 
-        main_layout.setContentsMargins(
-            40,
-            36,
-            40,
-            36,
+        root_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
         )
 
-        main_layout.setSpacing(
+        root_layout.setSpacing(
+            0
+        )
+
+        # ==================================================
+        # Scrollbereich
+        # ==================================================
+
+        self.scroll_area = QScrollArea(
+            self
+        )
+
+        self.scroll_area.setWidgetResizable(
+            True
+        )
+
+        self.scroll_area.setFrameShape(
+            QFrame.Shape.NoFrame
+        )
+
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+
+        self.scroll_area.setObjectName(
+            "settingsScrollArea"
+        )
+
+        # ==================================================
+        # Scrollbarer Inhalt
+        # ==================================================
+
+        content_widget = QWidget(
+            self.scroll_area
+        )
+
+        content_widget.setObjectName(
+            "settingsScrollContent"
+        )
+
+        content_layout = QVBoxLayout(
+            content_widget
+        )
+
+        content_layout.setContentsMargins(
+            40,
+            36,
+            40,
+            24,
+        )
+
+        content_layout.setSpacing(
             22
         )
 
@@ -199,7 +264,7 @@ class SettingsPage(QWidget):
         # --------------------------------------------------
 
         self.title_label = QLabel(
-            self
+            content_widget
         )
 
         self.title_label.setObjectName(
@@ -207,7 +272,7 @@ class SettingsPage(QWidget):
         )
 
         self.description_label = QLabel(
-            self
+            content_widget
         )
 
         self.description_label.setObjectName(
@@ -218,41 +283,72 @@ class SettingsPage(QWidget):
             True
         )
 
-        main_layout.addWidget(
+        content_layout.addWidget(
             self.title_label
         )
 
-        main_layout.addWidget(
+        content_layout.addWidget(
             self.description_label
         )
 
         # --------------------------------------------------
-        # Gruppen
+        # Settings-Gruppen
         # --------------------------------------------------
 
-        main_layout.addWidget(
+        content_layout.addWidget(
             self._create_library_group()
         )
 
-        main_layout.addWidget(
+        content_layout.addWidget(
             self._create_paths_group()
         )
 
-        main_layout.addWidget(
+        content_layout.addWidget(
             self._create_options_group()
         )
 
-        main_layout.addWidget(
+        # Auto-Updater
+        content_layout.addWidget(
             self.update_settings_group
         )
 
-        main_layout.addStretch()
+        # Wichtig:
+        # Stretch erst NACH allen Gruppen.
+        content_layout.addStretch(
+            1
+        )
 
-        # --------------------------------------------------
-        # Untere Leiste
-        # --------------------------------------------------
+        self.scroll_area.setWidget(
+            content_widget
+        )
 
-        bottom_layout = QHBoxLayout()
+        root_layout.addWidget(
+            self.scroll_area,
+            stretch=1,
+        )
+
+        # ==================================================
+        # Untere feste Leiste
+        # ==================================================
+
+        bottom_container = QWidget(
+            self
+        )
+
+        bottom_container.setObjectName(
+            "settingsBottomBar"
+        )
+
+        bottom_layout = QHBoxLayout(
+            bottom_container
+        )
+
+        bottom_layout.setContentsMargins(
+            40,
+            14,
+            40,
+            22,
+        )
 
         bottom_layout.setSpacing(
             12
@@ -268,7 +364,7 @@ class SettingsPage(QWidget):
         )
 
         self.reset_button = QPushButton(
-            self
+            bottom_container
         )
 
         self.reset_button.setObjectName(
@@ -280,7 +376,7 @@ class SettingsPage(QWidget):
         )
 
         self.save_button = QPushButton(
-            self
+            bottom_container
         )
 
         self.save_button.setObjectName(
@@ -292,7 +388,8 @@ class SettingsPage(QWidget):
         )
 
         bottom_layout.addWidget(
-            self.status_label
+            self.status_label,
+            stretch=1,
         )
 
         bottom_layout.addWidget(
@@ -303,15 +400,11 @@ class SettingsPage(QWidget):
             self.save_button
         )
 
-        main_layout.addLayout(
-            bottom_layout
+        root_layout.addWidget(
+            bottom_container
         )
 
         self._apply_local_stylesheet()
-
-    # ==================================================
-    # Bibliothek
-    # ==================================================
 
     def _create_library_group(
         self,
@@ -1609,6 +1702,46 @@ class SettingsPage(QWidget):
                 background-color: #30343d;
                 border: none;
                 max-height: 1px;
+            }
+            
+            QScrollArea#settingsScrollArea {
+                background-color: #16181d;
+                border: none;
+            }
+
+            QWidget#settingsScrollContent {
+                background-color: #16181d;
+            }
+
+            QWidget#settingsBottomBar {
+                background-color: #16181d;
+                border-top: 1px solid #30343d;
+            }
+
+            QScrollBar:vertical {
+                background-color: #16181d;
+                width: 12px;
+                margin: 0;
+            }
+
+            QScrollBar::handle:vertical {
+                background-color: #3a3f49;
+                border-radius: 5px;
+                min-height: 30px;
+            }
+
+            QScrollBar::handle:vertical:hover {
+                background-color: #4b515e;
+            }
+
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: transparent;
             }
             """
         )
