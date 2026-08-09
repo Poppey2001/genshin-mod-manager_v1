@@ -66,7 +66,9 @@ class AppConfig:
 
     theme: str = "dark"
     language: str = "de"
-    
+    auto_check_updates: bool = True
+
+    update_channel: str = "prerelease"
     window_width: int = 1200
     window_height: int = 760
 
@@ -174,6 +176,27 @@ class AppConfig:
             )
 
             self.language = "de"
+            
+        valid_update_channels = {
+            "stable",
+            "prerelease",
+        }
+
+        if (
+            self.update_channel
+            not in valid_update_channels
+        ):
+            logger.warning(
+                (
+                    "Ungültiger Update-Kanal "
+                    "'%s'. Verwende 'prerelease'."
+                ),
+                self.update_channel,
+            )
+
+            self.update_channel = (
+                "prerelease"
+            )
         if self.window_width < 800:
             self.window_width = 800
 
@@ -207,12 +230,14 @@ class AppConfig:
             "selected_profile",
             "theme",
             "language",
+            "update_channel",
         )
 
         boolean_fields = (
             "use_symlinks",
             "create_backups",
             "first_start",
+            "auto_check_updates",
         )
 
         integer_fields = (

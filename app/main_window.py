@@ -43,14 +43,16 @@ from app.platform_support import (
     PlatformSupportError,
     launch_program,
 )
-
+from app.version import (
+    APP_VERSION_DISPLAY,
+)
 
 logger = logging.getLogger(
     __name__
 )
-
-
-APP_VERSION = "0.4.0-alpha.1"
+from app.controllers.update_controller import (
+    UpdateController,
+)
 
 class MainWindow(QMainWindow):
     """Hauptfenster des Genshin Mod Managers."""
@@ -131,9 +133,25 @@ class MainWindow(QMainWindow):
         translation_manager.language_changed.connect(
             self.retranslate_ui
         )
-
+        
         self.retranslate_ui()
 
+        # --------------------------------------------------
+        # Auto-Updater
+        # --------------------------------------------------
+
+        self.update_controller = (
+            UpdateController(
+                config=self.config,
+                parent_window=self,
+            )
+        )
+
+        self.settings_page.check_updates_requested.connect(
+            self.update_controller.check_now
+        )
+
+        self.update_controller.start_auto_check()
         # --------------------------------------------------
         # Startseite
         # --------------------------------------------------
@@ -581,7 +599,7 @@ class MainWindow(QMainWindow):
             self.version_label.setText(
                 tr(
                     "main.sidebar.version",
-                    version=APP_VERSION,
+                    version=APP_VERSION_DISPLAY,
                 )
             )
 

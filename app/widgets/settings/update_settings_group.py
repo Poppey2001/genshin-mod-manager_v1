@@ -1,0 +1,330 @@
+from __future__ import annotations
+
+from PySide6.QtCore import (
+    QSignalBlocker,
+    Signal,
+)
+
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QGridLayout,
+    QGroupBox,
+    QLabel,
+    QPushButton,
+    QWidget,
+)
+
+from app.config import AppConfig
+
+from app.i18n import (
+    tr,
+    translation_manager,
+)
+
+from app.services.appimage_updater import (
+    is_appimage_runtime,
+)
+
+from app.version import (
+    APP_VERSION_DISPLAY,
+)
+
+
+class UpdateSettingsGroup(
+    QGroupBox
+):
+    check_requested = Signal()
+
+    CHANNEL_TRANSLATION_KEYS = {
+        "stable": (
+            "updates.channel.stable"
+        ),
+        "prerelease": (
+            "updates.channel.prerelease"
+        ),
+    }
+
+    def __init__(
+        self,
+        *,
+        config: AppConfig,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(
+            parent
+        )
+
+        self.config = config
+
+        self.auto_check_checkbox = (
+            QCheckBox(
+                self
+            )
+        )
+
+        self.channel_label = QLabel(
+            self
+        )
+
+        self.channel_combobox = (
+            QComboBox(
+                self
+            )
+        )
+
+        self.version_title_label = (
+            QLabel(
+                self
+            )
+        )
+
+        self.version_value_label = (
+            QLabel(
+                self
+            )
+        )
+
+        self.runtime_label = QLabel(
+            self
+        )
+
+        self.check_button = (
+            QPushButton(
+                self
+            )
+        )
+
+        self._build_ui()
+
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
+
+        self.retranslate_ui()
+
+        self.load_from_config()
+
+    def _build_ui(
+        self,
+    ) -> None:
+        layout = QGridLayout(
+            self
+        )
+
+        layout.setContentsMargins(
+            18,
+            24,
+            18,
+            18,
+        )
+
+        layout.setHorizontalSpacing(
+            16
+        )
+
+        layout.setVerticalSpacing(
+            12
+        )
+
+        self.channel_combobox.addItem(
+            "",
+            userData="stable",
+        )
+
+        self.channel_combobox.addItem(
+            "",
+            userData="prerelease",
+        )
+
+        self.check_button.clicked.connect(
+            self.check_requested.emit
+        )
+
+        layout.addWidget(
+            self.auto_check_checkbox,
+            0,
+            0,
+            1,
+            2,
+        )
+
+        layout.addWidget(
+            self.channel_label,
+            1,
+            0,
+        )
+
+        layout.addWidget(
+            self.channel_combobox,
+            1,
+            1,
+        )
+
+        layout.addWidget(
+            self.version_title_label,
+            2,
+            0,
+        )
+
+        layout.addWidget(
+            self.version_value_label,
+            2,
+            1,
+        )
+
+        layout.addWidget(
+            self.runtime_label,
+            3,
+            0,
+            1,
+            2,
+        )
+
+        layout.addWidget(
+            self.check_button,
+            4,
+            1,
+        )
+
+        layout.setColumnStretch(
+            0,
+            1,
+        )
+
+    def load_from_config(
+        self,
+    ) -> None:
+        self.auto_check_checkbox.setChecked(
+            getattr(
+                self.config,
+                "auto_check_updates",
+                True,
+            )
+        )
+
+        channel = getattr(
+            self.config,
+            "update_channel",
+            "prerelease",
+        )
+
+        index = (
+            self.channel_combobox.findData(
+                channel
+            )
+        )
+
+        if index < 0:
+            index = (
+                self.channel_combobox.findData(
+                    "prerelease"
+                )
+            )
+
+        if index >= 0:
+            self.channel_combobox.setCurrentIndex(
+                index
+            )
+
+    def apply_to_config(
+        self,
+    ) -> None:
+        self.config.auto_check_updates = (
+            self.auto_check_checkbox
+            .isChecked()
+        )
+
+        channel = (
+            self.channel_combobox
+            .currentData()
+        )
+
+        if isinstance(
+            channel,
+            str,
+        ):
+            self.config.update_channel = (
+                channel
+            )
+
+    def retranslate_ui(
+        self,
+        _language: str | None = None,
+    ) -> None:
+        self.setTitle(
+            tr(
+                "updates.settings.title"
+            )
+        )
+
+        self.auto_check_checkbox.setText(
+            tr(
+                "updates.settings.auto_check"
+            )
+        )
+
+        self.channel_label.setText(
+            tr(
+                "updates.settings.channel"
+            )
+        )
+
+        blocker = QSignalBlocker(
+            self.channel_combobox
+        )
+
+        for index in range(
+            self.channel_combobox.count()
+        ):
+            value = (
+                self.channel_combobox
+                .itemData(
+                    index
+                )
+            )
+
+            key = (
+                self.CHANNEL_TRANSLATION_KEYS
+                .get(
+                    str(value)
+                )
+            )
+
+            if key:
+                self.channel_combobox.setItemText(
+                    index,
+                    tr(key),
+                )
+
+        del blocker
+
+        self.version_title_label.setText(
+            tr(
+                "updates.settings.version"
+            )
+        )
+
+        self.version_value_label.setText(
+            APP_VERSION_DISPLAY
+        )
+
+        if is_appimage_runtime():
+            runtime_text = tr(
+                "updates.settings.runtime.appimage"
+            )
+
+        else:
+            runtime_text = tr(
+                "updates.settings.runtime.dev"
+            )
+
+        self.runtime_label.setText(
+            runtime_text
+        )
+
+        self.check_button.setText(
+            tr(
+                "updates.settings.check_now"
+            )
+        )

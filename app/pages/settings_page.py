@@ -25,6 +25,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from app.widgets.settings.update_settings_group import (
+    UpdateSettingsGroup,
+)
 
 from app.config import AppConfig
 
@@ -48,7 +51,8 @@ class SettingsPage(QWidget):
     """Einstellungsseite des Genshin Mod Managers."""
 
     settings_saved = Signal(str)
-
+    check_updates_requested = Signal()
+    
     THEME_TRANSLATION_KEYS = {
         "dark": "settings.theme.dark",
         "light": "settings.theme.light",
@@ -143,6 +147,17 @@ class SettingsPage(QWidget):
 
         self.reset_button: QPushButton
         self.save_button: QPushButton
+        
+        self.update_settings_group = (
+            UpdateSettingsGroup(
+                config=self.config,
+                parent=self,
+            )
+        )
+
+        self.update_settings_group.check_requested.connect(
+            self.check_updates_requested.emit
+        )
 
         # --------------------------------------------------
         # Aufbau
@@ -225,6 +240,10 @@ class SettingsPage(QWidget):
 
         main_layout.addWidget(
             self._create_options_group()
+        )
+
+        main_layout.addWidget(
+            self.update_settings_group
         )
 
         main_layout.addStretch()
@@ -1180,7 +1199,7 @@ class SettingsPage(QWidget):
             self.language_combobox.setCurrentIndex(
                 language_index
             )
-
+        self.update_settings_group.load_from_config()
         self.status_label.clear()
 
     # ==================================================
@@ -1414,7 +1433,9 @@ class SettingsPage(QWidget):
                 self.config.language = (
                     selected_language
                 )
-
+                
+            self.update_settings_group.apply_to_config()
+            
             self.config.first_start = False
 
             self.config.save()

@@ -311,5 +311,41 @@
     "app.error.unexpected.title": "Unerwarteter Fehler",
     "app.error.unexpected.message": "Der Genshin Mod Manager musste wegen eines Fehlers beendet werden.\n\n{error_type}: {error}",
 
-    "library.details.action.unavailable": "Nicht verfügbar"
+    "library.details.action.unavailable": "Nicht verfügbar",
+
+    "updates.settings.title": "Updates",
+    "updates.settings.auto_check": "Beim Programmstart automatisch nach Updates suchen",
+    "updates.settings.channel": "Update-Kanal",
+    "updates.settings.version": "Aktuelle Version",
+    "updates.settings.check_now": "Jetzt nach Updates suchen",
+    "updates.settings.runtime.appimage": "Automatische Installation ist verfügbar, da die Anwendung als AppImage läuft.",
+    "updates.settings.runtime.dev": "Entwicklungsmodus: Updates können geprüft werden, die automatische Installation ist erst im AppImage verfügbar.",
+
+    "updates.channel.stable": "Stable",
+    "updates.channel.prerelease": "Pre-release",
+
+    "updates.check.title": "Updates",
+    "updates.check.already_running": "Es läuft bereits eine Update-Prüfung.",
+    "updates.check.up_to_date": "Du verwendest bereits die aktuelle Version {version}.",
+    "updates.check.failed_title": "Update-Prüfung fehlgeschlagen",
+    "updates.check.failed": "Die Update-Prüfung ist fehlgeschlagen.\n\n{error}",
+
+    "updates.dialog.window_title": "Update verfügbar",
+    "updates.dialog.available": "Eine neue Version ist verfügbar",
+    "updates.dialog.version": "Installiert: {current}\nVerfügbar: {new}",
+    "updates.dialog.release_notes": "Änderungen",
+    "updates.dialog.no_notes": "Für dieses Release sind keine Release Notes vorhanden.",
+    "updates.dialog.open_release": "Release öffnen",
+    "updates.dialog.later": "Später",
+    "updates.dialog.install": "Update installieren",
+    "updates.dialog.appimage_required": "Die automatische Installation ist nur verfügbar, wenn der Mod Manager als AppImage gestartet wurde.",
+
+    "updates.status.downloading": "Update wird heruntergeladen und geprüft …",
+    "updates.status.installing": "Update wurde geprüft. Die Anwendung wird beendet, aktualisiert und anschließend neu gestartet …",
+    "updates.status.failed": "Update fehlgeschlagen: {error}",
+    "updates.status.cancelled": "Der Update-Download wurde abgebrochen.",
+
+    "updates.error.repo_not_configured": "Das GitHub-Repository für den Auto-Updater wurde noch nicht konfiguriert.",
+    "updates.error.no_digest": "Für das Release wurde kein SHA-256-Digest gefunden.",
+    "updates.error.invalid_download": "Die heruntergeladene Update-Datei ist ungültig."
 }

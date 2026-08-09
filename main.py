@@ -30,10 +30,10 @@ from app.platform_support import (
     configure_windows_app_id,
     resource_path,
 )
-
-
-APP_NAME = "Genshin Mod Manager"
-APP_VERSION =  "0.4.0-alpha.1"
+from app.version import (
+    APP_NAME,
+    APP_VERSION,
+)
 
 
 def configure_logging(

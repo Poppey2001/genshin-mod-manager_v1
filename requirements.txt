@@ -16,3 +16,4 @@ typing_extensions==4.16.0
 urllib3==2.7.0
 py7zr
 rarfile
+packaging

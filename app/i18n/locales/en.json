@@ -311,5 +311,41 @@
     "app.error.unexpected.title": "Unexpected error",
     "app.error.unexpected.message": "Genshin Mod Manager had to close because of an error.\n\n{error_type}: {error}",
 
-    "library.details.action.unavailable": "Unavailable"
+    "library.details.action.unavailable": "Unavailable",
+
+    "updates.settings.title": "Updates",
+    "updates.settings.auto_check": "Automatically check for updates when the application starts",
+    "updates.settings.channel": "Update channel",
+    "updates.settings.version": "Current version",
+    "updates.settings.check_now": "Check for updates now",
+    "updates.settings.runtime.appimage": "Automatic installation is available because the application is running as an AppImage.",
+    "updates.settings.runtime.dev": "Development mode: updates can be checked, but automatic installation is only available from an AppImage.",
+
+    "updates.channel.stable": "Stable",
+    "updates.channel.prerelease": "Pre-release",
+
+    "updates.check.title": "Updates",
+    "updates.check.already_running": "An update check is already running.",
+    "updates.check.up_to_date": "You are already using the latest version {version}.",
+    "updates.check.failed_title": "Update check failed",
+    "updates.check.failed": "The update check failed.\n\n{error}",
+
+    "updates.dialog.window_title": "Update available",
+    "updates.dialog.available": "A new version is available",
+    "updates.dialog.version": "Installed: {current}\nAvailable: {new}",
+    "updates.dialog.release_notes": "What's new",
+    "updates.dialog.no_notes": "No release notes are available for this release.",
+    "updates.dialog.open_release": "Open release",
+    "updates.dialog.later": "Later",
+    "updates.dialog.install": "Install update",
+    "updates.dialog.appimage_required": "Automatic installation is only available when Mod Manager is running as an AppImage.",
+
+    "updates.status.downloading": "Downloading and verifying update …",
+    "updates.status.installing": "The update has been verified. The application will close, update itself and restart …",
+    "updates.status.failed": "Update failed: {error}",
+    "updates.status.cancelled": "The update download was cancelled.",
+
+    "updates.error.repo_not_configured": "The GitHub repository for the auto-updater has not been configured yet.",
+    "updates.error.no_digest": "No SHA-256 digest was found for this release.",
+    "updates.error.invalid_download": "The downloaded update file is invalid."
 }
