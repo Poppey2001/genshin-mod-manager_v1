@@ -7,7 +7,9 @@ from PySide6.QtCore import (
     Qt,
     QTimer,
 )
-
+from app.games import (
+    GameScope,
+)
 from PySide6.QtWidgets import (
     QMessageBox,
     QSplitter,
@@ -149,8 +151,15 @@ class LibraryPage(QWidget):
         # Mod Manager
         # --------------------------------------------------
 
-        mod_manager = ModManager(
-            config=self.config
+        self.game_scope = GameScope(
+            config=self.config,
+            game_id=(
+                self.config.selected_game
+            ),
+        )
+
+        self.mod_manager = ModManager(
+            config=self.game_scope
         )
 
         # --------------------------------------------------
@@ -159,7 +168,7 @@ class LibraryPage(QWidget):
 
         self.mod_action_controller = (
             LibraryModActionController(
-                mod_manager=mod_manager
+                mod_manager=self.mod_manager
             )
         )
 
@@ -179,7 +188,7 @@ class LibraryPage(QWidget):
 
         self.bulk_controller = (
             LibraryBulkController(
-                mod_manager=mod_manager,
+                mod_manager=self.mod_manager,
                 parent=self,
             )
         )
@@ -307,7 +316,7 @@ class LibraryPage(QWidget):
 
         self.mod_info_controller = (
             LibraryModInfoController(
-                mod_manager=mod_manager,
+                mod_manager=self.mod_manager,
                 selected_mod_provider=(
                     self.mod_list_widget.selected_mod
                 ),
@@ -700,7 +709,8 @@ class LibraryPage(QWidget):
         started = self.import_controller.start(
             sources=prepared_import.sources,
             library_root=(
-                self.config.mod_library_directory
+                self.game_scope
+                .mod_library_directory
             ),
             options=prepared_import.options,
         )
@@ -826,6 +836,28 @@ class LibraryPage(QWidget):
             )
         )
 
+    def request_external_import(
+        self,
+        paths: list[Path],
+    ) -> None:
+        """
+        Öffentlicher Einstieg für Mods,
+        die außerhalb der LibraryPage
+        heruntergeladen wurden.
+
+        Beispielsweise GameBanana.
+        """
+
+        normalized_paths = [
+            Path(path)
+            .expanduser()
+            for path in paths
+        ]
+
+        self._request_import(
+            normalized_paths
+        )
+
     def cancel_import(
         self,
     ) -> None:
@@ -852,19 +884,28 @@ class LibraryPage(QWidget):
             return
 
         mods_directory = (
-            self.config.mod_library_directory
+            self.game_scope
+            .mod_library_directory
         )
-
-        if not mods_directory.exists():
-            self.filter_bar.set_path_text(
-                str(mods_directory)
+        try:
+            mods_directory.mkdir(
+                parents=True,
+                exist_ok=True,
             )
 
+        except OSError as error:
             self.operation_status.set_status(
                 tr(
-                    "library.status."
-                    "library_missing"
+                    "library.status.directory_failed"
                 )
+            )
+
+            QMessageBox.critical(
+                self,
+                tr(
+                    "library.error.directory.title"
+                ),
+                str(error),
             )
 
             return
@@ -1497,4 +1538,93 @@ class LibraryPage(QWidget):
 
         self.setStyleSheet(
             stylesheet
+        )
+        
+    def can_change_game(
+        self,
+    ) -> bool:
+        """
+        Ein Spielwechsel ist nur erlaubt,
+        wenn keine Library-Operation läuft.
+        """
+
+        return not (
+            self.operation_state.is_running()
+        )
+
+
+    def on_game_changed(
+        self,
+        game_id: str,
+    ) -> None:
+        """
+        Wechselt die gesamte Library atomar
+        auf ein anderes XXMI-Spiel.
+        """
+
+        if self.operation_state.is_running():
+            return
+
+        # --------------------------------------------------
+        # ModManager auf das neue Spiel umstellen
+        # --------------------------------------------------
+
+        self.game_scope.set_game(
+            game_id
+        )
+
+        mods_directory = (
+            self.game_scope
+            .mod_library_directory
+        )
+
+        # --------------------------------------------------
+        # Alte Auswahl und Modliste entfernen
+        # --------------------------------------------------
+
+        self.mod_list_widget.set_mods(
+            mods=[],
+            state_provider=(
+                self.mod_action_controller
+                .get_state_for_path
+            ),
+        )
+
+        self.filter_bar.set_mods(
+            []
+        )
+
+        self.filter_bar.set_path_text(
+            str(
+                mods_directory
+            )
+        )
+
+        self.filter_bar.set_location_text(
+            tr(
+                "library.location.checking"
+            )
+        )
+
+        self.stats_widget.set_values(
+            total=0,
+            active=0,
+            conflicts=0,
+            characters=0,
+        )
+
+        self.selection_controller.refresh()
+
+        self.operation_status.set_status(
+            tr(
+                "library.status.game_changed",
+                game=(
+                    self.game_scope.game.name
+                ),
+            )
+        )
+
+        QTimer.singleShot(
+            0,
+            self.scan_mods,
         )

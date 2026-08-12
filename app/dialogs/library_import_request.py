@@ -9,7 +9,15 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QWidget,
 )
+from app.dialogs.archive_security_dialog import (
+    review_archive_security,
+)
 
+from app.services.archive_security import (
+    ArchiveSecurityError,
+    inspect_archive,
+    is_supported_archive,
+)
 from app.dialogs.import_options_dialog import (
     ImportOptionsDialog,
 )
@@ -69,7 +77,56 @@ def prepare_import_request(
                 
 
         return None
+    # ========================================================
+    # Archiv-Sicherheitsprüfung
+    # ========================================================
 
+    security_reports = []
+
+    for path in supported_paths:
+        if not path.is_file():
+            continue
+
+        if not is_supported_archive(
+            path
+        ):
+            continue
+
+        try:
+            report = inspect_archive(
+                path
+            )
+
+        except ArchiveSecurityError as error:
+            QMessageBox.critical(
+                parent,
+                tr(
+                    "archive.security.scan_failed.title"
+                ),
+                (
+                    tr(
+                        "archive.security.scan_failed.message",
+                        archive=path.name,
+                    )
+                    + "\n\n"
+                    + str(error)
+                ),
+            )
+
+            return None
+
+        security_reports.append(
+            report
+        )
+
+    if security_reports:
+        allowed = review_archive_security(
+            reports=security_reports,
+            parent=parent,
+        )
+
+        if not allowed:
+            return None
     dialog = ImportOptionsDialog(
         sources=supported_paths,
         parent=parent,

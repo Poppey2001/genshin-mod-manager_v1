@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import (
+    dataclass,
+    field,
+    asdict,
+)
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-
+from app.games import (
+    GameConfig,
+    GameId,
+    all_games,
+    find_game,
+    get_game,
+)
 from platformdirs import (
     user_cache_path,
     user_config_path,
@@ -47,6 +57,21 @@ PREVIEW_DIR = DATA_DIR / "previews"
 BACKUP_DIR = DATA_DIR / "backups"
 FIXED_MODS_DIR = DATA_DIR / "fixed-mods"
 
+def create_default_game_configs(
+) -> dict[
+    str,
+    GameConfig,
+]:
+    """
+    Erstellt für jedes unterstützte XXMI-Spiel
+    eine eigene Konfiguration.
+    """
+
+    return {
+        game.id.value: GameConfig()
+        for game in all_games()
+    }
+
 @dataclass(slots=True)
 class AppConfig:
     """
@@ -55,9 +80,18 @@ class AppConfig:
     Pfade werden als Strings gespeichert, damit die Konfiguration
     problemlos als JSON geschrieben werden kann.
     """
-    library_path: str | None = None
-    active_mods_path: str | None = None
-    launcher_path: str | None = None
+    selected_game: str = (
+        GameId.GENSHIN_IMPACT.value
+    )
+
+    games: dict[
+        str,
+        GameConfig,
+    ] = field(
+        default_factory=(
+            create_default_game_configs
+        )
+    )
 
     selected_profile: str = "Default"
 
@@ -75,34 +109,28 @@ class AppConfig:
     first_start: bool = True
 
     @property
-    def active_mods_directory(self) -> Path | None:
-        """Gibt den aktiven Mods-Ordner als Path-Objekt zurück."""
-        if not self.active_mods_path:
-            return None
-
-        return Path(self.active_mods_path).expanduser()
-
+    def active_mods_directory(
+        self,
+    ) -> Path | None:
+        return self.active_mods_directory_for(
+            self.selected_game
+        )
+        
     @property
-    def launcher_file(self) -> Path | None:
-        """Gibt den eingestellten Launcher als Path-Objekt zurück."""
-        if not self.launcher_path:
-            return None
-
-        return Path(self.launcher_path).expanduser()
+    def launcher_file(
+        self,
+    ) -> Path | None:
+        return self.launcher_file_for(
+            self.selected_game
+        )
     @property
-    def mod_library_directory(self) -> Path:
-        """
-        Gibt den Bibliotheksordner zurück.
-
-        Ohne benutzerdefinierten Pfad wird der normale
-        XDG-Datenordner verwendet.
-        """
-        if not self.library_path:
-            return MOD_LIBRARY_DIR
-
-        return Path(
-            self.library_path
-        ).expanduser()
+    def mod_library_directory(
+        self,
+    ) -> Path:
+        return self.mod_library_directory_for(
+            self.selected_game
+        )
+        
     def set_mod_library_directory(
         self,
         path: Path | str | None,
@@ -146,6 +174,110 @@ class AppConfig:
             candidate = Path.cwd() / candidate
 
         self.launcher_path = str(candidate) 
+
+    @property
+    def current_game(
+        self,
+    ):
+        """
+        Gibt die Definition des aktuell
+        ausgewählten Spiels zurück.
+        """
+
+        game = find_game(
+            self.selected_game
+        )
+
+        if game is not None:
+            return game
+
+        return get_game(
+            GameId.GENSHIN_IMPACT
+        )
+
+
+    @property
+    def current_game_config(
+        self,
+    ) -> GameConfig:
+        """
+        Gibt die Benutzerkonfiguration
+        des aktuell ausgewählten Spiels zurück.
+        """
+
+        game_id = (
+            self.current_game.id.value
+        )
+
+        game_config = self.games.get(
+            game_id
+        )
+
+        if game_config is None:
+            game_config = GameConfig()
+
+            self.games[
+                game_id
+            ] = game_config
+
+        return game_config
+
+
+    def get_game_config(
+        self,
+        game_id: (
+            GameId
+            | str
+        ),
+    ) -> GameConfig:
+        """
+        Gibt die Konfiguration eines bestimmten
+        Spiels zurück.
+        """
+
+        game = get_game(
+            game_id
+        )
+
+        key = game.id.value
+
+        config = self.games.get(
+            key
+        )
+
+        if config is None:
+            config = GameConfig()
+
+            self.games[
+                key
+            ] = config
+
+        return config
+
+
+    def set_selected_game(
+        self,
+        game_id: (
+            GameId
+            | str
+        ),
+    ) -> None:
+        """
+        Wechselt das aktuell ausgewählte Spiel.
+        """
+
+        game = get_game(
+            game_id
+        )
+
+        self.selected_game = (
+            game.id.value
+        )
+
+        # Sicherstellen, dass eine Config existiert.
+        self.get_game_config(
+            game.id
+        )
 
     def validate(self) -> None:
         """
@@ -205,26 +337,260 @@ class AppConfig:
 
         if not self.selected_profile.strip():
             self.selected_profile = "Default"
+            
+        # --------------------------------------------------
+        # Ausgewähltes Spiel
+        # --------------------------------------------------
 
-    def to_dict(self) -> dict[str, Any]:
-        """Konvertiert die Konfiguration in ein JSON-kompatibles Dictionary."""
-        return asdict(self)
+        selected_game = find_game(
+            self.selected_game
+        )
+
+        if selected_game is None:
+            logger.warning(
+                (
+                    "Ungültiges ausgewähltes Spiel "
+                    "'%s'. Verwende Genshin Impact."
+                ),
+                self.selected_game,
+            )
+
+            self.selected_game = (
+                GameId.GENSHIN_IMPACT.value
+            )
+
+
+        # --------------------------------------------------
+        # Fehlende GameConfigs ergänzen
+        # --------------------------------------------------
+
+        for game in all_games():
+            game_id = game.id.value
+
+            if game_id not in self.games:
+                self.games[
+                    game_id
+                ] = GameConfig()
+
+    def to_dict(
+        self,
+    ) -> dict[str, Any]:
+        """
+        Konvertiert die komplette Konfiguration
+        in ein JSON-kompatibles Dictionary.
+        """
+
+        return {
+            "selected_game": (
+                self.selected_game
+            ),
+
+            "games": {
+                game_id: game_config.to_dict()
+                for (
+                    game_id,
+                    game_config,
+                )
+                in self.games.items()
+            },
+
+            "selected_profile": (
+                self.selected_profile
+            ),
+
+            "use_symlinks": (
+                self.use_symlinks
+            ),
+
+            "create_backups": (
+                self.create_backups
+            ),
+
+            "theme": (
+                self.theme
+            ),
+
+            "language": (
+                self.language
+            ),
+
+            "auto_check_updates": (
+                self.auto_check_updates
+            ),
+
+            "update_channel": (
+                self.update_channel
+            ),
+
+            "window_width": (
+                self.window_width
+            ),
+
+            "window_height": (
+                self.window_height
+            ),
+
+            "first_start": (
+                self.first_start
+            ),
+        }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> AppConfig:
+    def from_dict(
+        cls,
+        data: dict[
+            str,
+            Any,
+        ],
+    ) -> AppConfig:
         """
-        Erstellt eine Konfiguration aus einem Dictionary.
+        Lädt neue Multi-Game-Konfigurationen
+        und migriert automatisch alte
+        Genshin-Konfigurationen.
+        """
 
-        Unbekannte Werte werden ignoriert. Dadurch bleiben ältere
-        Konfigurationsdateien mit neuen Programmversionen kompatibel.
-        """
         config = cls()
 
-        string_or_none_fields = (
-            "library_path",
-            "active_mods_path",
-            "launcher_path",
+        # ==================================================
+        # Neue Multi-Game-Konfiguration
+        # ==================================================
+
+        selected_game = data.get(
+            "selected_game"
         )
+
+        if isinstance(
+            selected_game,
+            str,
+        ):
+            config.selected_game = (
+                selected_game
+            )
+
+        raw_games = data.get(
+            "games"
+        )
+
+        if isinstance(
+            raw_games,
+            dict,
+        ):
+            for (
+                game_id,
+                raw_game_config,
+            ) in raw_games.items():
+                if not isinstance(
+                    game_id,
+                    str,
+                ):
+                    continue
+
+                if find_game(
+                    game_id
+                ) is None:
+                    continue
+
+                if not isinstance(
+                    raw_game_config,
+                    dict,
+                ):
+                    continue
+
+                config.games[
+                    game_id
+                ] = (
+                    GameConfig.from_dict(
+                        raw_game_config
+                    )
+                )
+
+        # ==================================================
+        # Legacy-Genshin-Migration
+        # ==================================================
+        #
+        # Alte Config:
+        #
+        # {
+        #     "library_path": "...",
+        #     "active_mods_path": "...",
+        #     "launcher_path": "..."
+        # }
+        #
+        # wird automatisch:
+        #
+        # games["genshin-impact"]
+        #
+        # ==================================================
+
+        if not isinstance(
+            raw_games,
+            dict,
+        ):
+            genshin_config = (
+                config.get_game_config(
+                    GameId.GENSHIN_IMPACT
+                )
+            )
+            
+            genshin_config.library_path = str(
+                MOD_LIBRARY_DIR
+            )
+
+            legacy_library_path = (
+                data.get(
+                    "library_path"
+                )
+            )
+
+            legacy_active_mods_path = (
+                data.get(
+                    "active_mods_path"
+                )
+            )
+
+            legacy_launcher_path = (
+                data.get(
+                    "launcher_path"
+                )
+            )
+
+            if isinstance(
+                legacy_library_path,
+                str,
+            ):
+                genshin_config.library_path = (
+                    legacy_library_path
+                )
+
+            if (
+                legacy_active_mods_path is None
+                or isinstance(
+                    legacy_active_mods_path,
+                    str,
+                )
+            ):
+                genshin_config.active_mods_path = (
+                    legacy_active_mods_path
+                )
+
+            if (
+                legacy_launcher_path is None
+                or isinstance(
+                    legacy_launcher_path,
+                    str,
+                )
+            ):
+                genshin_config.launcher_path = (
+                    legacy_launcher_path
+                )
+
+            config.selected_game = (
+                GameId.GENSHIN_IMPACT.value
+            )
+
+        # ==================================================
+        # Globale Strings
+        # ==================================================
 
         string_fields = (
             "selected_profile",
@@ -233,6 +599,25 @@ class AppConfig:
             "update_channel",
         )
 
+        for field_name in string_fields:
+            value = data.get(
+                field_name
+            )
+
+            if isinstance(
+                value,
+                str,
+            ):
+                setattr(
+                    config,
+                    field_name,
+                    value,
+                )
+
+        # ==================================================
+        # Globale boolesche Werte
+        # ==================================================
+
         boolean_fields = (
             "use_symlinks",
             "create_backups",
@@ -240,35 +625,50 @@ class AppConfig:
             "auto_check_updates",
         )
 
+        for field_name in boolean_fields:
+            value = data.get(
+                field_name
+            )
+
+            if isinstance(
+                value,
+                bool,
+            ):
+                setattr(
+                    config,
+                    field_name,
+                    value,
+                )
+
+        # ==================================================
+        # Integer
+        # ==================================================
+
         integer_fields = (
             "window_width",
             "window_height",
         )
 
-        for field_name in string_or_none_fields:
-            value = data.get(field_name)
-
-            if value is None or isinstance(value, str):
-                setattr(config, field_name, value)
-
-        for field_name in string_fields:
-            value = data.get(field_name)
-
-            if isinstance(value, str):
-                setattr(config, field_name, value)
-
-        for field_name in boolean_fields:
-            value = data.get(field_name)
-
-            if isinstance(value, bool):
-                setattr(config, field_name, value)
-
         for field_name in integer_fields:
-            value = data.get(field_name)
+            value = data.get(
+                field_name
+            )
 
-            # bool ist in Python eine Unterklasse von int.
-            if isinstance(value, int) and not isinstance(value, bool):
-                setattr(config, field_name, value)
+            if (
+                isinstance(
+                    value,
+                    int,
+                )
+                and not isinstance(
+                    value,
+                    bool,
+                )
+            ):
+                setattr(
+                    config,
+                    field_name,
+                    value,
+                )
 
         config.validate()
 
@@ -318,6 +718,17 @@ class AppConfig:
             config.save()
 
             return config
+        
+        for game in all_games():
+            game_library_directory = (
+                MOD_LIBRARY_DIR
+                / game.library_folder
+            )
+
+            game_library_directory.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
 
         try:
             raw_content = CONFIG_FILE.read_text(
@@ -356,7 +767,149 @@ class AppConfig:
             config.save()
 
             return config
+        
+    def mod_library_directory_for(
+        self,
+        game_id: GameId | str,
+    ) -> Path:
+        """
+        Gibt die Mod-Bibliothek eines bestimmten
+        Spiels zurück, unabhängig von selected_game.
+        """
 
+        game = get_game(
+            game_id
+        )
+
+        game_config = self.get_game_config(
+            game.id
+        )
+
+        if game_config.library_path:
+            return Path(
+                game_config.library_path
+            ).expanduser()
+
+        return (
+            MOD_LIBRARY_DIR
+            / game.library_folder
+        )
+
+
+    def active_mods_directory_for(
+        self,
+        game_id: GameId | str,
+    ) -> Path | None:
+        """
+        Gibt den aktiven XXMI-Mods-Ordner eines
+        bestimmten Spiels zurück.
+        """
+
+        game_config = self.get_game_config(
+            game_id
+        )
+
+        if not game_config.active_mods_path:
+            return None
+
+        return Path(
+            game_config.active_mods_path
+        ).expanduser()
+
+
+    def launcher_file_for(
+        self,
+        game_id: GameId | str,
+    ) -> Path | None:
+        """
+        Gibt den Launcher eines bestimmten
+        Spiels zurück.
+        """
+
+        game_config = self.get_game_config(
+            game_id
+        )
+
+        if not game_config.launcher_path:
+            return None
+
+        return Path(
+            game_config.launcher_path
+        ).expanduser()
+
+    # ============================================================
+    # Legacy-kompatible Pfad-Properties
+    #
+    # Bestehender Code darf weiterhin
+    #
+    # config.library_path
+    # config.active_mods_path
+    # config.launcher_path
+    #
+    # verwenden.
+    #
+    # Intern werden diese Werte jetzt aber aus der
+    # Konfiguration des aktuell ausgewählten Spiels gelesen.
+    # ============================================================
+
+    @property
+    def library_path(
+        self,
+    ) -> str | None:
+        return (
+            self.current_game_config
+            .library_path
+        )
+
+
+    @library_path.setter
+    def library_path(
+        self,
+        value: str | None,
+    ) -> None:
+        self.current_game_config.library_path = (
+            value
+        )
+
+
+    @property
+    def active_mods_path(
+        self,
+    ) -> str | None:
+        return (
+            self.current_game_config
+            .active_mods_path
+        )
+
+
+    @active_mods_path.setter
+    def active_mods_path(
+        self,
+        value: str | None,
+    ) -> None:
+        self.current_game_config.active_mods_path = (
+            value
+        )
+
+
+    @property
+    def launcher_path(
+        self,
+    ) -> str | None:
+        return (
+            self.current_game_config
+            .launcher_path
+        )
+
+
+    @launcher_path.setter
+    def launcher_path(
+        self,
+        value: str | None,
+    ) -> None:
+        self.current_game_config.launcher_path = (
+            value
+        )
 
 def ensure_app_directories() -> None:
     """Erstellt alle vom Mod Manager benötigten Verzeichnisse."""
@@ -407,6 +960,9 @@ def backup_broken_config() -> Path | None:
         )
 
         return None
+    
+    
+    
 
 def set_mod_library_directory(
     self,

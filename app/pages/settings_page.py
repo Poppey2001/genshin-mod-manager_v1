@@ -1745,3 +1745,35 @@ class SettingsPage(QWidget):
             }
             """
         )
+        
+    def on_game_changed(
+        self,
+        _game_id: str,
+    ) -> None:
+        """
+        Lädt die Pfade des neu ausgewählten Spiels.
+        """
+
+        game_config = (
+            self.config.current_game_config
+        )
+
+        self.library_input.setText(
+            game_config.library_path
+            or str(
+                self.config
+                .mod_library_directory
+            )
+        )
+
+        self.active_mods_input.setText(
+            game_config.active_mods_path
+            or ""
+        )
+
+        self.launcher_input.setText(
+            game_config.launcher_path
+            or ""
+        )
+
+        self.status_label.clear()

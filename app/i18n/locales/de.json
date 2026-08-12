@@ -215,17 +215,20 @@
     "library.status.bulk_adopt_started": "Übernehmen der Konflikte wurde gestartet.",
 
     "library.error.stylesheet_load": "Das Stylesheet der Mod-Bibliothek konnte nicht geladen werden: {path}",
-
+    "library.status.game_changed": "Bibliothek für {game} wird geladen …",
+    "library.status.directory_failed": "Das Bibliotheksverzeichnis konnte nicht erstellt werden.",
+    "library.error.directory.title": "Bibliothek nicht verfügbar",
     "main.window_title": "Genshin Mod Manager",
 
     "main.sidebar.title": "Genshin",
     "main.sidebar.subtitle": "Mod Manager",
     "main.sidebar.version": "Version {version}",
 
-    "main.navigation.library": "Bibliothek",
-    "main.navigation.profiles": "Profile",
-    "main.navigation.conflicts": "Konflikte",
-    "main.navigation.settings": "Einstellungen",
+    "navigation.library": "Bibliothek",
+    "navigation.gamebanana": "GameBanana",
+    "navigation.profiles": "Profile",
+    "navigation.conflicts": "Konflikte",
+    "navigation.settings": "Einstellungen",
 
     "main.status.active_profile": "Aktives Profil: {profile}",
 
@@ -347,5 +350,84 @@
 
     "updates.error.repo_not_configured": "Das GitHub-Repository für den Auto-Updater wurde noch nicht konfiguriert.",
     "updates.error.no_digest": "Für das Release wurde kein SHA-256-Digest gefunden.",
-    "updates.error.invalid_download": "Die heruntergeladene Update-Datei ist ungültig."
+    "updates.error.invalid_download": "Die heruntergeladene Update-Datei ist ungültig.",
+
+    "game.selector.title": "Spiel",
+    "game.selector.importer": "XXMI Importer: {importer}",
+    "game.change.blocked.title": "Spiel kann nicht gewechselt werden",
+    "game.change.blocked.message": "Während eines laufenden Scans, Imports oder einer Sammelaktion kann das Spiel nicht gewechselt werden.",
+    "game.status.changed": "Aktives Spiel: {game}",
+
+    "gamebanana.title": "GameBanana",
+    "gamebanana.current_game": "Mods für {game} · {importer}",
+    "gamebanana.reference.placeholder": "GameBanana-Mod-URL oder Mod-ID eingeben …",
+    "gamebanana.lookup": "Mod laden",
+    "gamebanana.files": "Download-Datei",
+    "gamebanana.open_page": "Auf GameBanana öffnen",
+    "gamebanana.download_install": "Herunterladen & importieren",
+
+    "gamebanana.value.unknown": "Unbekannt",
+
+    "gamebanana.mod.author": "Autor: {author}",
+    "gamebanana.mod.game": "Spiel: {game}",
+    "gamebanana.mod.no_description": "Keine Beschreibung verfügbar.",
+
+    "gamebanana.status.loading": "GameBanana-Mod wird geladen …",
+    "gamebanana.status.loaded": "{count} Download-Datei(en) gefunden.",
+    "gamebanana.status.lookup_failed": "Die GameBanana-Mod konnte nicht geladen werden.",
+    "gamebanana.status.downloading": "{file} wird heruntergeladen …",
+    "gamebanana.status.download_bytes": "{current} heruntergeladen …",
+    "gamebanana.status.download_progress": "{current} von {total} heruntergeladen",
+    "gamebanana.status.download_finished": "Download abgeschlossen. Import wird vorbereitet …",
+    "gamebanana.status.download_failed": "Der Download ist fehlgeschlagen.",
+    "gamebanana.status.cancelled": "Der Download wurde abgebrochen.",
+    "gamebanana.status.cancelling": "Download wird abgebrochen …",
+
+    "gamebanana.busy.title": "GameBanana beschäftigt",
+    "gamebanana.busy.message": "Es läuft bereits eine GameBanana-Operation.",
+
+    "gamebanana.error.lookup.title": "GameBanana-Mod konnte nicht geladen werden",
+    "gamebanana.error.download.title": "GameBanana-Download fehlgeschlagen",
+    "gamebanana.error.download.start": "Der Download konnte nicht gestartet werden.",
+    "gamebanana.error.download.missing": "Die heruntergeladene Datei wurde nicht gefunden.",
+
+    "gamebanana.error.game_changed.title": "Falsches Spiel ausgewählt",
+    "gamebanana.error.game_changed.message": "Das aktive Spiel hat sich seit dem Download geändert. Die Datei wird deshalb nicht automatisch importiert.",
+
+    "archive.security.blocked.title": "Unsicheres Archiv blockiert",
+    "archive.security.blocked.message": "Das Archiv kann nicht importiert werden, weil mindestens eine unsichere Struktur erkannt wurde.",
+
+    "archive.security.warning.title": "Archiv enthält Dateien zur Überprüfung",
+    "archive.security.warning.message": "Das Archiv enthält ausführbare Dateien, Skripte oder Binärmodule. Solche Dateien können bei Mods legitim sein, sollten aber nur installiert werden, wenn du der Quelle vertraust.\n\nMöchtest du den Import fortsetzen?",
+
+    "archive.security.scan_failed.title": "Archivprüfung fehlgeschlagen",
+    "archive.security.scan_failed.message": "Das Archiv „{archive}“ konnte nicht sicher geprüft werden.",
+
+    "archive.security.more": "\n… und {count} weitere",
+
+    "gamebanana.browse.title": "Mods durchsuchen",
+    "gamebanana.search.placeholder": "In den neuesten Mods suchen …",
+    "gamebanana.search.button": "Suchen",
+    "gamebanana.latest": "Neueste",
+    "gamebanana.search.hint": "Die integrierte Suche durchsucht die neuesten GameBanana-Mods dieses Spiels. Ältere Mods kannst du unten direkt per URL oder Mod-ID öffnen.",
+    "gamebanana.previous": "Zurück",
+    "gamebanana.next": "Weiter",
+    "gamebanana.direct.title": "Mod direkt öffnen",
+    "gamebanana.details.title": "Mod-Details",
+    "gamebanana.mod.id": "GameBanana-ID: {id}",
+    "gamebanana.mod.category": "Kategorie: {category}",
+    "gamebanana.mod.stats": "Downloads: {downloads}   •   Likes: {likes}   •   Aufrufe: {views}",
+    "gamebanana.search.short.title": "Suchbegriff zu kurz",
+    "gamebanana.search.short.message": "Gib mindestens zwei Zeichen für die Suche ein.",
+    "gamebanana.status.searching": "Die neuesten GameBanana-Mods werden durchsucht …",
+    "gamebanana.status.loading_latest": "Die neuesten GameBanana-Mods werden geladen …",
+    "gamebanana.status.search_results": "{count} passende Mods gefunden.",
+    "gamebanana.status.search_empty": "Keine passenden Mods in den neuesten Einträgen gefunden.",
+    "gamebanana.status.latest_results": "{count} Mods geladen.",
+    "gamebanana.status.latest_empty": "Auf dieser Seite wurden keine Mods gefunden.",
+    "gamebanana.status.browse_failed": "Die GameBanana-Modliste konnte nicht geladen werden.",
+    "gamebanana.error.browse.title": "GameBanana-Browser",
+    "gamebanana.browse.page": "Seite {page}",
+    "gamebanana.browse.search_mode": "Suchergebnis"
+
 }

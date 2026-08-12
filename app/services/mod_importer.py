@@ -1,48 +1,44 @@
 from __future__ import annotations
 
-import os
-import re
 import shutil
-import stat
-import tarfile
 import tempfile
 import time
 import uuid
-import zipfile
 
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path, PurePosixPath
-from typing import BinaryIO, Callable
+from pathlib import Path
+from typing import Callable
 
 from app.platform_support import (
-    IS_WINDOWS,
     paths_overlap,
     sanitize_path_segment,
 )
 
-from app.services.archive_support import (
-    is_supported_archive,
-    extract_archive,
+from app.services.archive_extractor import (
+    ArchiveExtractionCancelled,
+    ArchiveExtractionError,
+    extract_archive_securely,
 )
 
-MAX_ARCHIVE_FILES = 30_000
-MAX_UNPACKED_SIZE = 20 * 1024 * 1024 * 1024
-COPY_BUFFER_SIZE = 1024 * 1024
+from app.services.archive_security import (
+    is_supported_archive,
+)
+
 
 MANAGER_MARKER = ".gmm-managed.json"
 
 SUPPORTED_ARCHIVE_SUFFIXES = (
-    ".zip",
-    ".tar",
-    ".tar.gz",
-    ".tgz",
     ".tar.bz2",
-    ".tbz2",
+    ".tar.gz",
     ".tar.xz",
+    ".tbz2",
+    ".tgz",
     ".txz",
-    ".rar",
+    ".zip",
     ".7z",
+    ".rar",
+    ".tar",
 )
 
 
@@ -72,7 +68,7 @@ class ImportCancelledError(ModImportError):
 
 
 class UnsafeArchiveError(ModImportError):
-    """Das Archiv enthält unsichere Einträge."""
+    """Das Archiv konnte nicht sicher verarbeitet werden."""
 
 
 class UnsupportedArchiveError(ModImportError):
@@ -134,9 +130,11 @@ class ModImporter:
     ) -> ImportBatchResult:
         started_at = time.monotonic()
 
-        library = Path(
-            library_root
-        ).expanduser().absolute()
+        library = (
+            Path(library_root)
+            .expanduser()
+            .absolute()
+        )
 
         try:
             library.mkdir(
@@ -183,7 +181,7 @@ class ModImporter:
                 cancel_callback
             )
 
-            if progress_callback:
+            if progress_callback is not None:
                 progress_callback(
                     index - 1,
                     total_sources,
@@ -212,9 +210,11 @@ class ModImporter:
                     ),
                 )
 
-            results.append(result)
+            results.append(
+                result
+            )
 
-            if progress_callback:
+            if progress_callback is not None:
                 progress_callback(
                     index,
                     total_sources,
@@ -224,7 +224,8 @@ class ModImporter:
         return ImportBatchResult(
             items=tuple(results),
             duration_seconds=(
-                time.monotonic() - started_at
+                time.monotonic()
+                - started_at
             ),
         )
 
@@ -266,8 +267,9 @@ class ModImporter:
                 cancel_callback=cancel_callback,
             )
 
-        if source.is_file() and has_supported_archive_suffix(
-            source
+        if (
+            source.is_file()
+            and is_supported_archive(source)
         ):
             return self._import_archive(
                 archive_path=source,
@@ -326,8 +328,12 @@ class ModImporter:
         options: ImportOptions,
         cancel_callback: CancelCallback | None,
     ) -> ImportItemResult:
+        self._check_cancelled(
+            cancel_callback
+        )
+
         with tempfile.TemporaryDirectory(
-            prefix="gmm-import-"
+            prefix="xxmimm-import-"
         ) as temporary_directory:
             extraction_root = Path(
                 temporary_directory
@@ -339,11 +345,16 @@ class ModImporter:
                 cancel_callback=cancel_callback,
             )
 
-            import_source, requested_name = (
-                self._select_extracted_root(
-                    extraction_root=extraction_root,
-                    archive_path=archive_path,
-                )
+            self._check_cancelled(
+                cancel_callback
+            )
+
+            (
+                import_source,
+                requested_name,
+            ) = self._select_extracted_root(
+                extraction_root=extraction_root,
+                archive_path=archive_path,
             )
 
             destination = self._select_destination(
@@ -374,246 +385,45 @@ class ModImporter:
             status=ImportStatus.IMPORTED,
             message="Archiv wurde importiert.",
         )
-        
+
     def _extract_archive(
         self,
         archive_path: Path,
         extraction_root: Path,
         cancel_callback: CancelCallback | None,
     ) -> None:
-        if is_supported_archive(
+        if not is_supported_archive(
             archive_path
         ):
-            extract_archive(
-                archive_path,
-                extraction_root,
+            raise UnsupportedArchiveError(
+                "Nicht unterstütztes Archiv: "
+                f"{archive_path.name}"
             )
-            return
 
-        raise UnsupportedArchiveError(
-            f"Nicht unterstütztes Archiv: "
-            f"{archive_path.name}"
+        self._check_cancelled(
+            cancel_callback
         )
 
-    def _extract_zip(
-        self,
-        archive_path: Path,
-        extraction_root: Path,
-        cancel_callback: CancelCallback | None,
-    ) -> None:
-        total_written = 0
-
-        with zipfile.ZipFile(
-            archive_path,
-            mode="r",
-        ) as archive:
-            entries = archive.infolist()
-
-            if len(entries) > MAX_ARCHIVE_FILES:
-                raise UnsafeArchiveError(
-                    "Das Archiv enthält zu viele Dateien.\n\n"
-                    f"Maximum: {MAX_ARCHIVE_FILES}"
-                )
-
-            declared_size = sum(
-                entry.file_size
-                for entry in entries
-                if not entry.is_dir()
+        try:
+            extract_archive_securely(
+                source=archive_path,
+                destination=extraction_root,
+                cancel_callback=cancel_callback,
             )
 
-            if declared_size > MAX_UNPACKED_SIZE:
-                raise UnsafeArchiveError(
-                    "Das Archiv ist entpackt zu groß.\n\n"
-                    f"Maximum: {format_size(MAX_UNPACKED_SIZE)}"
-                )
+        except ArchiveExtractionCancelled as error:
+            raise ImportCancelledError(
+                "Der Import wurde abgebrochen."
+            ) from error
 
-            for entry in entries:
-                self._check_cancelled(
-                    cancel_callback
-                )
+        except ArchiveExtractionError as error:
+            raise UnsafeArchiveError(
+                str(error)
+            ) from error
 
-                if self._zip_entry_is_symlink(
-                    entry
-                ):
-                    raise UnsafeArchiveError(
-                        "Das ZIP-Archiv enthält eine "
-                        "symbolische Verknüpfung.\n\n"
-                        f"Eintrag: {entry.filename}"
-                    )
-
-                destination = self._safe_archive_target(
-                    extraction_root=extraction_root,
-                    member_name=entry.filename,
-                )
-
-                if destination is None:
-                    continue
-
-                if entry.is_dir():
-                    destination.mkdir(
-                        parents=True,
-                        exist_ok=True,
-                    )
-                    continue
-
-                destination.parent.mkdir(
-                    parents=True,
-                    exist_ok=True,
-                )
-
-                with archive.open(
-                    entry,
-                    mode="r",
-                ) as source_file:
-                    with destination.open(
-                        "wb"
-                    ) as destination_file:
-                        total_written = self._copy_stream(
-                            source=source_file,
-                            destination=destination_file,
-                            current_total=total_written,
-                            cancel_callback=cancel_callback,
-                        )
-
-                mode = (
-                    entry.external_attr >> 16
-                ) & 0o777
-
-                if mode and not IS_WINDOWS:
-                    try:
-                        destination.chmod(mode)
-                    except OSError:
-                        pass
-
-    def _extract_tar(
-        self,
-        archive_path: Path,
-        extraction_root: Path,
-        cancel_callback: CancelCallback | None,
-    ) -> None:
-        total_written = 0
-
-        with tarfile.open(
-            archive_path,
-            mode="r:*",
-        ) as archive:
-            members = archive.getmembers()
-
-            if len(members) > MAX_ARCHIVE_FILES:
-                raise UnsafeArchiveError(
-                    "Das Archiv enthält zu viele Einträge.\n\n"
-                    f"Maximum: {MAX_ARCHIVE_FILES}"
-                )
-
-            declared_size = sum(
-                member.size
-                for member in members
-                if member.isfile()
-            )
-
-            if declared_size > MAX_UNPACKED_SIZE:
-                raise UnsafeArchiveError(
-                    "Das Archiv ist entpackt zu groß.\n\n"
-                    f"Maximum: {format_size(MAX_UNPACKED_SIZE)}"
-                )
-
-            for member in members:
-                self._check_cancelled(
-                    cancel_callback
-                )
-
-                if (
-                    member.issym()
-                    or member.islnk()
-                    or member.isdev()
-                    or member.isfifo()
-                ):
-                    raise UnsafeArchiveError(
-                        "Das TAR-Archiv enthält einen nicht "
-                        "erlaubten Link oder Gerätedatei-Eintrag.\n\n"
-                        f"Eintrag: {member.name}"
-                    )
-
-                destination = self._safe_archive_target(
-                    extraction_root=extraction_root,
-                    member_name=member.name,
-                )
-
-                if destination is None:
-                    continue
-
-                if member.isdir():
-                    destination.mkdir(
-                        parents=True,
-                        exist_ok=True,
-                    )
-                    continue
-
-                if not member.isfile():
-                    continue
-
-                extracted_file = archive.extractfile(
-                    member
-                )
-
-                if extracted_file is None:
-                    continue
-
-                destination.parent.mkdir(
-                    parents=True,
-                    exist_ok=True,
-                )
-
-                with extracted_file:
-                    with destination.open(
-                        "wb"
-                    ) as destination_file:
-                        total_written = self._copy_stream(
-                            source=extracted_file,
-                            destination=destination_file,
-                            current_total=total_written,
-                            cancel_callback=cancel_callback,
-                        )
-                if not IS_WINDOWS:
-                    try:
-                        destination.chmod(
-                            member.mode & 0o777
-                        )
-                    except OSError:
-                        pass
-
-    def _copy_stream(
-        self,
-        source: BinaryIO,
-        destination: BinaryIO,
-        current_total: int,
-        cancel_callback: CancelCallback | None,
-    ) -> int:
-        total_written = current_total
-
-        while True:
-            self._check_cancelled(
-                cancel_callback
-            )
-
-            chunk = source.read(
-                COPY_BUFFER_SIZE
-            )
-
-            if not chunk:
-                break
-
-            total_written += len(chunk)
-
-            if total_written > MAX_UNPACKED_SIZE:
-                raise UnsafeArchiveError(
-                    "Das Archiv überschreitet beim Entpacken "
-                    "die erlaubte Gesamtgröße."
-                )
-
-            destination.write(chunk)
-
-        return total_written
+        self._check_cancelled(
+            cancel_callback
+        )
 
     def _copy_tree_atomic(
         self,
@@ -629,11 +439,19 @@ class ModImporter:
             destination.parent
             / (
                 f".{destination.name}."
-                f"gmm-import-{uuid.uuid4().hex}.tmp"
+                f"xxmimm-import-{uuid.uuid4().hex}.tmp"
             )
         )
 
         try:
+            if (
+                temporary_destination.exists()
+                or temporary_destination.is_symlink()
+            ):
+                self._remove_path(
+                    temporary_destination
+                )
+
             shutil.copytree(
                 source,
                 temporary_destination,
@@ -660,11 +478,16 @@ class ModImporter:
             )
 
         except Exception:
-            if temporary_destination.exists():
-                shutil.rmtree(
-                    temporary_destination,
-                    ignore_errors=True,
-                )
+            try:
+                if (
+                    temporary_destination.exists()
+                    or temporary_destination.is_symlink()
+                ):
+                    self._remove_path(
+                        temporary_destination
+                    )
+            except OSError:
+                pass
 
             raise
 
@@ -673,14 +496,21 @@ class ModImporter:
         extraction_root: Path,
         archive_path: Path,
     ) -> tuple[Path, str]:
-        entries = [
-            path
-            for path in extraction_root.iterdir()
-            if path.name not in {
-                "__MACOSX",
-                ".DS_Store",
-            }
-        ]
+        try:
+            entries = [
+                path
+                for path in extraction_root.iterdir()
+                if path.name not in {
+                    "__MACOSX",
+                    ".DS_Store",
+                }
+            ]
+        except OSError as error:
+            raise ModImportError(
+                "Der extrahierte Archivinhalt "
+                "konnte nicht gelesen werden.\n\n"
+                f"{error}"
+            ) from error
 
         if not entries:
             raise ModImportError(
@@ -690,6 +520,7 @@ class ModImporter:
         if (
             len(entries) == 1
             and entries[0].is_dir()
+            and not entries[0].is_symlink()
         ):
             return (
                 entries[0],
@@ -715,7 +546,16 @@ class ModImporter:
             requested_name
         )
 
-        destination = target_root / safe_name
+        if not safe_name:
+            raise ModImportError(
+                "Für den Mod konnte kein gültiger "
+                "Zielname erzeugt werden."
+            )
+
+        destination = (
+            target_root
+            / safe_name
+        )
 
         if not (
             destination.exists()
@@ -723,7 +563,10 @@ class ModImporter:
         ):
             return destination
 
-        if conflict_policy == ConflictPolicy.SKIP:
+        if (
+            conflict_policy
+            == ConflictPolicy.SKIP
+        ):
             return None
 
         counter = 2
@@ -761,95 +604,44 @@ class ModImporter:
             else ""
         )
 
-        if mod_type and not character:
+        if (
+            mod_type
+            and not character
+        ):
             raise ModImportError(
                 "Für einen Mod-Typ muss auch ein Charakter "
                 "angegeben werden."
             )
 
         if character:
-            target_root /= sanitize_path_segment(
+            safe_character = sanitize_path_segment(
                 character
             )
 
+            if not safe_character:
+                raise ModImportError(
+                    "Der angegebene Charaktername ist ungültig."
+                )
+
+            target_root /= (
+                safe_character
+            )
+
         if mod_type:
-            target_root /= sanitize_path_segment(
+            safe_mod_type = sanitize_path_segment(
                 mod_type
             )
 
+            if not safe_mod_type:
+                raise ModImportError(
+                    "Der angegebene Mod-Typ ist ungültig."
+                )
+
+            target_root /= (
+                safe_mod_type
+            )
+
         return target_root
-
-    @staticmethod
-    def _safe_archive_target(
-        extraction_root: Path,
-        member_name: str,
-    ) -> Path | None:
-        normalized_name = member_name.replace(
-            "\\",
-            "/",
-        )
-
-        if "\x00" in normalized_name:
-            raise UnsafeArchiveError(
-                "Das Archiv enthält einen ungültigen Dateinamen."
-            )
-
-        archive_path = PurePosixPath(
-            normalized_name
-        )
-
-        if archive_path.is_absolute():
-            raise UnsafeArchiveError(
-                "Das Archiv enthält einen absoluten Pfad.\n\n"
-                f"Eintrag: {member_name}"
-            )
-
-        parts = [
-            part
-            for part in archive_path.parts
-            if part not in {
-                "",
-                ".",
-            }
-        ]
-
-        if not parts:
-            return None
-
-        if any(
-            part == ".."
-            for part in parts
-        ):
-            raise UnsafeArchiveError(
-                "Das Archiv versucht, außerhalb des "
-                "Importordners zu schreiben.\n\n"
-                f"Eintrag: {member_name}"
-            )
-
-        if re.match(
-            r"^[A-Za-z]:$",
-            parts[0],
-        ):
-            raise UnsafeArchiveError(
-                "Das Archiv enthält einen Windows-Laufwerkspfad.\n\n"
-                f"Eintrag: {member_name}"
-            )
-
-        return extraction_root.joinpath(
-            *parts
-        )
-
-    @staticmethod
-    def _zip_entry_is_symlink(
-        entry: zipfile.ZipInfo,
-    ) -> bool:
-        unix_mode = (
-            entry.external_attr >> 16
-        )
-
-        return stat.S_ISLNK(
-            unix_mode
-        )
 
     @staticmethod
     def _copy_ignore(
@@ -859,6 +651,8 @@ class ModImporter:
         ignored = {
             MANAGER_MARKER,
             f"{MANAGER_MARKER}.tmp",
+            ".xxmimm-managed.json",
+            ".xxmimm-managed.json.tmp",
         }
 
         return {
@@ -866,6 +660,23 @@ class ModImporter:
             for name in names
             if name in ignored
         }
+
+    @staticmethod
+    def _remove_path(
+        path: Path,
+    ) -> None:
+        if (
+            path.is_dir()
+            and not path.is_symlink()
+        ):
+            shutil.rmtree(
+                path
+            )
+            return
+
+        path.unlink(
+            missing_ok=True
+        )
 
     @staticmethod
     def _check_cancelled(
@@ -883,19 +694,28 @@ class ModImporter:
 def has_supported_archive_suffix(
     path: Path | str,
 ) -> bool:
-    lower_name = Path(path).name.casefold()
+    """
+    Legacy-kompatibler Alias.
+    """
 
-    return any(
-        lower_name.endswith(suffix)
-        for suffix in SUPPORTED_ARCHIVE_SUFFIXES
+    return is_supported_archive(
+        path
     )
 
 
 def is_supported_import_source(
-    path: Path,
+    path: Path | str,
 ) -> bool:
+    path = (
+        Path(path)
+        .expanduser()
+    )
+
     if path.is_dir():
         return True
+
+    if not path.is_file():
+        return False
 
     return is_supported_archive(
         path
@@ -906,41 +726,29 @@ def archive_name_without_suffix(
     path: Path,
 ) -> str:
     name = path.name
+    lower_name = name.casefold()
 
     for suffix in sorted(
         SUPPORTED_ARCHIVE_SUFFIXES,
         key=len,
         reverse=True,
     ):
-        if name.casefold().endswith(suffix):
-            name = name[
-                : -len(suffix)
-            ]
-            break
+        if not lower_name.endswith(
+            suffix
+        ):
+            continue
 
-    return sanitize_path_segment(
+        name = name[
+            : -len(suffix)
+        ]
+
+        break
+
+    safe_name = sanitize_path_segment(
         name
     )
 
+    if not safe_name:
+        return "Imported Mod"
 
-def format_size(
-    size: int,
-) -> str:
-    value = float(size)
-
-    for unit in (
-        "B",
-        "KiB",
-        "MiB",
-        "GiB",
-        "TiB",
-    ):
-        if value < 1024 or unit == "TiB":
-            if unit == "B":
-                return f"{int(value)} {unit}"
-
-            return f"{value:.1f} {unit}"
-
-        value /= 1024
-
-    return f"{size} B"
+    return safe_name

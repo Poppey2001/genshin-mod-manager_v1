@@ -1,24 +1,63 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
+
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
-from app.config import AppConfig, BACKUP_DIR, FIXED_MODS_DIR
-import hashlib
-import logging
+from app.config import (
+    AppConfig,
+    BACKUP_DIR,
+)
+
+from app.games.game_definition import (
+    GameId,
+)
+
+from app.games.game_scope import (
+    GameScope,
+)
+
 from app.platform_support import (
     normalized_path_key,
     paths_equal,
 )
 
+
+logger = logging.getLogger(
+    __name__
+)
+
+
+# ============================================================
+# Marker / IDs
+# ============================================================
+
+# Bestehenden Dateinamen bewusst weiterverwenden, damit bereits
+# aktivierte Mods nicht "verloren" gehen.
 MANAGER_MARKER = ".gmm-managed.json"
+
+# Wird zusätzlich erkannt und ignoriert, falls wir später auf den
+# neuen Dateinamen wechseln.
+NEXT_MANAGER_MARKER = ".xxmimm-managed.json"
+
+MANAGER_ID = "xxmi-mod-manager"
+LEGACY_MANAGER_ID = "genshin-mod-manager"
 
 DISABLED_PREFIX = "DISABLED "
 
-class ModState(str, Enum):
+
+# ============================================================
+# Status
+# ============================================================
+
+class ModState(
+    str,
+    Enum,
+):
     """Aktueller Aktivierungszustand eines Mods."""
 
     NOT_CONFIGURED = "not_configured"
@@ -36,52 +75,100 @@ STATE_LABELS = {
     ModState.CONFLICT: "Konflikt",
 }
 
-logger = logging.getLogger(__name__)
 
-class ModManagerError(Exception):
+# ============================================================
+# Exceptions
+# ============================================================
+
+class ModManagerError(
+    Exception
+):
     """Grundfehler der Mod-Verwaltung."""
 
 
-class ModNotConfiguredError(ModManagerError):
+class ModNotConfiguredError(
+    ModManagerError
+):
     """Der aktive Mods-Ordner wurde nicht eingestellt."""
 
 
-class ModConflictError(ModManagerError):
+class ModConflictError(
+    ModManagerError
+):
     """Am Ziel existiert bereits eine fremde Datei oder ein fremder Ordner."""
 
 
+# ============================================================
+# ModManager
+# ============================================================
+
 class ModManager:
-    """Aktiviert und deaktiviert Mods aus der zentralen Bibliothek."""
+    """
+    Aktiviert und deaktiviert Mods aus der Bibliothek
+    des aktuell ausgewählten XXMI-Spiels.
 
-    def __init__(self, config: AppConfig) -> None:
-        self.config = config
+    Der Manager arbeitet primär mit GameScope.
 
-    def _destination_paths(
+    Aus Kompatibilitätsgründen kann auch AppConfig direkt
+    übergeben werden. In diesem Fall wird automatisch ein
+    GameScope für config.selected_game erzeugt.
+    """
+
+    def __init__(
         self,
-        active_root: Path,
-        source: Path,
-    ) -> tuple[Path, Path]:
-        """Erzeugt den aktiven und deaktivierten Zielpfad."""
-        enabled_path = active_root / source.name
-        disabled_path = active_root / (
-            f"{DISABLED_PREFIX}{source.name}"
-        )
+        config: GameScope | AppConfig,
+    ) -> None:
+        if isinstance(
+            config,
+            GameScope,
+        ):
+            self.config = config
+        else:
+            self.config = GameScope(
+                config=config,
+                game_id=config.selected_game,
+            )
 
-        return enabled_path, disabled_path
+    # ========================================================
+    # Spielinformationen
+    # ========================================================
+
+    @property
+    def game_id(
+        self,
+    ) -> str:
+        return self.config.game_id
+
+    @property
+    def importer(
+        self,
+    ) -> str:
+        return self.config.importer
+
+    # ========================================================
+    # Öffentliche API
+    # ========================================================
 
     def get_state(
         self,
         mod_path: Path | str,
     ) -> ModState:
-        """Ermittelt den Zustand anhand der beiden Ordnernamen."""
+        """
+        Ermittelt den aktuellen Aktivierungszustand.
+        """
+
         try:
-            source, _relative_path = self._source_and_relative(
-                mod_path,
-                require_exists=False,
+            source, _relative_path = (
+                self._source_and_relative(
+                    mod_path,
+                    require_exists=False,
+                )
             )
 
-            active_root = self._get_active_root(
-                create=False,
+            active_root = (
+                self._get_active_root(
+                    create=False,
+                )
             )
 
         except ModNotConfiguredError:
@@ -90,18 +177,54 @@ class ModManager:
         except ModManagerError:
             return ModState.CONFLICT
 
-        enabled_path, disabled_path = self._destination_paths(
-            active_root=active_root,
-            source=source,
+        enabled_path, disabled_path = (
+            self._destination_paths(
+                active_root=active_root,
+                source=source,
+            )
         )
 
-        enabled_exists = enabled_path.exists()
-        disabled_exists = disabled_path.exists()
+        enabled_exists = (
+            enabled_path.exists()
+            or enabled_path.is_symlink()
+        )
 
-        if enabled_exists and disabled_exists:
+        disabled_exists = (
+            disabled_path.exists()
+            or disabled_path.is_symlink()
+        )
+
+        if (
+            enabled_exists
+            and disabled_exists
+        ):
             return ModState.CONFLICT
 
-        if enabled_exists:
+        # ----------------------------------------------------
+        # Sehr alte Symlink-Aktivierungen nur noch erkennen.
+        # Neue Aktivierungen verwenden KEINE Symlinks.
+        # ----------------------------------------------------
+
+        if enabled_path.is_symlink():
+            if not enabled_path.exists():
+                return ModState.BROKEN
+
+            if self._symlink_points_to(
+                destination=enabled_path,
+                source=source,
+            ):
+                return ModState.ENABLED
+
+            return ModState.CONFLICT
+
+        if disabled_path.is_symlink():
+            return ModState.CONFLICT
+
+        # ----------------------------------------------------
+        # Verwaltete Kopien
+        # ----------------------------------------------------
+
+        if enabled_path.exists():
             if self._marker_matches(
                 destination=enabled_path,
                 source=source,
@@ -110,7 +233,7 @@ class ModManager:
 
             return ModState.CONFLICT
 
-        if disabled_exists:
+        if disabled_path.exists():
             if self._marker_matches(
                 destination=disabled_path,
                 source=source,
@@ -121,62 +244,69 @@ class ModManager:
 
         return ModState.DISABLED
 
-    @staticmethod
-    def _copy_ignore(
-        _directory: str,
-        names: list[str],
-    ) -> set[str]:
-        """Schließt interne Manager-Dateien vom Mod-Inhalt aus."""
-        ignored_names = {
-            MANAGER_MARKER,
-            f"{MANAGER_MARKER}.tmp",
-        }
-
-        return {
-            name
-            for name in names
-            if name in ignored_names
-        }
-
     def adopt_existing(
         self,
         mod_path: Path | str,
     ) -> ModState:
         """
-        Übernimmt einen vorhandenen, bisher nicht verwalteten Mod-Ordner.
-
-        Es werden keine Mod-Dateien überschrieben oder gelöscht.
-        Der Manager legt lediglich seine Markierungsdatei an.
+        Übernimmt einen bereits vorhandenen Mod-Ordner,
+        ohne dessen Dateien zu überschreiben.
         """
-        source, relative_path = self._source_and_relative(
-            mod_path,
-            require_exists=True,
+
+        source, relative_path = (
+            self._source_and_relative(
+                mod_path,
+                require_exists=True,
+            )
         )
 
-        active_root = self._get_active_root(
-            create=True,
+        active_root = (
+            self._get_active_root(
+                create=True,
+            )
         )
 
-        enabled_path, disabled_path = self._destination_paths(
-            active_root=active_root,
-            source=source,
+        enabled_path, disabled_path = (
+            self._destination_paths(
+                active_root=active_root,
+                source=source,
+            )
         )
 
-        enabled_exists = enabled_path.exists()
-        disabled_exists = disabled_path.exists()
+        enabled_exists = (
+            enabled_path.exists()
+            or enabled_path.is_symlink()
+        )
 
-        if enabled_exists and disabled_exists:
+        disabled_exists = (
+            disabled_path.exists()
+            or disabled_path.is_symlink()
+        )
+
+        if (
+            enabled_exists
+            and disabled_exists
+        ):
             raise ModConflictError(
-                "Der Konflikt kann nicht automatisch übernommen werden, "
-                "weil eine aktive und eine deaktivierte Version existieren.\n\n"
-                f"Aktiv:\n{enabled_path}\n\n"
-                f"Deaktiviert:\n{disabled_path}"
+                (
+                    "Der Konflikt kann nicht automatisch "
+                    "übernommen werden, weil eine aktive "
+                    "und eine deaktivierte Version existieren."
+                    "\n\n"
+                    f"Aktiv:\n{enabled_path}\n\n"
+                    f"Deaktiviert:\n{disabled_path}"
+                )
             )
 
-        if not enabled_exists and not disabled_exists:
+        if (
+            not enabled_exists
+            and not disabled_exists
+        ):
             raise ModConflictError(
-                "Es wurde kein vorhandener Zielordner gefunden, "
-                "der übernommen werden könnte."
+                (
+                    "Es wurde kein vorhandener Zielordner "
+                    "gefunden, der übernommen werden könnte."
+                )
             )
 
         if enabled_exists:
@@ -188,30 +318,40 @@ class ModManager:
 
         if destination.is_symlink():
             raise ModConflictError(
-                "Symbolische Verknüpfungen können nicht als bestehende "
-                "Mod-Kopie übernommen werden.\n\n"
-                f"Pfad: {destination}"
+                (
+                    "Symbolische Verknüpfungen können nicht "
+                    "als bestehende Mod-Kopie übernommen werden."
+                    "\n\n"
+                    f"Pfad: {destination}"
+                )
             )
 
         if not destination.is_dir():
             raise ModConflictError(
-                "Das vorhandene Ziel ist kein Ordner.\n\n"
-                f"Pfad: {destination}"
+                (
+                    "Das vorhandene Ziel ist kein Ordner."
+                    "\n\n"
+                    f"Pfad: {destination}"
+                )
             )
 
-        marker_file = destination / MANAGER_MARKER
+        if self._marker_matches(
+            destination=destination,
+            source=source,
+        ):
+            return resulting_state
 
-        if marker_file.exists():
-            if self._marker_matches(
-                destination=destination,
-                source=source,
-            ):
-                return resulting_state
-
+        if self._has_any_manager_marker(
+            destination
+        ):
             raise ModConflictError(
-                "Der Ordner besitzt bereits eine Manager-Markierung, "
-                "die zu einem anderen Mod gehört.\n\n"
-                f"Pfad: {destination}"
+                (
+                    "Der Ordner besitzt bereits eine "
+                    "Manager-Markierung, die zu einem "
+                    "anderen Mod oder Spiel gehört."
+                    "\n\n"
+                    f"Pfad: {destination}"
+                )
             )
 
         try:
@@ -223,9 +363,13 @@ class ModManager:
 
         except OSError as error:
             raise ModManagerError(
-                "Der vorhandene Mod-Ordner konnte nicht übernommen werden.\n\n"
-                f"Pfad: {destination}\n\n"
-                f"{error}"
+                (
+                    "Der vorhandene Mod-Ordner konnte "
+                    "nicht übernommen werden."
+                    "\n\n"
+                    f"Pfad: {destination}\n\n"
+                    f"{error}"
+                )
             ) from error
 
         return resulting_state
@@ -237,32 +381,74 @@ class ModManager:
         """
         Aktiviert einen Mod.
 
-        Eine vorhandene deaktivierte Kopie wird nur umbenannt.
-        Andernfalls wird der Mod einmalig aus der Bibliothek kopiert.
+        Eine vorhandene deaktivierte Kopie wird umbenannt.
+        Bei der ersten Aktivierung wird der Mod aus der
+        Bibliothek kopiert.
+
+        Es werden keine Symlinks erzeugt.
         """
-        source, relative_path = self._source_and_relative(
-            mod_path,
-            require_exists=True,
+
+        source, relative_path = (
+            self._source_and_relative(
+                mod_path,
+                require_exists=True,
+            )
         )
 
-        active_root = self._get_active_root(
-            create=True,
+        active_root = (
+            self._get_active_root(
+                create=True,
+            )
         )
 
-        enabled_path, disabled_path = self._destination_paths(
-            active_root=active_root,
-            source=source,
+        enabled_path, disabled_path = (
+            self._destination_paths(
+                active_root=active_root,
+                source=source,
+            )
         )
 
-        if enabled_path.exists() and disabled_path.exists():
+        if (
+            self._path_exists(
+                enabled_path
+            )
+            and self._path_exists(
+                disabled_path
+            )
+        ):
             raise ModConflictError(
-                "Die aktive und die deaktivierte Version existieren "
-                "gleichzeitig.\n\n"
-                f"Aktiv: {enabled_path}\n"
-                f"Deaktiviert: {disabled_path}"
+                (
+                    "Die aktive und die deaktivierte "
+                    "Version existieren gleichzeitig."
+                    "\n\n"
+                    f"Aktiv: {enabled_path}\n"
+                    f"Deaktiviert: {disabled_path}"
+                )
             )
 
-        if enabled_path.exists():
+        # ----------------------------------------------------
+        # Bereits aktiv
+        # ----------------------------------------------------
+
+        if self._path_exists(
+            enabled_path
+        ):
+            if enabled_path.is_symlink():
+                if self._symlink_points_to(
+                    destination=enabled_path,
+                    source=source,
+                ):
+                    return enabled_path
+
+                raise ModConflictError(
+                    (
+                        "Am aktiven Ziel befindet sich eine "
+                        "fremde symbolische Verknüpfung."
+                        "\n\n"
+                        f"Ziel: {enabled_path}"
+                    )
+                )
+
             if self._marker_matches(
                 destination=enabled_path,
                 source=source,
@@ -270,36 +456,66 @@ class ModManager:
                 return enabled_path
 
             raise ModConflictError(
-                "Am aktiven Ziel befindet sich ein nicht vom "
-                "Manager verwalteter Ordner.\n\n"
-                f"Ziel: {enabled_path}"
+                (
+                    "Am aktiven Ziel befindet sich ein "
+                    "nicht vom Manager verwalteter Ordner."
+                    "\n\n"
+                    f"Ziel: {enabled_path}"
+                )
             )
 
-        # Bereits vorhandene, reparierte Mod-Kopie reaktivieren.
-        if disabled_path.exists():
+        # ----------------------------------------------------
+        # Vorhandene deaktivierte Kopie reaktivieren
+        # ----------------------------------------------------
+
+        if self._path_exists(
+            disabled_path
+        ):
+            if disabled_path.is_symlink():
+                raise ModConflictError(
+                    (
+                        "Der deaktivierte Zielpfad ist eine "
+                        "symbolische Verknüpfung und wird "
+                        "nicht automatisch verändert."
+                        "\n\n"
+                        f"Ordner: {disabled_path}"
+                    )
+                )
+
             if not self._marker_matches(
                 destination=disabled_path,
                 source=source,
             ):
                 raise ModConflictError(
-                    "Der deaktivierte Ordner besitzt keine gültige "
-                    "Manager-Markierung.\n\n"
-                    f"Ordner: {disabled_path}"
+                    (
+                        "Der deaktivierte Ordner besitzt keine "
+                        "gültige Manager-Markierung."
+                        "\n\n"
+                        f"Ordner: {disabled_path}"
+                    )
                 )
 
             try:
                 disabled_path.rename(
                     enabled_path
                 )
+
             except OSError as error:
                 raise ModManagerError(
-                    "Der deaktivierte Mod konnte nicht aktiviert werden.\n\n"
-                    f"{error}"
+                    (
+                        "Der deaktivierte Mod konnte "
+                        "nicht aktiviert werden."
+                        "\n\n"
+                        f"{error}"
+                    )
                 ) from error
 
             return enabled_path
 
-        # Erste Aktivierung: vollständige Kopie erstellen.
+        # ----------------------------------------------------
+        # Erste Aktivierung: echte Kopie
+        # ----------------------------------------------------
+
         try:
             shutil.copytree(
                 source,
@@ -320,10 +536,13 @@ class ModManager:
             )
 
             raise ModManagerError(
-                "Der Mod konnte nicht kopiert werden.\n\n"
-                f"Quelle: {source}\n"
-                f"Ziel: {enabled_path}\n\n"
-                f"{error}"
+                (
+                    "Der Mod konnte nicht kopiert werden."
+                    "\n\n"
+                    f"Quelle: {source}\n"
+                    f"Ziel: {enabled_path}\n\n"
+                    f"{error}"
+                )
             ) from error
 
         return enabled_path
@@ -335,64 +554,110 @@ class ModManager:
         """
         Deaktiviert einen Mod durch Umbenennen.
 
-        Die Dateien und alle Änderungen des Fixing-Tools bleiben erhalten.
+        Alle Änderungen, die ein Fixing-Tool an der aktiven
+        Kopie vorgenommen hat, bleiben dadurch erhalten.
         """
-        source, _relative_path = self._source_and_relative(
-            mod_path,
-            require_exists=False,
+
+        source, _relative_path = (
+            self._source_and_relative(
+                mod_path,
+                require_exists=False,
+            )
         )
 
-        active_root = self._get_active_root(
-            create=False,
+        active_root = (
+            self._get_active_root(
+                create=False,
+            )
         )
 
-        enabled_path, disabled_path = self._destination_paths(
-            active_root=active_root,
-            source=source,
+        enabled_path, disabled_path = (
+            self._destination_paths(
+                active_root=active_root,
+                source=source,
+            )
         )
 
-        if enabled_path.exists() and disabled_path.exists():
+        if (
+            self._path_exists(
+                enabled_path
+            )
+            and self._path_exists(
+                disabled_path
+            )
+        ):
             raise ModConflictError(
-                "Die aktive und die deaktivierte Version existieren "
-                "gleichzeitig.\n\n"
-                f"Aktiv: {enabled_path}\n"
-                f"Deaktiviert: {disabled_path}"
+                (
+                    "Die aktive und die deaktivierte "
+                    "Version existieren gleichzeitig."
+                    "\n\n"
+                    f"Aktiv: {enabled_path}\n"
+                    f"Deaktiviert: {disabled_path}"
+                )
             )
 
-        if disabled_path.exists():
-            if self._marker_matches(
-                destination=disabled_path,
-                source=source,
+        if self._path_exists(
+            disabled_path
+        ):
+            if (
+                not disabled_path.is_symlink()
+                and self._marker_matches(
+                    destination=disabled_path,
+                    source=source,
+                )
             ):
                 return False
 
             raise ModConflictError(
-                "Der deaktivierte Zielordner wird nicht vom "
-                "Manager verwaltet.\n\n"
-                f"Ordner: {disabled_path}"
+                (
+                    "Der deaktivierte Zielordner wird "
+                    "nicht vom Manager verwaltet."
+                    "\n\n"
+                    f"Ordner: {disabled_path}"
+                )
             )
 
-        if not enabled_path.exists():
+        if not self._path_exists(
+            enabled_path
+        ):
             return False
+
+        if enabled_path.is_symlink():
+            raise ModConflictError(
+                (
+                    "Eine alte Symlink-Aktivierung wurde erkannt. "
+                    "Sie wird nicht automatisch in eine verwaltete "
+                    "Kopie umgewandelt."
+                    "\n\n"
+                    f"Ordner: {enabled_path}"
+                )
+            )
 
         if not self._marker_matches(
             destination=enabled_path,
             source=source,
         ):
             raise ModConflictError(
-                "Der aktive Ordner besitzt keine gültige "
-                "Manager-Markierung und wird nicht verändert.\n\n"
-                f"Ordner: {enabled_path}"
+                (
+                    "Der aktive Ordner besitzt keine gültige "
+                    "Manager-Markierung und wird nicht verändert."
+                    "\n\n"
+                    f"Ordner: {enabled_path}"
+                )
             )
 
         try:
             enabled_path.rename(
                 disabled_path
             )
+
         except OSError as error:
             raise ModManagerError(
-                "Der Mod konnte nicht deaktiviert werden.\n\n"
-                "{error}"
+                (
+                    "Der Mod konnte nicht deaktiviert werden."
+                    "\n\n"
+                    f"{error}"
+                )
             ) from error
 
         return True
@@ -401,23 +666,32 @@ class ModManager:
         self,
         mod_path: Path | str,
     ) -> Path:
-        """Gibt den aktiven Zielpfad zurück."""
-        source, _relative_path = self._source_and_relative(
-            mod_path,
-            require_exists=False,
+        """
+        Gibt den aktiven Zielpfad zurück.
+        """
+
+        source, _relative_path = (
+            self._source_and_relative(
+                mod_path,
+                require_exists=False,
+            )
         )
 
-        active_root = self._get_active_root(
-            create=False,
+        active_root = (
+            self._get_active_root(
+                create=False,
+            )
         )
 
-        enabled_path, _disabled_path = self._destination_paths(
-            active_root=active_root,
-            source=source,
+        enabled_path, _disabled_path = (
+            self._destination_paths(
+                active_root=active_root,
+                source=source,
+            )
         )
 
         return enabled_path
-    
+
     def inspection_path_for(
         self,
         mod_path: Path | str,
@@ -430,15 +704,21 @@ class ModManager:
         2. deaktivierte Mod-Kopie
         3. Original in der Bibliothek
         """
-        source, _relative_path = self._source_and_relative(
-            mod_path,
-            require_exists=False,
+
+        source, _relative_path = (
+            self._source_and_relative(
+                mod_path,
+                require_exists=False,
+            )
         )
 
         try:
-            active_root = self._get_active_root(
-                create=False,
+            active_root = (
+                self._get_active_root(
+                    create=False,
+                )
             )
+
         except ModManagerError:
             return source
 
@@ -456,92 +736,113 @@ class ModManager:
             return disabled_path
 
         return source
-    
-    def _get_destination(
-        self,
+
+    # ========================================================
+    # Zielpfade
+    # ========================================================
+
+    @staticmethod
+    def _destination_paths(
         active_root: Path,
         source: Path,
-    ) -> Path:
-        """
-        Verwendet im aktiven Mods-Ordner nur den letzten
-        Ordnernamen des Mods.
-        """
-        return active_root / source.name
-    
-    def _state_for(
-        self,
-        source: Path,
-        destination: Path,
-    ) -> ModState:
-        if destination.is_symlink():
-            if not self._symlink_points_to(
-                destination=destination,
-                source=source,
-            ):
-                return ModState.CONFLICT
+    ) -> tuple[
+        Path,
+        Path,
+    ]:
+        enabled_path = (
+            active_root
+            / source.name
+        )
 
-            if not source.exists():
-                return ModState.BROKEN
-
-            return ModState.ENABLED
-
-        if not destination.exists():
-            return ModState.DISABLED
-
-        if (
-            destination.is_dir()
-            and self._marker_matches(
-                destination=destination,
-                source=source,
+        disabled_path = (
+            active_root
+            / (
+                f"{DISABLED_PREFIX}"
+                f"{source.name}"
             )
-        ):
-            return ModState.ENABLED
+        )
 
-        return ModState.CONFLICT
+        return (
+            enabled_path,
+            disabled_path,
+        )
+
+    # ========================================================
+    # Bibliothek / Active Mods
+    # ========================================================
 
     def _source_and_relative(
         self,
         mod_path: Path | str,
         require_exists: bool,
-    ) -> tuple[Path, Path]:
-        library_root = self._absolute_path(
-            self.config.mod_library_directory
+    ) -> tuple[
+        Path,
+        Path,
+    ]:
+        library_root = (
+            self._absolute_path(
+                self.config.mod_library_directory
+            )
         )
 
-        source = self._absolute_path(
-            Path(mod_path)
+        source = (
+            self._absolute_path(
+                Path(
+                    mod_path
+                )
+            )
         )
 
         try:
-            relative_path = source.relative_to(
-                library_root
+            relative_path = (
+                source.relative_to(
+                    library_root
+                )
             )
+
         except ValueError as error:
             raise ModManagerError(
-                "Der ausgewählte Mod liegt nicht innerhalb "
-                "der konfigurierten Mod-Bibliothek."
+                (
+                    "Der ausgewählte Mod liegt nicht "
+                    "innerhalb der konfigurierten "
+                    "Mod-Bibliothek."
+                )
             ) from error
 
-        if relative_path == Path("."):
+        if relative_path == Path(
+            "."
+        ):
             raise ModManagerError(
-                "Die komplette Mod-Bibliothek kann nicht als Mod "
-                "aktiviert werden."
+                (
+                    "Die komplette Mod-Bibliothek "
+                    "kann nicht als Mod aktiviert werden."
+                )
             )
 
         if require_exists:
             if not source.exists():
                 raise ModManagerError(
-                    "Der Mod-Ordner existiert nicht oder das "
-                    "Netzlaufwerk ist nicht eingehängt.\n\n"
-                    f"Quelle: {source}"
+                    (
+                        "Der Mod-Ordner existiert nicht "
+                        "oder das Laufwerk ist nicht "
+                        "eingehängt."
+                        "\n\n"
+                        f"Quelle: {source}"
+                    )
                 )
 
             if not source.is_dir():
                 raise ModManagerError(
-                    f"Der Mod-Pfad ist kein Verzeichnis: {source}"
+                    (
+                        "Der Mod-Pfad ist kein "
+                        f"Verzeichnis: {source}"
+                    )
                 )
 
-        return source, relative_path
+        return (
+            source,
+            relative_path,
+        )
 
     def _get_active_root(
         self,
@@ -553,16 +854,22 @@ class ModManager:
 
         if configured_path is None:
             raise ModNotConfiguredError(
-                "Wähle unter Einstellungen zuerst den "
-                "aktiven Mods-Ordner aus."
+                (
+                    "Wähle unter Einstellungen zuerst "
+                    "den aktiven Mods-Ordner aus."
+                )
             )
 
-        active_root = self._absolute_path(
-            configured_path
+        active_root = (
+            self._absolute_path(
+                configured_path
+            )
         )
 
-        library_root = self._absolute_path(
-            self.config.mod_library_directory
+        library_root = (
+            self._absolute_path(
+                self.config.mod_library_directory
+            )
         )
 
         if self._paths_overlap(
@@ -570,8 +877,11 @@ class ModManager:
             active_root,
         ):
             raise ModManagerError(
-                "Mod-Bibliothek und aktiver Mods-Ordner dürfen "
-                "nicht identisch oder ineinander verschachtelt sein."
+                (
+                    "Mod-Bibliothek und aktiver Mods-Ordner "
+                    "dürfen nicht identisch oder ineinander "
+                    "verschachtelt sein."
+                )
             )
 
         if create:
@@ -580,13 +890,22 @@ class ModManager:
                     parents=True,
                     exist_ok=True,
                 )
+
             except OSError as error:
                 raise ModManagerError(
-                    "Der aktive Mods-Ordner konnte nicht erstellt werden.\n\n"
-                    f"{error}"
+                    (
+                        "Der aktive Mods-Ordner konnte "
+                        "nicht erstellt werden."
+                        "\n\n"
+                        f"{error}"
+                    )
                 ) from error
 
         return active_root
+
+    # ========================================================
+    # Marker
+    # ========================================================
 
     def _write_marker(
         self,
@@ -594,13 +913,32 @@ class ModManager:
         source: Path,
         relative_path: Path,
     ) -> None:
-        marker_file = destination / MANAGER_MARKER
-        temporary_file = destination / f"{MANAGER_MARKER}.tmp"
+        marker_file = (
+            destination
+            / MANAGER_MARKER
+        )
+
+        temporary_file = (
+            destination
+            / (
+                f"{MANAGER_MARKER}"
+                ".tmp"
+            )
+        )
 
         marker_data = {
-            "manager": "genshin-mod-manager",
-            "source": str(source),
-            "relative_path": str(relative_path),
+            "manager": MANAGER_ID,
+            "game_id": self.game_id,
+            "importer": self.importer,
+            "source": str(
+                source
+            ),
+            "source_key": normalized_path_key(
+                source
+            ),
+            "relative_path": str(
+                relative_path
+            ),
             "created_at": datetime.now(
                 timezone.utc
             ).isoformat(),
@@ -624,26 +962,93 @@ class ModManager:
         destination: Path,
         source: Path,
     ) -> bool:
-        marker_file = (
-            destination
-            / MANAGER_MARKER
-        )
+        for marker_file in (
+            self._marker_files(
+                destination
+            )
+        ):
+            if not marker_file.is_file():
+                continue
 
-        try:
-            marker_data = json.loads(
-                marker_file.read_text(
-                    encoding="utf-8"
+            marker_data = (
+                self._load_marker(
+                    marker_file
                 )
             )
-        except (
-            OSError,
-            json.JSONDecodeError,
-            TypeError,
+
+            if marker_data is None:
+                continue
+
+            if self._marker_data_matches(
+                marker_data=marker_data,
+                source=source,
+            ):
+                return True
+
+        return False
+
+    def _marker_data_matches(
+        self,
+        marker_data: dict,
+        source: Path,
+    ) -> bool:
+        # ----------------------------------------------------
+        # Manager
+        # ----------------------------------------------------
+
+        marker_manager = (
+            marker_data.get(
+                "manager"
+            )
+        )
+
+        if (
+            marker_manager is not None
+            and marker_manager
+            not in {
+                MANAGER_ID,
+                LEGACY_MANAGER_ID,
+            }
         ):
             return False
 
-        stored_source_key = marker_data.get(
-            "source_key"
+        # ----------------------------------------------------
+        # Spiel
+        # ----------------------------------------------------
+
+        marker_game_id = (
+            marker_data.get(
+                "game_id"
+            )
+        )
+
+        if marker_game_id is None:
+            # Alte Marker ohne game_id können nur von der
+            # ursprünglichen Genshin-Version stammen.
+            if (
+                self.game_id
+                != GameId.GENSHIN_IMPACT.value
+            ):
+                return False
+
+        elif (
+            not isinstance(
+                marker_game_id,
+                str,
+            )
+            or marker_game_id
+            != self.game_id
+        ):
+            return False
+
+        # ----------------------------------------------------
+        # Neuer Source-Key
+        # ----------------------------------------------------
+
+        stored_source_key = (
+            marker_data.get(
+                "source_key"
+            )
         )
 
         if isinstance(
@@ -652,16 +1057,24 @@ class ModManager:
         ):
             if (
                 stored_source_key
-                == normalized_path_key(source)
+                == normalized_path_key(
+                    source
+                )
             ):
                 return True
+
+        # ----------------------------------------------------
+        # Alte Marker
+        # ----------------------------------------------------
 
         for field_name in (
             "source",
             "source_path",
         ):
-            stored_source = marker_data.get(
-                field_name
+            stored_source = (
+                marker_data.get(
+                    field_name
+                )
             )
 
             if not isinstance(
@@ -678,40 +1091,102 @@ class ModManager:
 
         return False
 
-    def _symlink_points_to(
-        self,
-        destination: Path,
-        source: Path,
-    ) -> bool:
+    @staticmethod
+    def _load_marker(
+        marker_file: Path,
+    ) -> dict | None:
         try:
-            link_target = destination.readlink()
-
-            if not link_target.is_absolute():
-                link_target = (
-                    destination.parent
-                    / link_target
+            marker_data = json.loads(
+                marker_file.read_text(
+                    encoding="utf-8"
                 )
-
-            return link_target.resolve(
-                strict=False
-            ) == source.resolve(
-                strict=False
             )
 
-        except OSError:
-            return False
+        except (
+            OSError,
+            json.JSONDecodeError,
+            TypeError,
+        ):
+            return None
+
+        if not isinstance(
+            marker_data,
+            dict,
+        ):
+            return None
+
+        return marker_data
+
+    @staticmethod
+    def _marker_files(
+        destination: Path,
+    ) -> tuple[
+        Path,
+        Path,
+    ]:
+        return (
+            destination
+            / MANAGER_MARKER,
+            destination
+            / NEXT_MANAGER_MARKER,
+        )
+
+    def _has_any_manager_marker(
+        self,
+        destination: Path,
+    ) -> bool:
+        return any(
+            marker.exists()
+            for marker in self._marker_files(
+                destination
+            )
+        )
+
+    # ========================================================
+    # Copy / Backup
+    # ========================================================
+
+    @staticmethod
+    def _copy_ignore(
+        _directory: str,
+        names: list[str],
+    ) -> set[str]:
+        ignored_names = {
+            MANAGER_MARKER,
+            f"{MANAGER_MARKER}.tmp",
+            NEXT_MANAGER_MARKER,
+            f"{NEXT_MANAGER_MARKER}.tmp",
+        }
+
+        return {
+            name
+            for name in names
+            if name in ignored_names
+        }
 
     def _backup_managed_copy(
         self,
         destination: Path,
         relative_path: Path,
     ) -> Path:
-        timestamp = datetime.now().strftime(
-            "%Y%m%d-%H%M%S-%f"
+        """
+        Erstellt bei Bedarf ein spielbezogenes Backup.
+
+        Die Methode bleibt als interne API erhalten, auch wenn
+        die aktuelle Enable/Disable-Strategie durch Umbenennen
+        normalerweise kein Backup benötigt.
+        """
+
+        timestamp = (
+            datetime.now()
+            .strftime(
+                "%Y%m%d-%H%M%S-%f"
+            )
         )
 
         backup_destination = (
             BACKUP_DIR
+            / self.game_id
             / timestamp
             / relative_path
         )
@@ -729,26 +1204,50 @@ class ModManager:
 
         return backup_destination
 
-    def _cleanup_empty_directories(
-        self,
-        start: Path,
-        active_root: Path,
-    ) -> None:
-        current = start
+    # ========================================================
+    # Legacy Symlink-Erkennung
+    # ========================================================
 
-        while (
-            current != active_root
-            and self._path_is_inside(
-                current,
-                active_root,
+    @staticmethod
+    def _symlink_points_to(
+        destination: Path,
+        source: Path,
+    ) -> bool:
+        try:
+            link_target = (
+                destination.readlink()
             )
-        ):
-            try:
-                current.rmdir()
-            except OSError:
-                break
 
-            current = current.parent
+            if not link_target.is_absolute():
+                link_target = (
+                    destination.parent
+                    / link_target
+                )
+
+            return (
+                link_target.resolve(
+                    strict=False
+                )
+                == source.resolve(
+                    strict=False
+                )
+            )
+
+        except OSError:
+            return False
+
+    # ========================================================
+    # Hilfsmethoden
+    # ========================================================
+
+    @staticmethod
+    def _path_exists(
+        path: Path,
+    ) -> bool:
+        return (
+            path.exists()
+            or path.is_symlink()
+        )
 
     @staticmethod
     def _rollback_destination(
@@ -757,16 +1256,32 @@ class ModManager:
         try:
             if destination.is_symlink():
                 destination.unlink()
+
             elif destination.exists():
-                shutil.rmtree(destination)
+                shutil.rmtree(
+                    destination
+                )
+
         except OSError:
-            pass
+            logger.exception(
+                (
+                    "Rollback für Mod-Ziel "
+                    "fehlgeschlagen: %s"
+                ),
+                destination,
+            )
 
     @staticmethod
     def _absolute_path(
-        path: Path,
+        path: Path | str,
     ) -> Path:
-        return Path(path).expanduser().absolute()
+        return (
+            Path(
+                path
+            )
+            .expanduser()
+            .absolute()
+        )
 
     @classmethod
     def _paths_overlap(
@@ -776,8 +1291,14 @@ class ModManager:
     ) -> bool:
         return (
             first == second
-            or cls._path_is_inside(first, second)
-            or cls._path_is_inside(second, first)
+            or cls._path_is_inside(
+                first,
+                second,
+            )
+            or cls._path_is_inside(
+                second,
+                first,
+            )
         )
 
     @staticmethod
@@ -786,13 +1307,34 @@ class ModManager:
         parent: Path,
     ) -> bool:
         try:
-            path.relative_to(parent)
+            path.relative_to(
+                parent
+            )
+
             return True
+
         except ValueError:
             return False
 
 
+# ============================================================
+# UI Helper
+# ============================================================
+
 def mod_state_label(
     state: ModState,
 ) -> str:
-    return STATE_LABELS[state]
+    return STATE_LABELS.get(
+        state,
+        state.value,
+    )
+
+
+__all__ = [
+    "ModState",
+    "ModManager",
+    "ModManagerError",
+    "ModNotConfiguredError",
+    "ModConflictError",
+    "mod_state_label",
+]
