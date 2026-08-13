@@ -164,6 +164,11 @@ class GameBananaMod:
         GameBananaFile,
         ...,
     ]
+    
+    image_urls: tuple[
+        str,
+        ...,
+    ] = ()
 
     category: str | None = None
 

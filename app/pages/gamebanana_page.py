@@ -1,29 +1,22 @@
 from __future__ import annotations
 
 from PySide6.QtCore import (
-    Qt,
     QUrl,
     Signal,
 )
 
 from PySide6.QtGui import (
     QDesktopServices,
-    QTextDocumentFragment,
 )
 
 from PySide6.QtWidgets import (
-    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
-    QProgressBar,
     QPushButton,
-    QSplitter,
-    QTextBrowser,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -48,31 +41,25 @@ from app.i18n import (
     translation_manager,
 )
 
+from app.widgets.gamebanana.mod_details import (
+    GameBananaModDetails,
+)
 
-SUMMARY_ROLE = (
-    int(
-        Qt.ItemDataRole.UserRole
-    )
-    + 40
+from app.widgets.gamebanana.mod_grid import (
+    GameBananaModGrid,
 )
 
 
 class GameBananaPage(
     QWidget
 ):
-    """
-    Browser, Detailansicht und Download
-    für GameBanana.
-
-    Nach dem Download wird die Datei weiterhin
-    über install_requested an den bestehenden
-    Library-Import übergeben.
-    """
-
     install_requested = Signal(
         object,
         str,
     )
+
+    VIEW_BROWSER = 0
+    VIEW_DETAILS = 1
 
     def __init__(
         self,
@@ -113,42 +100,21 @@ class GameBananaPage(
             | None
         ) = None
 
-        self._create_widgets()
-
-        self._build_ui()
-
-        self._connect_signals()
-
-        translation_manager.language_changed.connect(
-            self.retranslate_ui
-        )
-
-        self.retranslate_ui()
-
-        self._clear_details()
-
-        self._refresh_controls()
-
-    # ========================================================
-    # Widgets
-    # ========================================================
-
-    def _create_widgets(
-        self,
-    ) -> None:
-        # --------------------------------------------------
-        # Header
-        # --------------------------------------------------
+        # ----------------------------------------------------
+        # Root
+        # ----------------------------------------------------
 
         self.title_label = QLabel()
 
-        self.game_label = QLabel()
+        self.subtitle_label = QLabel()
 
-        # --------------------------------------------------
+        self.view_stack = (
+            QStackedWidget()
+        )
+
+        # ----------------------------------------------------
         # Browser
-        # --------------------------------------------------
-
-        self.browse_title_label = QLabel()
+        # ----------------------------------------------------
 
         self.search_input = (
             QLineEdit()
@@ -162,10 +128,8 @@ class GameBananaPage(
             QPushButton()
         )
 
-        self.search_hint_label = QLabel()
-
-        self.results_list = (
-            QListWidget()
+        self.mod_grid = (
+            GameBananaModGrid()
         )
 
         self.previous_button = (
@@ -178,12 +142,6 @@ class GameBananaPage(
             QPushButton()
         )
 
-        # --------------------------------------------------
-        # Direkte Mod-ID / URL
-        # --------------------------------------------------
-
-        self.direct_title_label = QLabel()
-
         self.reference_input = (
             QLineEdit()
         )
@@ -192,207 +150,148 @@ class GameBananaPage(
             QPushButton()
         )
 
-        # --------------------------------------------------
-        # Detailansicht
-        # --------------------------------------------------
-
-        self.details_frame = QFrame()
-
-        self.details_title_label = QLabel()
-
-        self.mod_name_label = QLabel()
-
-        self.mod_id_label = QLabel()
-
-        self.author_label = QLabel()
-
-        self.source_game_label = QLabel()
-
-        self.category_label = QLabel()
-
-        self.stats_label = QLabel()
-
-        self.description_view = (
-            QTextBrowser()
-        )
-
-        self.description_view.setOpenExternalLinks(
-            False
-        )
-
-        # --------------------------------------------------
-        # Dateien
-        # --------------------------------------------------
-
-        self.file_label = QLabel()
-
-        self.file_combobox = (
-            QComboBox()
-        )
-
-        # --------------------------------------------------
-        # Aktionen
-        # --------------------------------------------------
-
-        self.profile_button = (
-            QPushButton()
-        )
-
-        self.install_button = (
-            QPushButton()
-        )
-
-        self.cancel_button = (
-            QPushButton()
-        )
-
-        # --------------------------------------------------
-        # Status
-        # --------------------------------------------------
-
-        self.progress_bar = (
-            QProgressBar()
-        )
-
         self.status_label = QLabel()
 
-        self.progress_bar.setVisible(
-            False
+        # ----------------------------------------------------
+        # Details
+        # ----------------------------------------------------
+
+        self.details = (
+            GameBananaModDetails()
         )
 
-        self.cancel_button.setVisible(
-            False
+        self._build_ui()
+
+        self._connect_signals()
+
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
         )
+
+        self.retranslate_ui()
+
+        self._refresh_controls()
 
     # ========================================================
-    # Hauptlayout
+    # UI
     # ========================================================
 
     def _build_ui(
         self,
     ) -> None:
-        main_layout = (
-            QVBoxLayout(
-                self
-            )
+        root = QVBoxLayout(
+            self
         )
 
-        main_layout.setContentsMargins(
+        root.setContentsMargins(
             28,
-            24,
+            22,
             28,
-            24,
+            22,
         )
 
-        main_layout.setSpacing(
-            14
+        root.setSpacing(
+            12
         )
 
         self.title_label.setObjectName(
             "pageTitle"
         )
 
-        self.game_label.setObjectName(
-            "pageSubtitle"
+        self.subtitle_label.setObjectName(
+            "pageDescription"
         )
 
-        main_layout.addWidget(
+        root.addWidget(
             self.title_label
         )
 
-        main_layout.addWidget(
-            self.game_label
+        root.addWidget(
+            self.subtitle_label
         )
 
-        # --------------------------------------------------
-        # Split View
-        # --------------------------------------------------
-
-        splitter = QSplitter(
-            Qt.Orientation.Horizontal
+        self.view_stack.addWidget(
+            self._create_browser_view()
         )
 
-        splitter.setChildrenCollapsible(
-            False
+        self.view_stack.addWidget(
+            self.details
         )
 
-        splitter.addWidget(
-            self._build_browser_panel()
-        )
-
-        splitter.addWidget(
-            self._build_details_panel()
-        )
-
-        splitter.setStretchFactor(
-            0,
-            2,
-        )
-
-        splitter.setStretchFactor(
-            1,
-            3,
-        )
-
-        splitter.setSizes(
-            [
-                480,
-                760,
-            ]
-        )
-
-        main_layout.addWidget(
-            splitter,
+        root.addWidget(
+            self.view_stack,
             stretch=1,
         )
 
-        main_layout.addWidget(
-            self.progress_bar
+        self.setStyleSheet(
+            """
+            QLabel#pageTitle {
+                color: #ffffff;
+                font-size: 27px;
+                font-weight: 800;
+            }
+
+            QLabel#pageDescription {
+                color: #89919f;
+                font-size: 13px;
+            }
+
+            QLineEdit {
+                min-height: 40px;
+                background: #181d25;
+                border: 1px solid #303744;
+                border-radius: 8px;
+                color: #ffffff;
+                padding: 0 12px;
+            }
+
+            QLineEdit:focus {
+                border-color: #7665e8;
+            }
+
+            QPushButton {
+                min-height: 38px;
+                background: #222833;
+                border: 1px solid #343b48;
+                border-radius: 8px;
+                color: #dce0e7;
+                padding: 0 14px;
+            }
+
+            QPushButton:hover {
+                background: #2b323e;
+            }
+
+            QPushButton:disabled {
+                color: #626b79;
+                background: #181c23;
+            }
+            """
         )
 
-        main_layout.addWidget(
-            self.status_label
-        )
-
-    # ========================================================
-    # Linkes Browser-Panel
-    # ========================================================
-
-    def _build_browser_panel(
+    def _create_browser_view(
         self,
     ) -> QWidget:
-        panel = QFrame()
-
-        panel.setObjectName(
-            "gameBananaBrowserPanel"
-        )
+        page = QWidget()
 
         layout = QVBoxLayout(
-            panel
+            page
         )
 
         layout.setContentsMargins(
-            16,
-            16,
-            16,
-            16,
+            0,
+            4,
+            0,
+            0,
         )
 
         layout.setSpacing(
-            10
+            12
         )
 
-        self.browse_title_label.setObjectName(
-            "gameBananaSectionTitle"
-        )
-
-        layout.addWidget(
-            self.browse_title_label
-        )
-
-        # --------------------------------------------------
-        # Suche
-        # --------------------------------------------------
+        # ----------------------------------------------------
+        # Search
+        # ----------------------------------------------------
 
         search_row = (
             QHBoxLayout()
@@ -415,230 +314,86 @@ class GameBananaPage(
             search_row
         )
 
-        self.search_hint_label.setWordWrap(
-            True
-        )
-
-        self.search_hint_label.setObjectName(
-            "pageSubtitle"
-        )
+        # ----------------------------------------------------
+        # Grid
+        # ----------------------------------------------------
 
         layout.addWidget(
-            self.search_hint_label
-        )
-
-        # --------------------------------------------------
-        # Ergebnisliste
-        # --------------------------------------------------
-
-        layout.addWidget(
-            self.results_list,
+            self.mod_grid,
             stretch=1,
         )
 
-        # --------------------------------------------------
+        # ----------------------------------------------------
         # Pagination
-        # --------------------------------------------------
+        # ----------------------------------------------------
 
-        paging_row = (
+        pagination_row = (
             QHBoxLayout()
         )
 
-        paging_row.addWidget(
+        pagination_row.addWidget(
             self.previous_button
         )
 
-        paging_row.addStretch(
+        pagination_row.addStretch(
             1
         )
 
-        paging_row.addWidget(
+        pagination_row.addWidget(
             self.page_label
         )
 
-        paging_row.addStretch(
+        pagination_row.addStretch(
             1
         )
 
-        paging_row.addWidget(
+        pagination_row.addWidget(
             self.next_button
         )
 
         layout.addLayout(
-            paging_row
+            pagination_row
         )
 
-        # --------------------------------------------------
-        # Direkter Lookup
-        # --------------------------------------------------
+        # ----------------------------------------------------
+        # Direct Lookup
+        # ----------------------------------------------------
 
-        self.direct_title_label.setObjectName(
-            "gameBananaSectionTitle"
+        direct_frame = QFrame()
+
+        direct_frame.setObjectName(
+            "gameBananaDirectLookup"
         )
 
-        layout.addWidget(
-            self.direct_title_label
+        direct_layout = QHBoxLayout(
+            direct_frame
         )
 
-        direct_row = (
-            QHBoxLayout()
+        direct_layout.setContentsMargins(
+            12,
+            10,
+            12,
+            10,
         )
 
-        direct_row.addWidget(
+        direct_layout.addWidget(
             self.reference_input,
             stretch=1,
         )
 
-        direct_row.addWidget(
+        direct_layout.addWidget(
             self.lookup_button
         )
 
-        layout.addLayout(
-            direct_row
-        )
-
-        return panel
-
-    # ========================================================
-    # Rechtes Detail-Panel
-    # ========================================================
-
-    def _build_details_panel(
-        self,
-    ) -> QWidget:
-        panel = QFrame()
-
-        panel.setObjectName(
-            "gameBananaDetailsPanel"
-        )
-
-        outer_layout = (
-            QVBoxLayout(
-                panel
-            )
-        )
-
-        outer_layout.setContentsMargins(
-            0,
-            0,
-            0,
-            0,
-        )
-
-        self.details_frame.setObjectName(
-            "gameBananaModCard"
-        )
-
-        layout = QVBoxLayout(
-            self.details_frame
-        )
-
-        layout.setContentsMargins(
-            18,
-            18,
-            18,
-            18,
-        )
-
-        layout.setSpacing(
-            8
-        )
-
-        self.details_title_label.setObjectName(
-            "gameBananaSectionTitle"
-        )
-
-        self.mod_name_label.setObjectName(
-            "gameBananaModTitle"
-        )
-
-        for label in (
-            self.mod_name_label,
-            self.mod_id_label,
-            self.author_label,
-            self.source_game_label,
-            self.category_label,
-            self.stats_label,
-        ):
-            label.setWordWrap(
-                True
-            )
-
         layout.addWidget(
-            self.details_title_label
+            direct_frame
         )
 
         layout.addWidget(
-            self.mod_name_label
+            self.status_label
         )
 
-        layout.addWidget(
-            self.mod_id_label
-        )
-
-        layout.addWidget(
-            self.author_label
-        )
-
-        layout.addWidget(
-            self.source_game_label
-        )
-
-        layout.addWidget(
-            self.category_label
-        )
-
-        layout.addWidget(
-            self.stats_label
-        )
-
-        self.description_view.setMinimumHeight(
-            180
-        )
-
-        layout.addWidget(
-            self.description_view,
-            stretch=1,
-        )
-
-        layout.addWidget(
-            self.file_label
-        )
-
-        layout.addWidget(
-            self.file_combobox
-        )
-
-        action_row = (
-            QHBoxLayout()
-        )
-
-        action_row.addWidget(
-            self.profile_button
-        )
-
-        action_row.addStretch(
-            1
-        )
-
-        action_row.addWidget(
-            self.install_button
-        )
-
-        action_row.addWidget(
-            self.cancel_button
-        )
-
-        layout.addLayout(
-            action_row
-        )
-
-        outer_layout.addWidget(
-            self.details_frame,
-            stretch=1,
-        )
-
-        return panel
+        return page
 
     # ========================================================
     # Signals
@@ -647,7 +402,6 @@ class GameBananaPage(
     def _connect_signals(
         self,
     ) -> None:
-        # Browser
         self.search_button.clicked.connect(
             self._search
         )
@@ -668,11 +422,6 @@ class GameBananaPage(
             self._next_page
         )
 
-        self.results_list.itemClicked.connect(
-            self._on_result_clicked
-        )
-
-        # Direkter Lookup
         self.lookup_button.clicked.connect(
             self._lookup_reference
         )
@@ -681,24 +430,34 @@ class GameBananaPage(
             self._lookup_reference
         )
 
+        self.mod_grid.mod_clicked.connect(
+            self._open_mod_summary
+        )
+
+        # ----------------------------------------------------
         # Details
-        self.profile_button.clicked.connect(
+        # ----------------------------------------------------
+
+        self.details.back_requested.connect(
+            self._show_browser
+        )
+
+        self.details.open_requested.connect(
             self._open_profile
         )
 
-        self.install_button.clicked.connect(
-            self._download_and_install
+        self.details.install_requested.connect(
+            self._download_file
         )
 
-        self.cancel_button.clicked.connect(
+        self.details.cancel_requested.connect(
             self._cancel_download
         )
 
-        self.file_combobox.currentIndexChanged.connect(
-            self._refresh_controls
-        )
+        # ----------------------------------------------------
+        # Browse Controller
+        # ----------------------------------------------------
 
-        # Controller: Browse
         self.controller.browse_started.connect(
             self._on_browse_started
         )
@@ -711,7 +470,10 @@ class GameBananaPage(
             self._on_browse_failed
         )
 
-        # Controller: Detail
+        # ----------------------------------------------------
+        # Lookup Controller
+        # ----------------------------------------------------
+
         self.controller.lookup_started.connect(
             self._on_lookup_started
         )
@@ -724,7 +486,10 @@ class GameBananaPage(
             self._on_lookup_failed
         )
 
-        # Controller: Download
+        # ----------------------------------------------------
+        # Download Controller
+        # ----------------------------------------------------
+
         self.controller.download_started.connect(
             self._on_download_started
         )
@@ -750,7 +515,7 @@ class GameBananaPage(
         )
 
     # ========================================================
-    # Seite sichtbar
+    # Show
     # ========================================================
 
     def showEvent(
@@ -764,8 +529,6 @@ class GameBananaPage(
         if self.controller.is_busy:
             return
 
-        # Nur automatisch laden, wenn für das
-        # aktive Spiel noch keine Liste vorhanden ist.
         if (
             self._loaded_game_id
             != self.config.selected_game
@@ -775,7 +538,7 @@ class GameBananaPage(
             )
 
     # ========================================================
-    # Spielwechsel
+    # Game
     # ========================================================
 
     def can_change_game(
@@ -802,21 +565,19 @@ class GameBananaPage(
 
         self._loaded_game_id = None
 
-        self.results_list.clear()
+        self.mod_grid.clear()
+
+        self.details.clear_mod()
 
         self.search_input.clear()
 
         self.reference_input.clear()
 
-        self._clear_details()
-
-        self.progress_bar.setVisible(
-            False
-        )
-
         self.status_label.clear()
 
-        self._update_game_label()
+        self._show_browser()
+
+        self._update_game_subtitle()
 
         self._refresh_controls()
 
@@ -829,20 +590,6 @@ class GameBananaPage(
     # Latest
     # ========================================================
 
-    def _load_latest(
-        self,
-        *,
-        page: int,
-    ) -> None:
-        started = (
-            self.controller.browse_latest(
-                page=page
-            )
-        )
-
-        if not started:
-            self._show_busy_message()
-
     def _show_latest(
         self,
     ) -> None:
@@ -852,8 +599,23 @@ class GameBananaPage(
             page=1
         )
 
+    def _load_latest(
+        self,
+        *,
+        page: int,
+    ) -> None:
+        started = (
+            self.controller
+            .browse_latest(
+                page=page
+            )
+        )
+
+        if not started:
+            self._show_busy_message()
+
     # ========================================================
-    # Suche
+    # Search
     # ========================================================
 
     def _search(
@@ -870,23 +632,18 @@ class GameBananaPage(
         ) < 2:
             QMessageBox.information(
                 self,
-                tr(
-                    "gamebanana.search.short.title"
-                ),
-                tr(
-                    "gamebanana.search.short.message"
+                "GameBanana",
+                (
+                    "Gib mindestens zwei "
+                    "Zeichen für die Suche ein."
                 ),
             )
 
             return
 
-        started = (
-            self.controller.search(
-                query
-            )
-        )
-
-        if not started:
+        if not self.controller.search(
+            query
+        ):
             self._show_busy_message()
 
     # ========================================================
@@ -933,28 +690,20 @@ class GameBananaPage(
         )
 
     # ========================================================
-    # Browse Events
+    # Browse
     # ========================================================
 
     def _on_browse_started(
         self,
         mode: str,
     ) -> None:
-        if (
-            mode
-            == "search"
-        ):
+        if mode == "search":
             self.status_label.setText(
-                tr(
-                    "gamebanana.status.searching"
-                )
+                "GameBanana wird durchsucht …"
             )
-
         else:
             self.status_label.setText(
-                tr(
-                    "gamebanana.status.loading_latest"
-                )
+                "Neueste Mods werden geladen …"
             )
 
     def _on_browse_loaded(
@@ -970,64 +719,24 @@ class GameBananaPage(
             game_id
         )
 
-        self.results_list.clear()
-
-        for summary in result.items:
-            item = QListWidgetItem(
-                self._summary_display_text(
-                    summary
-                )
-            )
-
-            item.setData(
-                SUMMARY_ROLE,
-                summary,
-            )
-
-            if summary.profile_url:
-                item.setToolTip(
-                    summary.profile_url
-                )
-
-            self.results_list.addItem(
-                item
-            )
+        self.mod_grid.set_mods(
+            result.items
+        )
 
         if result.is_search:
-            if result.items:
-                self.status_label.setText(
-                    tr(
-                        "gamebanana.status.search_results",
-                        count=len(
-                            result.items
-                        ),
-                    )
+            self.status_label.setText(
+                (
+                    f"{len(result.items)} "
+                    "passende Mods gefunden."
                 )
-
-            else:
-                self.status_label.setText(
-                    tr(
-                        "gamebanana.status.search_empty"
-                    )
-                )
-
+            )
         else:
-            if result.items:
-                self.status_label.setText(
-                    tr(
-                        "gamebanana.status.latest_results",
-                        count=len(
-                            result.items
-                        ),
-                    )
+            self.status_label.setText(
+                (
+                    f"{len(result.items)} "
+                    "Mods geladen."
                 )
-
-            else:
-                self.status_label.setText(
-                    tr(
-                        "gamebanana.status.latest_empty"
-                    )
-                )
+            )
 
         self._refresh_controls()
 
@@ -1036,47 +745,33 @@ class GameBananaPage(
         message: str,
     ) -> None:
         self.status_label.setText(
-            tr(
-                "gamebanana.status.browse_failed"
+            (
+                "Die GameBanana-Liste "
+                "konnte nicht geladen werden."
             )
         )
 
         QMessageBox.warning(
             self,
-            tr(
-                "gamebanana.error.browse.title"
-            ),
+            "GameBanana",
             message,
         )
 
-        self._refresh_controls()
-
     # ========================================================
-    # Ergebnis anklicken
+    # Card
     # ========================================================
 
-    def _on_result_clicked(
+    def _open_mod_summary(
         self,
-        item: QListWidgetItem,
+        summary: GameBananaModSummary,
     ) -> None:
-        summary = (
-            item.data(
-                SUMMARY_ROLE
-            )
-        )
-
-        if not isinstance(
-            summary,
-            GameBananaModSummary,
-        ):
-            return
-
-        self._begin_lookup(
+        if not self.controller.lookup(
             summary.id
-        )
+        ):
+            self._show_busy_message()
 
     # ========================================================
-    # Direkter Lookup
+    # Direct Lookup
     # ========================================================
 
     def _lookup_reference(
@@ -1091,471 +786,63 @@ class GameBananaPage(
         if not reference:
             return
 
-        self._begin_lookup(
+        if not self.controller.lookup(
             reference
-        )
-
-    def _begin_lookup(
-        self,
-        reference: str | int,
-    ) -> None:
-        started = (
-            self.controller.lookup(
-                reference
-            )
-        )
-
-        if not started:
+        ):
             self._show_busy_message()
+
+    # ========================================================
+    # Details
+    # ========================================================
 
     def _on_lookup_started(
         self,
     ) -> None:
         self.status_label.setText(
-            tr(
-                "gamebanana.status.loading"
-            )
+            "Mod-Details werden geladen …"
         )
-
-    # ========================================================
-    # Mod geladen
-    # ========================================================
 
     def _on_mod_loaded(
         self,
         mod: GameBananaMod,
         game_id: str,
     ) -> None:
-        self._current_mod = (
-            mod
-        )
+        self._current_mod = mod
 
         self._current_game_id = (
             game_id
         )
 
-        self._loaded_game_id = (
-            game_id
+        self.details.set_mod(
+            mod
         )
 
-        unknown = tr(
-            "gamebanana.value.unknown"
+        self.view_stack.setCurrentIndex(
+            self.VIEW_DETAILS
         )
-
-        self.mod_name_label.setText(
-            mod.name
-        )
-
-        self.mod_id_label.setText(
-            tr(
-                "gamebanana.mod.id",
-                id=mod.id,
-            )
-        )
-
-        self.author_label.setText(
-            tr(
-                "gamebanana.mod.author",
-                author=(
-                    mod.author
-                    or unknown
-                ),
-            )
-        )
-
-        self.source_game_label.setText(
-            tr(
-                "gamebanana.mod.game",
-                game=(
-                    mod.game_name
-                    or unknown
-                ),
-            )
-        )
-
-        self.category_label.setText(
-            tr(
-                "gamebanana.mod.category",
-                category=(
-                    mod.category
-                    or unknown
-                ),
-            )
-        )
-
-        self.stats_label.setText(
-            tr(
-                "gamebanana.mod.stats",
-                downloads=(
-                    self._format_count(
-                        mod.downloads
-                    )
-                ),
-                likes=(
-                    self._format_count(
-                        mod.likes
-                    )
-                ),
-                views=(
-                    self._format_count(
-                        mod.views
-                    )
-                ),
-            )
-        )
-
-        description = (
-            mod.description
-            or tr(
-                "gamebanana.mod.no_description"
-            )
-        )
-
-        plain_description = (
-            QTextDocumentFragment
-            .fromHtml(
-                description
-            )
-            .toPlainText()
-        )
-
-        self.description_view.setPlainText(
-            plain_description
-        )
-
-        # --------------------------------------------------
-        # Dateien
-        # --------------------------------------------------
-
-        self.file_combobox.clear()
-
-        for file in mod.files:
-            self.file_combobox.addItem(
-                self._file_display_name(
-                    file
-                ),
-                userData=file,
-            )
-
-        default_file = (
-            mod.default_file()
-        )
-
-        if default_file is not None:
-            for index in range(
-                self.file_combobox.count()
-            ):
-                if (
-                    self.file_combobox.itemData(
-                        index
-                    )
-                    == default_file
-                ):
-                    self.file_combobox.setCurrentIndex(
-                        index
-                    )
-
-                    break
-
-        self.details_frame.setVisible(
-            True
-        )
-
-        self.status_label.setText(
-            tr(
-                "gamebanana.status.loaded",
-                count=len(
-                    mod.files
-                ),
-            )
-        )
-
-        self._refresh_controls()
 
     def _on_lookup_failed(
         self,
         message: str,
     ) -> None:
-        self.status_label.setText(
-            tr(
-                "gamebanana.status.lookup_failed"
-            )
-        )
-
         QMessageBox.warning(
             self,
-            tr(
-                "gamebanana.error.lookup.title"
-            ),
+            "GameBanana",
             message,
         )
 
-        self._refresh_controls()
-
-    def _clear_details(
+    def _show_browser(
         self,
     ) -> None:
-        self._current_mod = None
-
-        self._current_game_id = None
-
-        self.mod_name_label.clear()
-
-        self.mod_id_label.clear()
-
-        self.author_label.clear()
-
-        self.source_game_label.clear()
-
-        self.category_label.clear()
-
-        self.stats_label.clear()
-
-        self.description_view.clear()
-
-        self.file_combobox.clear()
-
-        self.details_frame.setVisible(
-            False
-        )
-
-    # ========================================================
-    # Datei
-    # ========================================================
-
-    def _selected_file(
-        self,
-    ) -> GameBananaFile | None:
-        value = (
-            self.file_combobox
-            .currentData()
-        )
-
-        if isinstance(
-            value,
-            GameBananaFile,
-        ):
-            return value
-
-        return None
-
-    # ========================================================
-    # Download
-    # ========================================================
-
-    def _download_and_install(
-        self,
-    ) -> None:
-        file = (
-            self._selected_file()
-        )
-
-        if file is None:
+        if self.controller.is_busy:
             return
 
-        started = (
-            self.controller.download(
-                file
-            )
+        self.view_stack.setCurrentIndex(
+            self.VIEW_BROWSER
         )
-
-        if not started:
-            QMessageBox.warning(
-                self,
-                tr(
-                    "gamebanana.error.download.title"
-                ),
-                tr(
-                    "gamebanana.error.download.start"
-                ),
-            )
-
-    def _on_download_started(
-        self,
-        file: GameBananaFile,
-    ) -> None:
-        self.progress_bar.setVisible(
-            True
-        )
-
-        self.progress_bar.setRange(
-            0,
-            100,
-        )
-
-        self.progress_bar.setValue(
-            0
-        )
-
-        self.cancel_button.setVisible(
-            True
-        )
-
-        self.status_label.setText(
-            tr(
-                "gamebanana.status.downloading",
-                file=file.name,
-            )
-        )
-
-    def _on_download_progress(
-        self,
-        current,
-        total,
-    ) -> None:
-        current_bytes = int(
-            current
-        )
-
-        total_bytes = int(
-            total
-        )
-
-        if total_bytes <= 0:
-            self.progress_bar.setRange(
-                0,
-                0,
-            )
-
-            self.status_label.setText(
-                tr(
-                    "gamebanana.status.download_bytes",
-                    current=(
-                        self._format_bytes(
-                            current_bytes
-                        )
-                    ),
-                )
-            )
-
-            return
-
-        self.progress_bar.setRange(
-            0,
-            100,
-        )
-
-        percentage = int(
-            min(
-                100,
-                (
-                    current_bytes
-                    * 100
-                    / total_bytes
-                ),
-            )
-        )
-
-        self.progress_bar.setValue(
-            percentage
-        )
-
-        self.status_label.setText(
-            tr(
-                "gamebanana.status.download_progress",
-                current=(
-                    self._format_bytes(
-                        current_bytes
-                    )
-                ),
-                total=(
-                    self._format_bytes(
-                        total_bytes
-                    )
-                ),
-            )
-        )
-
-    def _on_download_finished(
-        self,
-        result,
-        game_id: str,
-    ) -> None:
-        self.progress_bar.setRange(
-            0,
-            100,
-        )
-
-        self.progress_bar.setValue(
-            100
-        )
-
-        self.cancel_button.setVisible(
-            False
-        )
-
-        self.status_label.setText(
-            tr(
-                "gamebanana.status.download_finished"
-            )
-        )
-
-        # Wichtig:
-        # MainWindow reicht diesen Pfad an
-        # LibraryPage weiter.
-        self.install_requested.emit(
-            result.path,
-            game_id,
-        )
-
-    def _on_download_failed(
-        self,
-        message: str,
-    ) -> None:
-        self.progress_bar.setVisible(
-            False
-        )
-
-        self.cancel_button.setVisible(
-            False
-        )
-
-        self.status_label.setText(
-            tr(
-                "gamebanana.status.download_failed"
-            )
-        )
-
-        QMessageBox.critical(
-            self,
-            tr(
-                "gamebanana.error.download.title"
-            ),
-            message,
-        )
-
-    def _on_download_cancelled(
-        self,
-    ) -> None:
-        self.progress_bar.setVisible(
-            False
-        )
-
-        self.cancel_button.setVisible(
-            False
-        )
-
-        self.status_label.setText(
-            tr(
-                "gamebanana.status.cancelled"
-            )
-        )
-
-    def _cancel_download(
-        self,
-    ) -> None:
-        if (
-            self.controller
-            .cancel_download()
-        ):
-            self.status_label.setText(
-                tr(
-                    "gamebanana.status.cancelling"
-                )
-            )
 
     # ========================================================
-    # GameBanana-Seite öffnen
+    # Open GameBanana
     # ========================================================
 
     def _open_profile(
@@ -1578,35 +865,129 @@ class GameBananaPage(
         )
 
     # ========================================================
-    # UI State
+    # Download
+    # ========================================================
+
+    def _download_file(
+        self,
+        file: GameBananaFile,
+    ) -> None:
+        if not self.controller.download(
+            file
+        ):
+            QMessageBox.warning(
+                self,
+                "GameBanana",
+                (
+                    "Der Download konnte "
+                    "nicht gestartet werden."
+                ),
+            )
+
+    def _on_download_started(
+        self,
+        file: GameBananaFile,
+    ) -> None:
+        self.details.start_download(
+            file
+        )
+
+    def _on_download_progress(
+        self,
+        current,
+        total,
+    ) -> None:
+        self.details.update_download(
+            int(
+                current
+            ),
+            int(
+                total
+            ),
+        )
+
+    def _on_download_finished(
+        self,
+        result,
+        game_id: str,
+    ) -> None:
+        self.details.finish_download()
+
+        self.install_requested.emit(
+            result.path,
+            game_id,
+        )
+
+    def _on_download_failed(
+        self,
+        message: str,
+    ) -> None:
+        self.details.fail_download(
+            message
+        )
+
+        QMessageBox.critical(
+            self,
+            "GameBanana Download",
+            message,
+        )
+
+    def _on_download_cancelled(
+        self,
+    ) -> None:
+        self.details.fail_download(
+            "Download wurde abgebrochen."
+        )
+
+    def _cancel_download(
+        self,
+    ) -> None:
+        self.controller.cancel_download()
+
+    # ========================================================
+    # Busy
     # ========================================================
 
     def _on_busy_changed(
         self,
-        _busy: bool,
+        busy: bool,
     ) -> None:
+        self.search_input.setEnabled(
+            not busy
+        )
+
+        self.search_button.setEnabled(
+            not busy
+        )
+
+        self.latest_button.setEnabled(
+            not busy
+        )
+
+        self.reference_input.setEnabled(
+            not busy
+        )
+
+        self.lookup_button.setEnabled(
+            not busy
+        )
+
+        self.mod_grid.setEnabled(
+            not busy
+        )
+
+        self.details.set_busy(
+            busy
+        )
+
         self._refresh_controls()
 
     def _refresh_controls(
         self,
-        *_args,
     ) -> None:
         busy = (
             self.controller.is_busy
         )
-
-        for widget in (
-            self.search_input,
-            self.search_button,
-            self.latest_button,
-            self.results_list,
-            self.reference_input,
-            self.lookup_button,
-            self.file_combobox,
-        ):
-            widget.setEnabled(
-                not busy
-            )
 
         result = (
             self._current_browse
@@ -1630,87 +1011,27 @@ class GameBananaPage(
             )
         )
 
-        self.install_button.setEnabled(
-            (
-                not busy
-                and self._current_mod
-                is not None
-                and self._selected_file()
-                is not None
-            )
-        )
-
-        self.profile_button.setEnabled(
-            (
-                not busy
-                and self._current_mod
-                is not None
-                and bool(
-                    self._current_mod
-                    .profile_url
-                )
-            )
-        )
-
-        self._update_page_label()
-
-    # ========================================================
-    # Pagination Label
-    # ========================================================
-
-    def _update_page_label(
-        self,
-    ) -> None:
-        result = (
-            self._current_browse
-        )
-
         if (
             result is not None
             and result.is_search
         ):
             self.page_label.setText(
-                tr(
-                    "gamebanana.browse.search_mode"
-                )
+                "Suchergebnis"
             )
 
-            return
-
-        page = (
-            result.page
-            if result is not None
-            else 1
-        )
-
-        self.page_label.setText(
-            tr(
-                "gamebanana.browse.page",
-                page=page,
+        else:
+            page = (
+                result.page
+                if result is not None
+                else 1
             )
-        )
 
-    # ========================================================
-    # Aktuelles Spiel
-    # ========================================================
-
-    def _update_game_label(
-        self,
-    ) -> None:
-        game = (
-            self.config.current_game
-        )
-
-        self.game_label.setText(
-            tr(
-                "gamebanana.current_game",
-                game=game.name,
-                importer=game.importer,
+            self.page_label.setText(
+                f"Seite {page}"
             )
-        )
 
     # ========================================================
-    # Übersetzung
+    # Translation
     # ========================================================
 
     def retranslate_ui(
@@ -1720,12 +1041,6 @@ class GameBananaPage(
         self.title_label.setText(
             tr(
                 "gamebanana.title"
-            )
-        )
-
-        self.browse_title_label.setText(
-            tr(
-                "gamebanana.browse.title"
             )
         )
 
@@ -1747,12 +1062,6 @@ class GameBananaPage(
             )
         )
 
-        self.search_hint_label.setText(
-            tr(
-                "gamebanana.search.hint"
-            )
-        )
-
         self.previous_button.setText(
             tr(
                 "gamebanana.previous"
@@ -1762,12 +1071,6 @@ class GameBananaPage(
         self.next_button.setText(
             tr(
                 "gamebanana.next"
-            )
-        )
-
-        self.direct_title_label.setText(
-            tr(
-                "gamebanana.direct.title"
             )
         )
 
@@ -1783,116 +1086,24 @@ class GameBananaPage(
             )
         )
 
-        self.details_title_label.setText(
-            tr(
-                "gamebanana.details.title"
-            )
-        )
+        self._update_game_subtitle()
 
-        self.file_label.setText(
-            tr(
-                "gamebanana.files"
-            )
-        )
-
-        self.profile_button.setText(
-            tr(
-                "gamebanana.open_page"
-            )
-        )
-
-        self.install_button.setText(
-            tr(
-                "gamebanana.download_install"
-            )
-        )
-
-        self.cancel_button.setText(
-            tr(
-                "common.cancel"
-            )
-        )
-
-        self._update_game_label()
-
-        self._update_page_label()
-
-        self._refresh_detail_translation()
-
-    def _refresh_detail_translation(
+    def _update_game_subtitle(
         self,
     ) -> None:
-        mod = (
-            self._current_mod
+        game = (
+            self.config.current_game
         )
 
-        if mod is None:
-            return
-
-        unknown = tr(
-            "gamebanana.value.unknown"
-        )
-
-        self.mod_id_label.setText(
-            tr(
-                "gamebanana.mod.id",
-                id=mod.id,
-            )
-        )
-
-        self.author_label.setText(
-            tr(
-                "gamebanana.mod.author",
-                author=(
-                    mod.author
-                    or unknown
-                ),
-            )
-        )
-
-        self.source_game_label.setText(
-            tr(
-                "gamebanana.mod.game",
-                game=(
-                    mod.game_name
-                    or unknown
-                ),
-            )
-        )
-
-        self.category_label.setText(
-            tr(
-                "gamebanana.mod.category",
-                category=(
-                    mod.category
-                    or unknown
-                ),
-            )
-        )
-
-        self.stats_label.setText(
-            tr(
-                "gamebanana.mod.stats",
-                downloads=(
-                    self._format_count(
-                        mod.downloads
-                    )
-                ),
-                likes=(
-                    self._format_count(
-                        mod.likes
-                    )
-                ),
-                views=(
-                    self._format_count(
-                        mod.views
-                    )
-                ),
+        self.subtitle_label.setText(
+            (
+                f"{game.name} • "
+                f"{game.importer}"
             )
         )
 
     # ========================================================
-    # Busy Dialog
+    # Busy message
     # ========================================================
 
     def _show_busy_message(
@@ -1906,117 +1117,6 @@ class GameBananaPage(
             tr(
                 "gamebanana.busy.message"
             ),
-        )
-
-    # ========================================================
-    # Result Display
-    # ========================================================
-
-    def _summary_display_text(
-        self,
-        summary: GameBananaModSummary,
-    ) -> str:
-        secondary: list[str] = []
-
-        if summary.author:
-            secondary.append(
-                summary.author
-            )
-
-        if summary.category:
-            secondary.append(
-                summary.category
-            )
-
-        secondary.append(
-            f"#{summary.id}"
-        )
-
-        return (
-            f"{summary.name}\n"
-            + " · ".join(
-                secondary
-            )
-        )
-
-    # ========================================================
-    # File Display
-    # ========================================================
-
-    @staticmethod
-    def _file_display_name(
-        file: GameBananaFile,
-    ) -> str:
-        if file.size is None:
-            return file.name
-
-        megabytes = (
-            file.size
-            / 1024
-            / 1024
-        )
-
-        return (
-            f"{file.name} "
-            f"({megabytes:.1f} MB)"
-        )
-
-    # ========================================================
-    # Count Format
-    # ========================================================
-
-    @staticmethod
-    def _format_count(
-        value: int | None,
-    ) -> str:
-        if value is None:
-            return "-"
-
-        return (
-            f"{value:,}"
-            .replace(
-                ",",
-                ".",
-            )
-        )
-
-    # ========================================================
-    # Byte Format
-    # ========================================================
-
-    @staticmethod
-    def _format_bytes(
-        value: int,
-    ) -> str:
-        value = max(
-            0,
-            value,
-        )
-
-        if value < 1024:
-            return f"{value} B"
-
-        if (
-            value
-            < 1024
-            * 1024
-        ):
-            return (
-                f"{value / 1024:.1f} KB"
-            )
-
-        if (
-            value
-            < 1024
-            * 1024
-            * 1024
-        ):
-            return (
-                f"{value / 1024 / 1024:.1f} MB"
-            )
-
-        return (
-            f"{value / 1024 / 1024 / 1024:.2f} GB"
         )
 
     # ========================================================

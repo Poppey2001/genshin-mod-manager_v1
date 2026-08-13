@@ -428,6 +428,8 @@
     "gamebanana.status.browse_failed": "Die GameBanana-Modliste konnte nicht geladen werden.",
     "gamebanana.error.browse.title": "GameBanana-Browser",
     "gamebanana.browse.page": "Seite {page}",
-    "gamebanana.browse.search_mode": "Suchergebnis"
+    "gamebanana.browse.search_mode": "Suchergebnis",
+
+    "ui.games.title": "SPIELE"
 
 }

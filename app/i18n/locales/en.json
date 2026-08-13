@@ -428,5 +428,7 @@
     "gamebanana.status.browse_failed": "The GameBanana mod list could not be loaded.",
     "gamebanana.error.browse.title": "GameBanana browser",
     "gamebanana.browse.page": "Page {page}",
-    "gamebanana.browse.search_mode": "Search results"
+    "gamebanana.browse.search_mode": "Search results",
+
+    "ui.games.title": "GAMES"
 }

@@ -72,7 +72,9 @@ PREFERRED_MOD_FIELDS = (
     "Game().name",
     "Category().name",
     "Files().aFiles()",
+    "Preview().sStructuredDataFullsizeUrl()",
     "Preview().sSubFeedImageUrl()",
+    "screenshots",
     "Url().sProfileUrl()",
     "description",
     "downloads",
@@ -1156,7 +1158,11 @@ class GameBananaClient:
                 )
             )
         )
-
+        image_urls = (
+            self._parse_image_urls(
+                data
+            )
+        )
         return (
             GameBananaMod(
                 id=summary.id,
@@ -1183,6 +1189,9 @@ class GameBananaClient:
                 files=tuple(
                     files
                 ),
+                image_urls=(
+                    image_urls
+                ),
                 category=(
                     summary.category
                 ),
@@ -1207,7 +1216,279 @@ class GameBananaClient:
     # ========================================================
     # Dateien
     # ========================================================
+    # ========================================================
+    # Bilder
+    # ========================================================
 
+    def _parse_image_urls(
+        self,
+        data: dict[
+            str,
+            Any,
+        ],
+    ) -> tuple[
+        str,
+        ...,
+    ]:
+        urls: list[str] = []
+
+        # ----------------------------------------------------
+        # Hochauflösende Hauptpreview zuerst
+        # ----------------------------------------------------
+
+        for field_name in (
+            (
+                "Preview()."
+                "sStructuredDataFullsizeUrl()"
+            ),
+            (
+                "Preview()."
+                "sSubFeedImageUrl()"
+            ),
+        ):
+            value = (
+                self._optional_string(
+                    data.get(
+                        field_name
+                    )
+                )
+            )
+
+            if value:
+                normalized = (
+                    self._normalize_url(
+                        value
+                    )
+                )
+
+                if normalized:
+                    urls.append(
+                        normalized
+                    )
+
+        # ----------------------------------------------------
+        # Screenshots
+        # ----------------------------------------------------
+
+        screenshots = (
+            data.get(
+                "screenshots"
+            )
+        )
+
+        self._collect_image_urls(
+            screenshots,
+            urls,
+        )
+
+        # ----------------------------------------------------
+        # Reihenfolge behalten,
+        # Duplikate entfernen.
+        # ----------------------------------------------------
+
+        result: list[str] = []
+
+        seen: set[str] = set()
+
+        for url in urls:
+            if url in seen:
+                continue
+
+            seen.add(
+                url
+            )
+
+            result.append(
+                url
+            )
+
+        return tuple(
+            result
+        )
+
+    def _collect_image_urls(
+        self,
+        value: Any,
+        output: list[str],
+    ) -> None:
+        if value is None:
+            return
+
+        # ----------------------------------------------------
+        # Direkte URL
+        # ----------------------------------------------------
+
+        if isinstance(
+            value,
+            str,
+        ):
+            candidate = (
+                value.strip()
+            )
+
+            if candidate.startswith(
+                (
+                    "http://",
+                    "https://",
+                    "//",
+                )
+            ):
+                normalized = (
+                    self._normalize_url(
+                        candidate
+                    )
+                )
+
+                if normalized:
+                    output.append(
+                        normalized
+                    )
+
+            return
+
+        # ----------------------------------------------------
+        # Liste
+        # ----------------------------------------------------
+
+        if isinstance(
+            value,
+            list,
+        ):
+            for item in value:
+                self._collect_image_urls(
+                    item,
+                    output,
+                )
+
+            return
+
+        # ----------------------------------------------------
+        # Dictionary
+        # ----------------------------------------------------
+
+        if not isinstance(
+            value,
+            dict,
+        ):
+            return
+
+        # Manche GameBanana-Strukturen liefern
+        # Base-URL + Dateinamen separat.
+        base_url = (
+            self._first_string(
+                value,
+                (
+                    "_sBaseUrl",
+                    "base_url",
+                    "baseUrl",
+                ),
+            )
+        )
+
+        filename = (
+            self._first_string(
+                value,
+                (
+                    "_sFile",
+                    "filename",
+                    "file",
+                ),
+            )
+        )
+
+        if (
+            base_url
+            and filename
+        ):
+            combined = (
+                base_url.rstrip(
+                    "/"
+                )
+                + "/"
+                + filename.lstrip(
+                    "/"
+                )
+            )
+
+            normalized = (
+                self._normalize_url(
+                    combined
+                )
+            )
+
+            if normalized:
+                output.append(
+                    normalized
+                )
+
+        # Typische direkte URL-Felder
+        for key in (
+            "_sFullSizeUrl",
+            "_sImageUrl",
+            "_sUrl",
+            "fullsize",
+            "full",
+            "image",
+            "image_url",
+            "url",
+            "src",
+        ):
+            raw_url = (
+                value.get(
+                    key
+                )
+            )
+
+            if not isinstance(
+                raw_url,
+                str,
+            ):
+                continue
+
+            raw_url = (
+                raw_url.strip()
+            )
+
+            if not raw_url:
+                continue
+
+            if not raw_url.startswith(
+                (
+                    "http://",
+                    "https://",
+                    "//",
+                )
+            ):
+                continue
+
+            normalized = (
+                self._normalize_url(
+                    raw_url
+                )
+            )
+
+            if normalized:
+                output.append(
+                    normalized
+                )
+
+        # ----------------------------------------------------
+        # Unbekannte verschachtelte Strukturen
+        # defensiv ebenfalls durchsuchen.
+        # ----------------------------------------------------
+
+        for child in value.values():
+            if isinstance(
+                child,
+                (
+                    list,
+                    dict,
+                ),
+            ):
+                self._collect_image_urls(
+                    child,
+                    output,
+                )
     def _parse_files(
         self,
         raw_files: Any,

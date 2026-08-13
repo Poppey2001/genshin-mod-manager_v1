@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import (
+    Callable,
+)
 
 from PySide6.QtCore import (
     QObject,
     Signal,
 )
 
-from app.config import AppConfig
+from app.config import (
+    AppConfig,
+)
 
-from app.games import (
-    GameDefinition,
+from app.games.registry import (
     get_game,
 )
 
@@ -21,16 +24,20 @@ GameChangeGuard = Callable[
 ]
 
 
-class GameController(QObject):
+class GameController(
+    QObject
+):
     """
-    Verwaltet das global ausgewählte Spiel.
-
-    Änderungen laufen zentral über diesen Controller,
-    damit Library, Settings und später GameBanana
-    synchron bleiben.
+    Zentrale Umschaltung des aktiven Spiels.
     """
 
-    game_changed = Signal(str)
+    game_changed = Signal(
+        str
+    )
+
+    game_change_blocked = Signal(
+        str
+    )
 
     def __init__(
         self,
@@ -49,55 +56,94 @@ class GameController(QObject):
             | None
         ) = None
 
-    @property
-    def current_game(
-        self,
-    ) -> GameDefinition:
-        return (
-            self.config.current_game
-        )
-
     def set_change_guard(
         self,
-        guard: GameChangeGuard | None,
+        guard: (
+            GameChangeGuard
+            | None
+        ),
     ) -> None:
-        self._change_guard = guard
-
-    def can_change_game(
-        self,
-    ) -> bool:
-        if self._change_guard is None:
-            return True
-
-        return bool(
-            self._change_guard()
+        self._change_guard = (
+            guard
         )
 
     def request_game_change(
         self,
         game_id: str,
     ) -> bool:
-        game = get_game(
-            game_id
+        try:
+            game = get_game(
+                game_id
+            )
+
+        except (
+            KeyError,
+            ValueError,
+        ):
+            return False
+
+        stable_id = getattr(
+            game,
+            "game_id",
+            None,
+        )
+
+        if not stable_id:
+            raw_id = getattr(
+                game,
+                "id",
+                None,
+            )
+
+            if hasattr(
+                raw_id,
+                "value",
+            ):
+                stable_id = (
+                    raw_id.value
+                )
+
+            else:
+                stable_id = (
+                    str(
+                        raw_id
+                    )
+                )
+
+        stable_id = str(
+            stable_id
         )
 
         if (
-            game.id.value
+            stable_id
             == self.config.selected_game
         ):
             return True
 
-        if not self.can_change_game():
+        if (
+            self._change_guard
+            is not None
+            and not self._change_guard()
+        ):
+            self.game_change_blocked.emit(
+                stable_id
+            )
+
             return False
 
         self.config.set_selected_game(
-            game.id
+            stable_id
         )
 
         self.config.save()
 
         self.game_changed.emit(
-            game.id.value
+            stable_id
         )
 
         return True
+
+
+__all__ = [
+    "GameController",
+]
