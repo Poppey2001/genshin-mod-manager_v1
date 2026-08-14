@@ -26,7 +26,7 @@ from app.widgets.gamebanana.mod_card import (
 )
 
 
-CARD_TARGET_WIDTH = 285
+CARD_TARGET_WIDTH = 340
 
 
 class GameBananaModGrid(

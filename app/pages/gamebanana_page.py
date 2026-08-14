@@ -56,6 +56,7 @@ class GameBananaPage(
     install_requested = Signal(
         object,
         str,
+        int,
     )
 
     VIEW_BROWSER = 0
@@ -872,22 +873,40 @@ class GameBananaPage(
         self,
         file: GameBananaFile,
     ) -> None:
-        if not self.controller.download(
-            file
-        ):
-            QMessageBox.warning(
-                self,
-                "GameBanana",
-                (
-                    "Der Download konnte "
-                    "nicht gestartet werden."
-                ),
+        """
+        Startet den Download einer Datei aus
+        der aktuell geöffneten GameBanana-Mod.
+        """
+
+        started = (
+            self.controller.download(
+                file
             )
+        )
+
+        if started:
+            return
+
+        QMessageBox.warning(
+            self,
+            tr(
+                "gamebanana.error.download.title"
+            ),
+            tr(
+                "gamebanana.error.download.start"
+            ),
+        )
 
     def _on_download_started(
         self,
         file: GameBananaFile,
     ) -> None:
+        """
+        Der Fortschritt gehört im neuen UI
+        zur Detailansicht und nicht mehr
+        direkt zur GameBananaPage.
+        """
+
         self.details.start_download(
             file
         )
@@ -910,12 +929,22 @@ class GameBananaPage(
         self,
         result,
         game_id: str,
+        mod_id: int,
     ) -> None:
+        """
+        Download abgeschlossen.
+
+        Wichtig:
+        mod_id wird jetzt explizit bis zum
+        Library-Import weitergereicht.
+        """
+
         self.details.finish_download()
 
         self.install_requested.emit(
             result.path,
             game_id,
+            mod_id,
         )
 
     def _on_download_failed(
@@ -928,7 +957,9 @@ class GameBananaPage(
 
         QMessageBox.critical(
             self,
-            "GameBanana Download",
+            tr(
+                "gamebanana.error.download.title"
+            ),
             message,
         )
 
@@ -936,13 +967,25 @@ class GameBananaPage(
         self,
     ) -> None:
         self.details.fail_download(
-            "Download wurde abgebrochen."
+            tr(
+                "gamebanana.status.cancelled"
+            )
         )
 
     def _cancel_download(
         self,
     ) -> None:
-        self.controller.cancel_download()
+        if not (
+            self.controller
+            .cancel_download()
+        ):
+            return
+
+        self.details.fail_download(
+            tr(
+                "gamebanana.status.cancelling"
+            )
+        )
 
     # ========================================================
     # Busy

@@ -430,5 +430,32 @@
     "gamebanana.browse.page": "Page {page}",
     "gamebanana.browse.search_mode": "Search results",
 
-    "ui.games.title": "GAMES"
+    "ui.games.title": "GAMES",
+
+    "library.details.preview": "Preview",
+    "library.details.gamebanana_id": "GameBanana ID",
+
+    "library.details.action.set_gamebanana_id": "Set GameBanana ID",
+    "library.details.action.set_gamebanana_id_tooltip": "Links this library mod to a GameBanana mod ID. If no local preview is available, preview images can be loaded from GameBanana.",
+
+    "library.gamebanana_id.dialog.title": "GameBanana ID",
+    "library.gamebanana_id.dialog.message": "GameBanana mod ID for “{mod_name}”:",
+    "library.gamebanana_id.error.title": "Could not save GameBanana ID",
+    "library.gamebanana_id.error.message": "The GameBanana ID could not be saved to the mod metadata.\n\n{error}",
+    "library.gamebanana_id.status.saved": "Saved GameBanana ID {mod_id} for “{mod_name}”.",
+
+    "library.preview.none": "No preview",
+    "library.preview.loading": "Searching for preview …",
+    "library.preview.unavailable": "Preview unavailable",
+    "library.preview.local": "Local",
+    "library.preview.gamebanana": "GameBanana",
+    "library.preview.image_load_failed": "Image could not be loaded",
+
+    "library.view.title": "View",
+    "library.view.list": "List",
+    "library.view.gallery": "Gallery",
+    "library.gallery.empty": "No mods match the current filters.",
+
+    "library.gamebanana_metadata.error.title": "GameBanana metadata",
+    "library.gamebanana_metadata.error.message": "The mod was imported, but the GameBanana link could not be saved completely.\n\n{errors}"
 }

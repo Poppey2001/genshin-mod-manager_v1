@@ -53,11 +53,11 @@ class GameBananaModCard(
         )
 
         self.setMinimumWidth(
-            245
+            300
         )
 
         self.setMaximumWidth(
-            380
+            440
         )
 
         self.preview = (
@@ -68,7 +68,7 @@ class GameBananaModCard(
         )
 
         self.preview.setFixedHeight(
-            165
+            210
         )
 
         self.name_label = QLabel(

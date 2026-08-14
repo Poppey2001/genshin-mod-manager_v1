@@ -143,11 +143,11 @@ class GameBananaImageGallery(
         )
 
         self.main_image.setMinimumHeight(
-            320
+            420
         )
 
         self.main_image.setMaximumHeight(
-            520
+            720
         )
 
         self.previous_button = (

@@ -87,6 +87,7 @@ class GameBananaController(
     download_finished = Signal(
         object,
         str,
+        int,
     )
 
     download_failed = Signal(
@@ -511,12 +512,17 @@ class GameBananaController(
         worker.signals.progress.connect(
             self.download_progress
         )
+        
+        mod_id = int(
+            mod.id
+        )
 
         worker.signals.finished.connect(
             lambda result: (
                 self._on_download_finished(
                     result,
                     game_id,
+                    mod_id,
                 )
             )
         )
@@ -565,6 +571,7 @@ class GameBananaController(
         self,
         result,
         game_id: str,
+        mod_id: int,
     ) -> None:
         self._download_worker = None
 
@@ -575,6 +582,7 @@ class GameBananaController(
         self.download_finished.emit(
             result,
             game_id,
+            mod_id,
         )
 
     def _on_download_failed(

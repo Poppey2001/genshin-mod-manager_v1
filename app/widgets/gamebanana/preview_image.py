@@ -283,21 +283,66 @@ class GameBananaPreviewImage(
         ):
             return
 
-        target = (
+        rect = (
             self.contentsRect()
-            .size()
+        )
+
+        logical_width = (
+            rect.width()
+        )
+
+        logical_height = (
+            rect.height()
         )
 
         if (
-            target.width() <= 0
-            or target.height() <= 0
+            logical_width <= 0
+            or logical_height <= 0
         ):
             return
 
+        # ----------------------------------------------------
+        # High-DPI berücksichtigen
+        #
+        # Beispiel:
+        # Widget = 600x400
+        # DPR 2.0
+        #
+        # Intern wird auf 1200x800 gerechnet.
+        # ----------------------------------------------------
+
+        device_ratio = max(
+            1.0,
+            float(
+                self.devicePixelRatioF()
+            ),
+        )
+
+        target_width = max(
+            1,
+            int(
+                logical_width
+                * device_ratio
+            ),
+        )
+
+        target_height = max(
+            1,
+            int(
+                logical_height
+                * device_ratio
+            ),
+        )
+
         scaled = pixmap.scaled(
-            target,
+            target_width,
+            target_height,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
+        )
+
+        scaled.setDevicePixelRatio(
+            device_ratio
         )
 
         self.setPixmap(

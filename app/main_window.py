@@ -543,6 +543,7 @@ class MainWindow(
         self,
         path,
         game_id: str,
+        mod_id: int,
     ) -> None:
         download_path = (
             Path(
@@ -598,11 +599,38 @@ class MainWindow(
         if callable(
             importer
         ):
-            importer(
-                [
-                    download_path
-                ]
+            importer = getattr(
+                self.library_page,
+                "request_gamebanana_import",
+                None,
             )
+
+            if callable(
+                importer
+            ):
+                importer(
+                    path=download_path,
+                    game_id=game_id,
+                    mod_id=mod_id,
+                )
+
+                return
+
+            # Nur noch als Fallback.
+            fallback = getattr(
+                self.library_page,
+                "request_external_import",
+                None,
+            )
+
+            if callable(
+                fallback
+            ):
+                fallback(
+                    [
+                        download_path
+                    ]
+                )
 
             return
 

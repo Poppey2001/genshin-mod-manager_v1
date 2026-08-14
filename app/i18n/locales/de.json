@@ -430,6 +430,33 @@
     "gamebanana.browse.page": "Seite {page}",
     "gamebanana.browse.search_mode": "Suchergebnis",
 
-    "ui.games.title": "SPIELE"
+    "ui.games.title": "SPIELE",
+
+    "library.details.preview": "Vorschau",
+    "library.details.gamebanana_id": "GameBanana-ID",
+
+    "library.details.action.set_gamebanana_id": "GameBanana-ID setzen",
+    "library.details.action.set_gamebanana_id_tooltip": "Verknüpft diesen Library-Mod mit einer GameBanana-Mod-ID. Wenn keine lokale Vorschau vorhanden ist, können darüber Vorschaubilder von GameBanana geladen werden.",
+
+    "library.gamebanana_id.dialog.title": "GameBanana-ID",
+    "library.gamebanana_id.dialog.message": "GameBanana-Mod-ID für „{mod_name}“:",
+    "library.gamebanana_id.error.title": "GameBanana-ID konnte nicht gespeichert werden",
+    "library.gamebanana_id.error.message": "Die GameBanana-ID konnte nicht in den Mod-Metadaten gespeichert werden.\n\n{error}",
+    "library.gamebanana_id.status.saved": "GameBanana-ID {mod_id} für „{mod_name}“ gespeichert.",
+
+    "library.preview.none": "Keine Vorschau",
+    "library.preview.loading": "Vorschau wird gesucht …",
+    "library.preview.unavailable": "Vorschau nicht verfügbar",
+    "library.preview.local": "Lokal",
+    "library.preview.gamebanana": "GameBanana",
+    "library.preview.image_load_failed": "Bild konnte nicht geladen werden",
+
+    "library.view.title": "Ansicht",
+    "library.view.list": "Liste",
+    "library.view.gallery": "Galerie",
+    "library.gallery.empty": "Keine Mods entsprechen den aktuellen Filtern.",
+
+    "library.gamebanana_metadata.error.title": "GameBanana-Metadaten",
+    "library.gamebanana_metadata.error.message": "Der Mod wurde importiert, aber die GameBanana-Verknüpfung konnte nicht vollständig gespeichert werden.\n\n{errors}"
 
 }

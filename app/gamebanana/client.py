@@ -72,9 +72,12 @@ PREFERRED_MOD_FIELDS = (
     "Game().name",
     "Category().name",
     "Files().aFiles()",
+
     "Preview().sStructuredDataFullsizeUrl()",
     "Preview().sSubFeedImageUrl()",
+
     "screenshots",
+
     "Url().sProfileUrl()",
     "description",
     "downloads",
@@ -90,7 +93,13 @@ PREFERRED_SUMMARY_FIELDS = (
     "Owner().name",
     "Game().name",
     "Category().name",
+
+    # Hochauflösende Preview bevorzugen
+    "Preview().sStructuredDataFullsizeUrl()",
+
+    # Nur als Fallback
     "Preview().sSubFeedImageUrl()",
+
     "Url().sProfileUrl()",
     "downloads",
     "likes",
@@ -1087,6 +1096,11 @@ class GameBananaClient:
                 preview_url=(
                     self._normalize_url(
                         self._optional_string(
+                            data.get(
+                                "Preview().sStructuredDataFullsizeUrl()"
+                            )
+                        )
+                        or self._optional_string(
                             data.get(
                                 "Preview().sSubFeedImageUrl()"
                             )
