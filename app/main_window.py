@@ -12,6 +12,7 @@ from pathlib import Path
 
 from PySide6.QtCore import (
     QUrl,
+    Qt,
 )
 
 from PySide6.QtGui import (
@@ -929,62 +930,74 @@ class MainWindow(
         self,
         *_args,
     ) -> None:
-        # ----------------------------------------------------
-        # Bereits geöffnet
-        # ----------------------------------------------------
+        # ====================================================
+        # Bereits offen
+        # ====================================================
 
         if (
             self._settings_dialog
             is not None
         ):
             try:
-                self._settings_dialog.raise_()
+                # --------------------------------------------
+                # Sichtbar:
+                # vorhandenes Fenster nach vorne holen.
+                # --------------------------------------------
 
-                self._settings_dialog.activateWindow()
+                if (
+                    self._settings_dialog
+                    .isVisible()
+                ):
+                    self._settings_dialog.raise_()
 
-                return
+                    self._settings_dialog.activateWindow()
+
+                    return
+
+                # --------------------------------------------
+                # Falls aus irgendeinem Grund nur versteckt:
+                # altes Dialogobjekt entsorgen.
+                # --------------------------------------------
+
+                self._settings_dialog.deleteLater()
+
+                self._settings_dialog = None
 
             except RuntimeError:
+                # C++-Objekt wurde bereits gelöscht.
                 self._settings_dialog = None
 
         # ====================================================
-        # Dialog erstellen
+        # Neuer Settings Dialog
         # ====================================================
+
+        dialog = SettingsDialog(
+            config=self.config,
+            parent=self,
+        )
+
+        # ----------------------------------------------------
+        # WICHTIG:
+        #
+        # Beim Schließen wird der QDialog jetzt tatsächlich
+        # zerstört und nicht nur versteckt.
+        # ----------------------------------------------------
+
+        dialog.setAttribute(
+            Qt.WidgetAttribute.WA_DeleteOnClose,
+            True,
+        )
 
         self._settings_dialog = (
-            SettingsDialog(
-                config=self.config,
-                parent=self,
-            )
+            dialog
         )
 
         # ====================================================
-        # Update Settings
-        # ====================================================
-
-        update_group = (
-            self._settings_dialog
-            .findChild(
-                UpdateSettingsGroup
-            )
-        )
-
-        if (
-            update_group is not None
-            and self.update_controller
-            is not None
-        ):
-            update_group.check_requested.connect(
-                self.update_controller
-                .check_now
-            )
-
-        # ----------------------------------------------------
         # Aktuelles Spiel
-        # ----------------------------------------------------
+        # ====================================================
 
         game_change = getattr(
-            self._settings_dialog,
+            dialog,
             "on_game_changed",
             None,
         )
@@ -996,16 +1009,16 @@ class MainWindow(
                 self.config.selected_game
             )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Settings gespeichert
-        # ----------------------------------------------------
+        # ====================================================
 
         for signal_name in (
             "settings_saved",
             "saved",
         ):
             signal = getattr(
-                self._settings_dialog,
+                dialog,
                 signal_name,
                 None,
             )
@@ -1028,16 +1041,54 @@ class MainWindow(
 
                 break
 
-        # ----------------------------------------------------
-        # Dialog geschlossen / zerstört
-        # ----------------------------------------------------
+        # ====================================================
+        # Update Button
+        # ====================================================
 
-        self._settings_dialog.destroyed.connect(
+        try:
+            from app.widgets.settings.update_settings_group import (
+                UpdateSettingsGroup,
+            )
+
+            update_group = (
+                dialog.findChild(
+                    UpdateSettingsGroup
+                )
+            )
+
+            if (
+                update_group is not None
+                and self.update_controller
+                is not None
+            ):
+                update_group.check_requested.connect(
+                    self.update_controller
+                    .check_now
+                )
+
+        except (
+            ImportError,
+            AttributeError,
+        ):
+            pass
+
+        # ====================================================
+        # Dialog zerstört
+        # ====================================================
+
+        dialog.destroyed.connect(
             self._on_settings_dialog_destroyed
         )
 
-        self._settings_dialog.show()
+        # ====================================================
+        # Anzeigen
+        # ====================================================
 
+        dialog.show()
+
+        dialog.raise_()
+
+        dialog.activateWindow()
     # ========================================================
     # Settings gespeichert
     # ========================================================

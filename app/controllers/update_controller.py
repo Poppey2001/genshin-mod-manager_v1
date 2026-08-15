@@ -27,15 +27,15 @@ from app.i18n import (
 )
 
 from app.services.update_service import (
-    UpdateInfo,
     StagedUpdate,
+    UpdateInfo,
 )
 
 from app.services.windows_script_updater import (
     cleanup_successful_update_cache,
-    external_scripts_available,
     is_windows,
-    launch_script_update_helper,
+    launch_windows_update,
+    script_update_supported,
 )
 
 from app.update_config import (
@@ -111,32 +111,35 @@ class UpdateController(
         self,
     ) -> None:
         # ----------------------------------------------------
-        # Alten erfolgreichen Update-Cache löschen.
-        # Etwas verzögert, damit der PowerShell Helper
-        # sicher beendet ist.
+        # Cache eines erfolgreich installierten Updates
+        # nach dem Neustart entfernen.
         # ----------------------------------------------------
 
         QTimer.singleShot(
-            3000,
+            5000,
             cleanup_successful_update_cache,
         )
 
         # ----------------------------------------------------
-        # Auto Update nur Windows
+        # Automatisches Update-Fenster nur unter Windows.
         # ----------------------------------------------------
 
         if not is_windows():
             return
 
-        if not getattr(
-            self.config,
-            "auto_check_updates",
-            True,
-        ):
+        enabled = bool(
+            getattr(
+                self.config,
+                "auto_check_updates",
+                True,
+            )
+        )
+
+        if not enabled:
             return
 
         QTimer.singleShot(
-            5000,
+            3000,
             self._run_auto_check,
         )
 
@@ -146,6 +149,10 @@ class UpdateController(
         self.check_for_updates(
             manual=False
         )
+
+    # ========================================================
+    # Manual
+    # ========================================================
 
     def check_now(
         self,
@@ -167,6 +174,17 @@ class UpdateController(
             self._check_worker
             is not None
         ):
+            if manual:
+                QMessageBox.information(
+                    self.parent_window,
+                    tr(
+                        "updates.check.title"
+                    ),
+                    tr(
+                        "updates.check.already_running"
+                    ),
+                )
+
             return
 
         if not (
@@ -208,7 +226,9 @@ class UpdateController(
             )
         )
 
-        self._check_worker = worker
+        self._check_worker = (
+            worker
+        )
 
         worker.signals.finished.connect(
             self._on_check_finished
@@ -263,16 +283,28 @@ class UpdateController(
             result
         )
 
-        install_supported = (
-            is_windows()
-            and external_scripts_available()
-        )
+        # ----------------------------------------------------
+        # Falls bereits ein Dialog existiert:
+        # nicht mehrere öffnen.
+        # ----------------------------------------------------
+
+        if (
+            self._dialog
+            is not None
+        ):
+            try:
+                self._dialog.close()
+
+            except RuntimeError:
+                pass
+
+            self._dialog = None
 
         dialog = (
             UpdateDialog(
                 update=result,
                 install_supported=(
-                    install_supported
+                    script_update_supported()
                 ),
                 parent=(
                     self.parent_window
@@ -291,7 +323,9 @@ class UpdateController(
         )
 
         dialog.show()
+
         dialog.raise_()
+
         dialog.activateWindow()
 
     def _on_check_failed(
@@ -337,27 +371,43 @@ class UpdateController(
         ):
             return
 
-        if (
+        update = (
             self._current_update
-            is None
-            or self._dialog
-            is None
+        )
+
+        dialog = (
+            self._dialog
+        )
+
+        if (
+            update is None
+            or dialog is None
         ):
+            return
+
+        if not (
+            script_update_supported()
+        ):
+            dialog.show_error(
+                tr(
+                    "updates.error.install_unsupported"
+                )
+            )
+
             return
 
         worker = (
             UpdateDownloadWorker(
-                info=(
-                    self._current_update
-                )
+                info=update
             )
         )
 
-        self._download_worker = worker
+        self._download_worker = (
+            worker
+        )
 
         worker.signals.progress.connect(
-            self._dialog
-            .update_progress
+            dialog.update_progress
         )
 
         worker.signals.finished.connect(
@@ -372,7 +422,7 @@ class UpdateController(
             self._on_download_cancelled
         )
 
-        self._dialog.start_download()
+        dialog.start_download()
 
         self.thread_pool.start(
             worker
@@ -410,15 +460,15 @@ class UpdateController(
         dialog.show_installing()
 
         try:
-            launch_script_update_helper(
+            launch_windows_update(
                 result
             )
 
         except Exception as error:
             logger.exception(
                 (
-                    "Windows Script Update "
-                    "konnte nicht gestartet werden."
+                    "Windows Update konnte "
+                    "nicht gestartet werden."
                 )
             )
 
@@ -441,7 +491,7 @@ class UpdateController(
             )
 
     # ========================================================
-    # Errors
+    # Download Failed
     # ========================================================
 
     def _on_download_failed(
@@ -473,6 +523,10 @@ class UpdateController(
                 )
             )
 
+    # ========================================================
+    # Dialog
+    # ========================================================
+
     def _on_dialog_finished(
         self,
         _result: int,
@@ -494,11 +548,12 @@ class UpdateController(
     def shutdown(
         self,
     ) -> None:
-        if (
+        worker = (
             self._download_worker
-            is not None
-        ):
-            self._download_worker.cancel()
+        )
+
+        if worker is not None:
+            worker.cancel()
 
 
 __all__ = [

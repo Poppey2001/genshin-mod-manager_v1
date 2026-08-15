@@ -16,8 +16,12 @@ from app.services.update_service import (
     StagedUpdate,
 )
 
+from app.update_config import (
+    UPDATE_REPLACE_ITEMS,
+)
 
-class WindowsScriptUpdateError(
+
+class WindowsUpdateError(
     RuntimeError
 ):
     pass
@@ -38,36 +42,60 @@ def is_windows(
     )
 
 
-def application_root(
-) -> Path:
-    if bool(
+def is_frozen(
+) -> bool:
+    return bool(
         getattr(
             sys,
             "frozen",
             False,
         )
-    ):
-        return (
-            Path(
-                sys.executable
-            )
-            .resolve()
-            .parent
-        )
-
-    return (
-        Path(
-            __file__
-        )
-        .resolve()
-        .parents[
-            2
-        ]
     )
 
 
-def external_scripts_available(
+def application_root(
+) -> Path:
+    # --------------------------------------------------------
+    # Script-Installation
+    # --------------------------------------------------------
+
+    if not is_frozen():
+        return (
+            Path(
+                __file__
+            )
+            .resolve()
+            .parents[
+                2
+            ]
+        )
+
+    # --------------------------------------------------------
+    # Für einen späteren externen Windows-Build.
+    #
+    # Aktuell wird ein eingebetteter PyInstaller-Build
+    # absichtlich nicht als Script-Updater unterstützt.
+    # --------------------------------------------------------
+
+    return (
+        Path(
+            sys.executable
+        )
+        .resolve()
+        .parent
+    )
+
+
+def script_update_supported(
 ) -> bool:
+    if not is_windows():
+        return False
+
+    # Ein normaler PyInstaller-Build würde weiterhin
+    # eingebetteten Python-Code ausführen.
+    if is_frozen():
+        return False
+
     root = (
         application_root()
     )
@@ -86,10 +114,10 @@ def external_scripts_available(
 
 
 # ============================================================
-# Restart
+# Neustart
 # ============================================================
 
-def _restart_program(
+def _restart_command(
 ) -> tuple[
     Path,
     tuple[
@@ -97,20 +125,6 @@ def _restart_program(
         ...,
     ],
 ]:
-    if bool(
-        getattr(
-            sys,
-            "frozen",
-            False,
-        )
-    ):
-        return (
-            Path(
-                sys.executable
-            ).resolve(),
-            (),
-        )
-
     return (
         Path(
             sys.executable
@@ -125,27 +139,30 @@ def _restart_program(
 
 
 # ============================================================
-# Stage / Helper
+# PowerShell Helper starten
 # ============================================================
 
-def launch_script_update_helper(
+def launch_windows_update(
     staged: StagedUpdate,
 ) -> Path:
-    if not is_windows():
-        raise WindowsScriptUpdateError(
+    if not script_update_supported():
+        raise WindowsUpdateError(
             (
+                "Die automatische "
                 "Script-Installation ist "
-                "nur unter Windows verfügbar."
+                "auf diesem Build nicht "
+                "verfügbar."
             )
         )
 
-    if not external_scripts_available():
-        raise WindowsScriptUpdateError(
+    if not (
+        staged.payload_root
+        .is_dir()
+    ):
+        raise WindowsUpdateError(
             (
-                "Dieser Windows-Build lädt "
-                "keine externen Python-Scripts. "
-                "Der Script-Updater kann diesen "
-                "Build deshalb nicht aktualisieren."
+                "Der entpackte Update-Ordner "
+                "wurde nicht gefunden."
             )
         )
 
@@ -153,40 +170,9 @@ def launch_script_update_helper(
         application_root()
     )
 
-    if not (
-        staged.manifest_path
-        .is_file()
-    ):
-        raise WindowsScriptUpdateError(
-            "Update-Manifest fehlt."
-        )
-
-    manifest = json.loads(
-        staged.manifest_path
-        .read_text(
-            encoding="utf-8"
-        )
-    )
-
-    files = (
-        manifest.get(
-            "files"
-        )
-    )
-
-    if not isinstance(
-        files,
-        list,
-    ):
-        raise WindowsScriptUpdateError(
-            "Ungültiges Update-Manifest."
-        )
-
-    (
-        restart_program,
-        restart_args,
-    ) = (
-        _restart_program()
+    backup_root = (
+        staged.cache_root
+        / "backup"
     )
 
     helper_path = (
@@ -194,27 +180,42 @@ def launch_script_update_helper(
         / "update-helper.ps1"
     )
 
-    backup_root = (
-        staged.cache_root
-        / "backup"
-    )
-
     installed_marker = (
         staged.cache_root
         / ".installed"
     )
 
-    restart_args_ps = ", ".join(
-        (
+    (
+        restart_program,
+        restart_arguments,
+    ) = (
+        _restart_command()
+    )
+
+    replace_items_ps = (
+        ", ".join(
             "'"
-            + arg.replace(
+            + item.replace(
                 "'",
                 "''",
             )
             + "'"
+            for item
+            in UPDATE_REPLACE_ITEMS
         )
-        for arg
-        in restart_args
+    )
+
+    restart_arguments_ps = (
+        ", ".join(
+            "'"
+            + value.replace(
+                "'",
+                "''",
+            )
+            + "'"
+            for value
+            in restart_arguments
+        )
     )
 
     script = f"""
@@ -225,24 +226,24 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$TargetRoot = '{str(target_root).replace("'", "''")}'
-$PayloadRoot = '{str(staged.payload_root).replace("'", "''")}'
-$ManifestPath = '{str(staged.manifest_path).replace("'", "''")}'
-$BackupRoot = '{str(backup_root).replace("'", "''")}'
-$InstalledMarker = '{str(installed_marker).replace("'", "''")}'
+$TargetRoot = '{_ps(target_root)}'
+$PayloadRoot = '{_ps(staged.payload_root)}'
+$BackupRoot = '{_ps(backup_root)}'
+$InstalledMarker = '{_ps(installed_marker)}'
 
-$RestartProgram = '{str(restart_program).replace("'", "''")}'
+$RestartProgram = '{_ps(restart_program)}'
 
 $RestartArguments = @(
-    {restart_args_ps}
+    {restart_arguments_ps}
 )
 
-$CreatedFiles = New-Object `
-    System.Collections.Generic.List[string]
+$ReplaceItems = @(
+    {replace_items_ps}
+)
 
 try {{
     # ========================================================
-    # Auf Hauptprogramm warten
+    # Warten bis XXMI Mod Manager beendet ist
     # ========================================================
 
     try {{
@@ -254,13 +255,15 @@ try {{
     }}
 
     # ========================================================
-    # Manifest
+    # Backup
     # ========================================================
 
-    $Manifest = Get-Content `
-        -LiteralPath $ManifestPath `
-        -Raw `
-        | ConvertFrom-Json
+    if (Test-Path -LiteralPath $BackupRoot) {{
+        Remove-Item `
+            -LiteralPath $BackupRoot `
+            -Recurse `
+            -Force
+    }}
 
     New-Item `
         -ItemType Directory `
@@ -268,74 +271,71 @@ try {{
         -Force `
         | Out-Null
 
-    # ========================================================
-    # Dateien austauschen
-    # ========================================================
-
-    foreach ($File in $Manifest.files) {{
-        $RelativePath = `
-            [string]$File.path
-
-        $Source = Join-Path `
-            $PayloadRoot `
-            $RelativePath
-
-        $Destination = Join-Path `
+    foreach ($Item in $ReplaceItems) {{
+        $Existing = Join-Path `
             $TargetRoot `
-            $RelativePath
+            $Item
 
-        if (-not (Test-Path -LiteralPath $Source)) {{
-            throw "Payload file missing: $RelativePath"
+        if (-not (Test-Path -LiteralPath $Existing)) {{
+            continue
         }}
 
-        $DestinationParent = Split-Path `
-            -Parent `
-            $Destination
+        $Backup = Join-Path `
+            $BackupRoot `
+            $Item
 
-        if ($DestinationParent) {{
+        $Parent = Split-Path `
+            -Parent `
+            $Backup
+
+        if ($Parent) {{
             New-Item `
                 -ItemType Directory `
-                -Path $DestinationParent `
+                -Path $Parent `
                 -Force `
                 | Out-Null
         }}
 
-        if (Test-Path -LiteralPath $Destination) {{
-            $Backup = Join-Path `
-                $BackupRoot `
-                $RelativePath
+        Copy-Item `
+            -LiteralPath $Existing `
+            -Destination $Backup `
+            -Recurse `
+            -Force
+    }}
 
-            $BackupParent = Split-Path `
-                -Parent `
-                $Backup
+    # ========================================================
+    # Neue Version installieren
+    # ========================================================
 
-            if ($BackupParent) {{
-                New-Item `
-                    -ItemType Directory `
-                    -Path $BackupParent `
-                    -Force `
-                    | Out-Null
-            }}
+    foreach ($Item in $ReplaceItems) {{
+        $Source = Join-Path `
+            $PayloadRoot `
+            $Item
 
-            Copy-Item `
-                -LiteralPath $Destination `
-                -Destination $Backup `
-                -Force
+        if (-not (Test-Path -LiteralPath $Source)) {{
+            continue
         }}
-        else {{
-            $CreatedFiles.Add(
-                $RelativePath
-            )
+
+        $Destination = Join-Path `
+            $TargetRoot `
+            $Item
+
+        if (Test-Path -LiteralPath $Destination) {{
+            Remove-Item `
+                -LiteralPath $Destination `
+                -Recurse `
+                -Force
         }}
 
         Copy-Item `
             -LiteralPath $Source `
             -Destination $Destination `
+            -Recurse `
             -Force
     }}
 
     # ========================================================
-    # Erfolgsmarker
+    # Installation erfolgreich
     # ========================================================
 
     Set-Content `
@@ -344,7 +344,7 @@ try {{
         -Encoding UTF8
 
     # ========================================================
-    # Neustart
+    # Neue Version starten
     # ========================================================
 
     Start-Process `
@@ -355,62 +355,39 @@ try {{
     exit 0
 }}
 catch {{
+    Write-Host "Update failed:"
     Write-Host $_
 
     # ========================================================
     # Rollback
     # ========================================================
 
-    if (Test-Path -LiteralPath $ManifestPath) {{
-        $Manifest = Get-Content `
-            -LiteralPath $ManifestPath `
-            -Raw `
-            | ConvertFrom-Json
+    foreach ($Item in $ReplaceItems) {{
+        $Backup = Join-Path `
+            $BackupRoot `
+            $Item
 
-        foreach ($File in $Manifest.files) {{
-            $RelativePath = `
-                [string]$File.path
-
-            $Backup = Join-Path `
-                $BackupRoot `
-                $RelativePath
-
-            $Destination = Join-Path `
-                $TargetRoot `
-                $RelativePath
-
-            if (Test-Path -LiteralPath $Backup) {{
-                $Parent = Split-Path `
-                    -Parent `
-                    $Destination
-
-                if ($Parent) {{
-                    New-Item `
-                        -ItemType Directory `
-                        -Path $Parent `
-                        -Force `
-                        | Out-Null
-                }}
-
-                Copy-Item `
-                    -LiteralPath $Backup `
-                    -Destination $Destination `
-                    -Force
-            }}
+        if (-not (Test-Path -LiteralPath $Backup)) {{
+            continue
         }}
-    }}
 
-    foreach ($RelativePath in $CreatedFiles) {{
         $Destination = Join-Path `
             $TargetRoot `
-            $RelativePath
+            $Item
 
         if (Test-Path -LiteralPath $Destination) {{
             Remove-Item `
                 -LiteralPath $Destination `
+                -Recurse `
                 -Force `
                 -ErrorAction SilentlyContinue
         }}
+
+        Copy-Item `
+            -LiteralPath $Backup `
+            -Destination $Destination `
+            -Recurse `
+            -Force
     }}
 
     Start-Process `
@@ -467,10 +444,11 @@ catch {{
         )
 
     except OSError as error:
-        raise WindowsScriptUpdateError(
+        raise WindowsUpdateError(
             (
-                "Der Windows Update Helper "
-                "konnte nicht gestartet werden."
+                "Der Windows "
+                "Update-Helper konnte "
+                "nicht gestartet werden."
             )
         ) from error
 
@@ -478,7 +456,7 @@ catch {{
 
 
 # ============================================================
-# Cache Cleanup
+# Cache nach erfolgreichem Neustart löschen
 # ============================================================
 
 def cleanup_successful_update_cache(
@@ -491,16 +469,16 @@ def cleanup_successful_update_cache(
     if not updates_root.is_dir():
         return
 
-    for path in (
+    for cache_root in (
         updates_root.glob(
-            "script-*"
+            "source-*"
         )
     ):
-        if not path.is_dir():
+        if not cache_root.is_dir():
             continue
 
         marker = (
-            path
+            cache_root
             / ".installed"
         )
 
@@ -509,18 +487,36 @@ def cleanup_successful_update_cache(
 
         try:
             shutil.rmtree(
-                path
+                cache_root
             )
 
         except OSError:
             pass
 
 
+# ============================================================
+# Helper
+# ============================================================
+
+def _ps(
+    value: Path | str,
+) -> str:
+    return (
+        str(
+            value
+        )
+        .replace(
+            "'",
+            "''",
+        )
+    )
+
+
 __all__ = [
-    "WindowsScriptUpdateError",
+    "WindowsUpdateError",
     "application_root",
     "cleanup_successful_update_cache",
-    "external_scripts_available",
     "is_windows",
-    "launch_script_update_helper",
+    "launch_windows_update",
+    "script_update_supported",
 ]

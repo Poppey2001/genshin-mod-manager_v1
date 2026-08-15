@@ -18,30 +18,18 @@ from app.config import (
 
 from app.services.update_service import (
     StagedUpdate,
-    UpdateChannel,
     UpdateInfo,
     UpdateService,
 )
 
 
 # ============================================================
-# Update Check Signals
+# Check Signals
 # ============================================================
 
 class UpdateCheckSignals(
     QObject
 ):
-    """
-    Signale für die Versionsprüfung.
-
-    finished:
-        UpdateInfo
-        oder None
-
-    failed:
-        Fehlermeldung
-    """
-
     finished = Signal(
         object
     )
@@ -52,23 +40,12 @@ class UpdateCheckSignals(
 
 
 # ============================================================
-# Update Check Worker
+# Check Worker
 # ============================================================
 
 class UpdateCheckWorker(
     QRunnable
 ):
-    """
-    Prüft GitHub auf eine neuere Version.
-
-    Die lokale Version wird vom UpdateService
-    direkt aus app/version.py übernommen.
-
-    GitHub Owner, Repository und Branch werden
-    ebenfalls vom UpdateService über update_config.py
-    geladen.
-    """
-
     def __init__(
         self,
         *,
@@ -121,33 +98,16 @@ class UpdateCheckWorker(
 
 
 # ============================================================
-# Update Download Signals
+# Download Signals
 # ============================================================
 
 class UpdateDownloadSignals(
     QObject
 ):
-    """
-    Signale für den Script-Download.
-
-    progress:
-        current
-        total
-        remote_path
-
-    finished:
-        StagedUpdate
-
-    failed:
-        Fehlermeldung
-
-    cancelled:
-        Benutzerabbruch
-    """
-
+    # Bytes können größer als Qt int werden.
     progress = Signal(
-        int,
-        int,
+        object,
+        object,
         str,
     )
 
@@ -163,35 +123,12 @@ class UpdateDownloadSignals(
 
 
 # ============================================================
-# Update Download Worker
+# Download Worker
 # ============================================================
 
 class UpdateDownloadWorker(
     QRunnable
 ):
-    """
-    Lädt alle Python-Dateien des Update-Commits
-    in den lokalen Update-Cache.
-
-    Beispiel:
-
-        CACHE_DIR/
-            updates/
-                script-abcdef123456/
-                    manifest.json
-                    payload/
-                        main.py
-                        app/
-                            version.py
-                            main_window.py
-                            ...
-
-    Der Worker installiert das Update NICHT.
-
-    Installation übernimmt später der
-    Windows-Update-Helper.
-    """
-
     def __init__(
         self,
         *,
@@ -199,9 +136,7 @@ class UpdateDownloadWorker(
     ) -> None:
         super().__init__()
 
-        self.info = (
-            info
-        )
+        self.info = info
 
         self.signals = (
             UpdateDownloadSignals()
@@ -239,26 +174,26 @@ class UpdateDownloadWorker(
     def cache_root(
         self,
     ) -> Path:
-        """
-        Jeder Commit erhält seinen eigenen Cache.
-
-        Dadurch kollidieren zwei verschiedene
-        Update-Versionen nicht miteinander.
-        """
-
-        short_commit = (
-            self.info
-            .commit_sha[
-                :12
-            ]
+        safe_version = (
+            str(
+                self.info.version
+            )
+            .replace(
+                "/",
+                "_",
+            )
+            .replace(
+                "\\",
+                "_",
+            )
         )
 
         return (
             CACHE_DIR
             / "updates"
             / (
-                "script-"
-                f"{short_commit}"
+                "source-"
+                + safe_version
             )
         )
 
@@ -275,38 +210,22 @@ class UpdateDownloadWorker(
         )
 
         try:
-            # ================================================
-            # Schon vor Start abgebrochen
-            # ================================================
+            shutil.rmtree(
+                cache_root,
+                ignore_errors=True,
+            )
 
             if self.is_cancelled():
-                self._cleanup_cache(
-                    cache_root
-                )
-
                 self.signals.cancelled.emit()
 
                 return
-
-            # ================================================
-            # Alten Cache desselben Commits entfernen
-            # ================================================
-
-            self._cleanup_cache(
-                cache_root
-            )
-
-            # ================================================
-            # Service
-            # ================================================
 
             service = (
                 UpdateService()
             )
 
-            staged_update = (
-                service
-                .download_update(
+            staged = (
+                service.download_update(
                     info=(
                         self.info
                     ),
@@ -323,29 +242,15 @@ class UpdateDownloadWorker(
             )
 
         except Exception as error:
-            # ================================================
-            # Benutzerabbruch
-            # ================================================
+            shutil.rmtree(
+                cache_root,
+                ignore_errors=True,
+            )
 
             if self.is_cancelled():
-                self._cleanup_cache(
-                    cache_root
-                )
-
                 self.signals.cancelled.emit()
 
                 return
-
-            # ================================================
-            # Fehler
-            #
-            # Ein unvollständiger Update-Cache darf nicht
-            # liegen bleiben.
-            # ================================================
-
-            self._cleanup_cache(
-                cache_root
-            )
 
             self.signals.failed.emit(
                 (
@@ -356,85 +261,36 @@ class UpdateDownloadWorker(
 
             return
 
-        # ====================================================
-        # Nach dem Download erneut Cancel prüfen
-        # ====================================================
-
         if self.is_cancelled():
-            self._cleanup_cache(
-                cache_root
+            shutil.rmtree(
+                cache_root,
+                ignore_errors=True,
             )
 
             self.signals.cancelled.emit()
 
             return
 
-        # ====================================================
-        # Ergebnis prüfen
-        # ====================================================
-
         if not isinstance(
-            staged_update,
+            staged,
             StagedUpdate,
         ):
-            self._cleanup_cache(
-                cache_root
+            shutil.rmtree(
+                cache_root,
+                ignore_errors=True,
             )
 
             self.signals.failed.emit(
                 (
-                    "UpdateService hat kein "
-                    "gültiges StagedUpdate "
-                    "zurückgegeben."
+                    "Ungültiges "
+                    "Update-Ergebnis."
                 )
             )
 
             return
-
-        if not (
-            staged_update
-            .manifest_path
-            .is_file()
-        ):
-            self._cleanup_cache(
-                cache_root
-            )
-
-            self.signals.failed.emit(
-                (
-                    "Der Update-Download wurde "
-                    "abgeschlossen, aber das "
-                    "Manifest fehlt."
-                )
-            )
-
-            return
-
-        if not (
-            staged_update
-            .payload_root
-            .is_dir()
-        ):
-            self._cleanup_cache(
-                cache_root
-            )
-
-            self.signals.failed.emit(
-                (
-                    "Der Update-Download wurde "
-                    "abgeschlossen, aber der "
-                    "Payload-Ordner fehlt."
-                )
-            )
-
-            return
-
-        # ====================================================
-        # Fertig
-        # ====================================================
 
         self.signals.finished.emit(
-            staged_update
+            staged
         )
 
     # ========================================================
@@ -445,53 +301,13 @@ class UpdateDownloadWorker(
         self,
         current: int,
         total: int,
-        remote_path: str,
+        name: str,
     ) -> None:
-        """
-        Wird vom UpdateService für jede Datei aufgerufen.
-        """
-
-        if self.is_cancelled():
-            return
-
         self.signals.progress.emit(
-            int(
-                current
-            ),
-            int(
-                total
-            ),
-            str(
-                remote_path
-            ),
+            current,
+            total,
+            name,
         )
-
-    # ========================================================
-    # Cleanup
-    # ========================================================
-
-    @staticmethod
-    def _cleanup_cache(
-        cache_root: Path,
-    ) -> None:
-        """
-        Löscht einen unvollständigen Update-Cache.
-
-        Erfolgreich heruntergeladene Updates werden hier
-        NICHT gelöscht. Diese braucht anschließend der
-        Windows-Installer.
-        """
-
-        try:
-            shutil.rmtree(
-                cache_root,
-                ignore_errors=True,
-            )
-
-        except OSError:
-            # ignore_errors=True sollte das normalerweise
-            # bereits abfangen.
-            pass
 
 
 __all__ = [

@@ -48,24 +48,38 @@ class UpdateDialog(
 
         self._busy = False
 
-        self.title_label = QLabel()
+        self.title_label = QLabel(
+            self
+        )
 
-        self.version_label = QLabel()
+        self.version_label = QLabel(
+            self
+        )
 
-        self.files_label = QLabel()
+        self.source_label = QLabel(
+            self
+        )
 
-        self.status_label = QLabel()
+        self.status_label = QLabel(
+            self
+        )
 
         self.progress_bar = (
-            QProgressBar()
+            QProgressBar(
+                self
+            )
         )
 
         self.later_button = (
-            QPushButton()
+            QPushButton(
+                self
+            )
         )
 
         self.install_button = (
-            QPushButton()
+            QPushButton(
+                self
+            )
         )
 
         self._build_ui()
@@ -75,6 +89,10 @@ class UpdateDialog(
         )
 
         self.retranslate_ui()
+
+    # ========================================================
+    # UI
+    # ========================================================
 
     def _build_ui(
         self,
@@ -102,15 +120,11 @@ class UpdateDialog(
             "updateTitle"
         )
 
-        self.title_label.setWordWrap(
-            True
-        )
-
         self.version_label.setWordWrap(
             True
         )
 
-        self.files_label.setWordWrap(
+        self.source_label.setWordWrap(
             True
         )
 
@@ -118,27 +132,30 @@ class UpdateDialog(
             True
         )
 
-        self.progress_bar.hide()
+        self.progress_bar.setVisible(
+            False
+        )
 
         self.progress_bar.setRange(
             0,
-            max(
-                1,
-                self.update.file_count,
-            ),
+            100,
         )
 
-        actions = QHBoxLayout()
+        self.progress_bar.setValue(
+            0
+        )
 
-        actions.addStretch(
+        buttons = QHBoxLayout()
+
+        buttons.addStretch(
             1
         )
 
-        actions.addWidget(
+        buttons.addWidget(
             self.later_button
         )
 
-        actions.addWidget(
+        buttons.addWidget(
             self.install_button
         )
 
@@ -151,7 +168,7 @@ class UpdateDialog(
         )
 
         layout.addWidget(
-            self.files_label
+            self.source_label
         )
 
         layout.addWidget(
@@ -163,7 +180,7 @@ class UpdateDialog(
         )
 
         layout.addLayout(
-            actions
+            buttons
         )
 
         self.later_button.clicked.connect(
@@ -173,6 +190,10 @@ class UpdateDialog(
         self.install_button.clicked.connect(
             self.install_requested.emit
         )
+
+    # ========================================================
+    # Translation
+    # ========================================================
 
     def retranslate_ui(
         self,
@@ -204,12 +225,11 @@ class UpdateDialog(
             )
         )
 
-        self.files_label.setText(
+        self.source_label.setText(
             tr(
-                "updates.dialog.script_count",
-                count=(
-                    self.update
-                    .file_count
+                "updates.dialog.source",
+                tag=(
+                    self.update.tag
                 ),
             )
         )
@@ -232,38 +252,34 @@ class UpdateDialog(
         ):
             self.status_label.setText(
                 tr(
-                    "updates.dialog.script_install_unavailable"
+                    "updates.dialog.install_unavailable"
                 )
             )
+
+        elif not self._busy:
+            self.status_label.clear()
 
         self.install_button.setEnabled(
             self.install_supported
             and not self._busy
         )
 
+    # ========================================================
+    # Download
+    # ========================================================
+
     def start_download(
         self,
     ) -> None:
         self._busy = True
 
-        self.progress_bar.show()
+        self.progress_bar.setVisible(
+            True
+        )
 
         self.progress_bar.setRange(
             0,
-            max(
-                1,
-                self.update.file_count,
-            ),
-        )
-
-        self.progress_bar.setValue(
-            0
-        )
-
-        self.status_label.setText(
-            tr(
-                "updates.status.downloading_scripts"
-            )
+            0,
         )
 
         self.install_button.setEnabled(
@@ -274,30 +290,64 @@ class UpdateDialog(
             False
         )
 
+        self.status_label.setText(
+            tr(
+                "updates.status.downloading"
+            )
+        )
+
     def update_progress(
         self,
         current: int,
         total: int,
-        path: str,
+        name: str,
     ) -> None:
-        self.progress_bar.setRange(
-            0,
-            max(
-                total,
-                1,
-            ),
-        )
+        if total > 0:
+            percent = min(
+                100,
+                max(
+                    0,
+                    int(
+                        (
+                            current
+                            * 100
+                        )
+                        / total
+                    ),
+                ),
+            )
 
-        self.progress_bar.setValue(
-            current
-        )
+            self.progress_bar.setRange(
+                0,
+                100,
+            )
+
+            self.progress_bar.setValue(
+                percent
+            )
+
+        else:
+            self.progress_bar.setRange(
+                0,
+                0,
+            )
 
         self.status_label.setText(
             tr(
-                "updates.status.downloading_file",
-                current=current,
-                total=total,
-                path=path,
+                "updates.status.download_progress",
+                current=(
+                    self._format_bytes(
+                        current
+                    )
+                ),
+                total=(
+                    self._format_bytes(
+                        total
+                    )
+                    if total > 0
+                    else "?"
+                ),
+                file=name,
             )
         )
 
@@ -306,12 +356,14 @@ class UpdateDialog(
     ) -> None:
         self._busy = True
 
+        self.progress_bar.setVisible(
+            True
+        )
+
         self.progress_bar.setRange(
             0,
             0,
         )
-
-        self.progress_bar.show()
 
         self.status_label.setText(
             tr(
@@ -325,7 +377,9 @@ class UpdateDialog(
     ) -> None:
         self._busy = False
 
-        self.progress_bar.hide()
+        self.progress_bar.setVisible(
+            False
+        )
 
         self.status_label.setText(
             tr(
@@ -342,6 +396,10 @@ class UpdateDialog(
             self.install_supported
         )
 
+    # ========================================================
+    # Close
+    # ========================================================
+
     def reject(
         self,
     ) -> None:
@@ -349,6 +407,53 @@ class UpdateDialog(
             return
 
         super().reject()
+
+    # ========================================================
+    # Bytes
+    # ========================================================
+
+    @staticmethod
+    def _format_bytes(
+        value: int,
+    ) -> str:
+        size = float(
+            max(
+                0,
+                int(
+                    value
+                ),
+            )
+        )
+
+        units = (
+            "B",
+            "KB",
+            "MB",
+            "GB",
+        )
+
+        for unit in units:
+            if (
+                size < 1024.0
+                or unit
+                == units[
+                    -1
+                ]
+            ):
+                if unit == "B":
+                    return (
+                        f"{int(size)} {unit}"
+                    )
+
+                return (
+                    f"{size:.1f} {unit}"
+                )
+
+            size /= 1024.0
+
+        return (
+            f"{size:.1f} GB"
+        )
 
 
 __all__ = [

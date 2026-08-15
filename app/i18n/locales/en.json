@@ -508,6 +508,13 @@
     "updates.error.unsupported_platform": "Automatic installation is currently supported on Windows only.",
 
     "updates.dialog.script_count": "{count} Python files will be updated.",
-    "updates.dialog.script_install_unavailable": "Automatic script installation is not available on this system."
+    "updates.dialog.script_install_unavailable": "Automatic script installation is not available on this system.",
+
+
+"updates.dialog.source": "Update source: GitHub Source · {tag}",
+
+"updates.status.download_progress": "{file}: {current} of {total}",
+
+"updates.error.install_unsupported": "Automatic script installation is not available on this system or build."
 
 }

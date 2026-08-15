@@ -3,8 +3,9 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
-import logging
 import shutil
+import stat
+import zipfile
 
 from collections.abc import (
     Callable,
@@ -23,18 +24,9 @@ from pathlib import (
     PurePosixPath,
 )
 
-from typing import (
-    Any,
-)
-
 from urllib.error import (
     HTTPError,
     URLError,
-)
-
-from urllib.parse import (
-    quote,
-    urlencode,
 )
 
 from urllib.request import (
@@ -47,84 +39,24 @@ from packaging.version import (
     Version,
 )
 
-from app import update_config
+from app.update_config import (
+    MAX_UPDATE_FILE_COUNT,
+    MAX_UPDATE_UNCOMPRESSED_SIZE,
+    REMOTE_VERSION_PATH,
+    UPDATE_BRANCH,
+    UPDATE_CHECK_TIMEOUT,
+    UPDATE_DOWNLOAD_TIMEOUT,
+    build_raw_file_url,
+    build_source_archive_url,
+)
 
 from app.version import (
     APP_VERSION,
 )
 
 
-logger = logging.getLogger(
-    __name__
-)
-
-
 # ============================================================
-# GitHub
-# ============================================================
-
-GITHUB_API_ROOT = (
-    "https://api.github.com"
-)
-
-
-# ============================================================
-# Config
-#
-# Die getattr-Fallbacks sorgen dafür, dass der neue Service
-# auch dann bereits importierbar ist, wenn update_config.py
-# noch nicht vollständig auf die neue Version umgestellt wurde.
-# ============================================================
-
-GITHUB_OWNER = getattr(
-    update_config,
-    "GITHUB_OWNER",
-    "",
-)
-
-GITHUB_REPOSITORY = getattr(
-    update_config,
-    "GITHUB_REPOSITORY",
-    "",
-)
-
-GITHUB_API_VERSION = getattr(
-    update_config,
-    "GITHUB_API_VERSION",
-    "2026-03-10",
-)
-
-UPDATE_BRANCH = getattr(
-    update_config,
-    "UPDATE_BRANCH",
-    "main",
-)
-
-REMOTE_VERSION_FILE = getattr(
-    update_config,
-    "REMOTE_VERSION_FILE",
-    "app/version.py",
-)
-
-UPDATE_CHECK_TIMEOUT = float(
-    getattr(
-        update_config,
-        "UPDATE_CHECK_TIMEOUT",
-        15.0,
-    )
-)
-
-UPDATE_DOWNLOAD_TIMEOUT = float(
-    getattr(
-        update_config,
-        "UPDATE_DOWNLOAD_TIMEOUT",
-        30.0,
-    )
-)
-
-
-# ============================================================
-# Callbacks
+# Callback Types
 # ============================================================
 
 ProgressCallback = Callable[
@@ -149,16 +81,17 @@ CancelCallback = Callable[
 class UpdateServiceError(
     RuntimeError
 ):
-    """
-    Allgemeiner Fehler des Update-Systems.
-    """
+    pass
+
+
+class UpdateCancelledError(
+    UpdateServiceError
+):
+    pass
 
 
 # ============================================================
-# Update Channel
-#
-# Behalten wir unter demselben Namen, damit dein bestehender
-# Worker während des Umbaus nicht sofort an Imports scheitert.
+# Channel
 # ============================================================
 
 class UpdateChannel(
@@ -166,87 +99,8 @@ class UpdateChannel(
     Enum,
 ):
     STABLE = "stable"
+
     PRERELEASE = "prerelease"
-
-
-# ============================================================
-# Legacy ReleaseAsset
-#
-# Temporär vorhanden, damit alte Imports aus update_worker.py
-# während des Umbaus nicht sofort kaputtgehen.
-#
-# Der neue Script-Updater verwendet ReleaseAsset NICHT.
-# ============================================================
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class ReleaseAsset:
-    name: str
-
-    download_url: str
-
-    size: int
-
-    content_type: (
-        str
-        | None
-    ) = None
-
-    digest: (
-        str
-        | None
-    ) = None
-
-    @property
-    def sha256(
-        self,
-    ) -> str | None:
-        digest = (
-            self.digest
-            or ""
-        ).strip()
-
-        algorithm, separator, value = (
-            digest.partition(
-                ":"
-            )
-        )
-
-        if (
-            separator != ":"
-            or algorithm.casefold()
-            != "sha256"
-            or not value
-        ):
-            return None
-
-        return (
-            value
-            .strip()
-            .casefold()
-        )
-
-
-# ============================================================
-# Remote Update File
-# ============================================================
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class RemoteUpdateFile:
-    """
-    Eine aktualisierbare Datei aus dem GitHub Tree.
-    """
-
-    path: str
-
-    git_sha: str
-
-    size: int
 
 
 # ============================================================
@@ -258,83 +112,15 @@ class RemoteUpdateFile:
     slots=True,
 )
 class UpdateInfo:
-    """
-    Beschreibung eines gefundenen Script-Updates.
-    """
-
     current_version: Version
 
     version: Version
 
     version_display: str
 
-    branch: str
+    tag: str
 
-    commit_sha: str
-
-    tree_sha: str
-
-    commit_url: str
-
-    files: tuple[
-        RemoteUpdateFile,
-        ...,
-    ]
-
-    # ========================================================
-    # Neue API
-    # ========================================================
-
-    @property
-    def file_count(
-        self,
-    ) -> int:
-        return len(
-            self.files
-        )
-
-    # ========================================================
-    # Legacy-Kompatibilität für den alten UpdateDialog /
-    # Controller während des Umbaus.
-    # ========================================================
-
-    @property
-    def tag_name(
-        self,
-    ) -> str:
-        return (
-            str(
-                self.version
-            )
-        )
-
-    @property
-    def release_name(
-        self,
-    ) -> str:
-        return (
-            self.version_display
-        )
-
-    @property
-    def release_notes(
-        self,
-    ) -> str:
-        return ""
-
-    @property
-    def release_url(
-        self,
-    ) -> str:
-        return (
-            self.commit_url
-        )
-
-    @property
-    def published_at(
-        self,
-    ) -> None:
-        return None
+    archive_url: str
 
     @property
     def prerelease(
@@ -346,24 +132,33 @@ class UpdateInfo:
         )
 
     @property
-    def assets(
+    def tag_name(
         self,
-    ) -> tuple[
-        ReleaseAsset,
-        ...,
-    ]:
-        return ()
+    ) -> str:
+        return self.tag
 
-    def find_appimage_asset(
+    @property
+    def release_name(
+        self,
+    ) -> str:
+        return self.version_display
+
+    @property
+    def release_notes(
+        self,
+    ) -> str:
+        return ""
+
+    @property
+    def release_url(
+        self,
+    ) -> str:
+        return ""
+
+    @property
+    def published_at(
         self,
     ) -> None:
-        """
-        Legacy-Kompatibilität.
-
-        Das neue System verwendet keine AppImages oder
-        Release-Assets mehr.
-        """
-
         return None
 
 
@@ -376,13 +171,13 @@ class UpdateInfo:
     slots=True,
 )
 class StagedUpdate:
-    """
-    Vollständig heruntergeladenes Update im Cache.
-    """
-
     info: UpdateInfo
 
     cache_root: Path
+
+    archive_path: Path
+
+    extract_root: Path
 
     payload_root: Path
 
@@ -394,119 +189,14 @@ class StagedUpdate:
 # ============================================================
 
 class UpdateService:
-    """
-    GitHub-basierter Python-Script-Updater.
-
-    Ablauf:
-
-        GitHub Branch
-            ↓
-        Commit SHA
-            ↓
-        Tree SHA
-            ↓
-        app/version.py aus genau diesem Commit
-            ↓
-        Versionsvergleich
-            ↓
-        Git Tree dieses Commits
-            ↓
-        Python-Dateien auswählen
-            ↓
-        Dateien einzeln in Cache laden
-            ↓
-        Git Blob SHA prüfen
-            ↓
-        zusätzlich SHA-256 erzeugen
-            ↓
-        manifest.json
-
-    Der Service selbst verändert KEINE Dateien der laufenden
-    Anwendung.
-
-    Das eigentliche Austauschen übernimmt später der
-    Windows-Update-Helper.
-    """
-
     def __init__(
         self,
         *,
-        owner: str | None = None,
-        repository: str | None = None,
         current_version: str | None = None,
         channel: UpdateChannel = (
             UpdateChannel.PRERELEASE
         ),
-        branch: str | None = None,
-        timeout: float | None = None,
     ) -> None:
-        self.owner = (
-            owner
-            if owner is not None
-            else GITHUB_OWNER
-        ).strip()
-
-        self.repository = (
-            repository
-            if repository is not None
-            else GITHUB_REPOSITORY
-        ).strip()
-
-        self.branch = (
-            branch
-            if branch is not None
-            else UPDATE_BRANCH
-        ).strip()
-
-        self.channel = channel
-
-        self.timeout = max(
-            1.0,
-            float(
-                timeout
-                if timeout is not None
-                else UPDATE_CHECK_TIMEOUT
-            ),
-        )
-
-        # ====================================================
-        # Repository
-        # ====================================================
-
-        if not self.owner:
-            raise ValueError(
-                "GitHub owner fehlt."
-            )
-
-        if (
-            self.owner.casefold()
-            in {
-                "dein_github_name",
-                "your_github_name",
-                "github_owner",
-            }
-        ):
-            raise ValueError(
-                (
-                    "GITHUB_OWNER enthält noch "
-                    "den Platzhalterwert."
-                )
-            )
-
-        if not self.repository:
-            raise ValueError(
-                "GitHub repository fehlt."
-            )
-
-        if not self.branch:
-            raise ValueError(
-                "Update branch fehlt."
-            )
-
-        # ====================================================
-        # Local Version
-        # ====================================================
-
         version_text = (
             current_version
             if current_version is not None
@@ -521,15 +211,18 @@ class UpdateService:
             )
 
         except InvalidVersion as error:
-            raise ValueError(
+            raise UpdateServiceError(
                 (
-                    "Ungültige lokale "
-                    f"Version: {version_text}"
+                    "Die lokale APP_VERSION "
+                    "ist ungültig:\n"
+                    f"{version_text}"
                 )
             ) from error
 
+        self.channel = channel
+
     # ========================================================
-    # Public: Check
+    # Update prüfen
     # ========================================================
 
     def check_for_update(
@@ -540,20 +233,6 @@ class UpdateService:
             | None
         ) = None,
     ) -> UpdateInfo | None:
-        """
-        Prüft den konfigurierten GitHub-Branch auf eine
-        neuere APP_VERSION.
-
-        Wichtig:
-
-        Die Remote-version.py und alle später geladenen
-        Dateien stammen aus demselben Commit.
-        """
-
-        # ----------------------------------------------------
-        # Channel bestimmen
-        # ----------------------------------------------------
-
         if allow_prerelease is None:
             allow_prerelease = (
                 self.channel
@@ -561,74 +240,39 @@ class UpdateService:
             )
 
         # ----------------------------------------------------
-        # Branch
+        # Nur die Remote version.py laden.
+        # Keine GitHub REST API.
         # ----------------------------------------------------
 
-        branch_data = (
-            self._fetch_branch()
-        )
-
-        (
-            commit_sha,
-            tree_sha,
-        ) = (
-            self._parse_branch_data(
-                branch_data
+        version_url = (
+            build_raw_file_url(
+                ref=UPDATE_BRANCH,
+                path=(
+                    REMOTE_VERSION_PATH
+                ),
             )
         )
 
-        commit_url = (
-            "https://github.com/"
-            f"{self.owner}/"
-            f"{self.repository}/"
-            f"commit/{commit_sha}"
-        )
-
-        logger.debug(
-            (
-                "Update Commit: %s "
-                "Tree: %s"
-            ),
-            commit_sha,
-            tree_sha,
-        )
-
-        # ----------------------------------------------------
-        # Remote version.py
-        #
-        # WICHTIG:
-        # ref = commit_sha, NICHT branch.
-        # ----------------------------------------------------
-
-        version_source = (
-            self._download_raw_file(
-                REMOTE_VERSION_FILE,
-                ref=(
-                    commit_sha
+        data = (
+            self._download_bytes(
+                version_url,
+                timeout=(
+                    UPDATE_CHECK_TIMEOUT
                 ),
             )
         )
 
         (
             remote_version,
-            remote_display,
+            version_display,
         ) = (
             self._parse_version_file(
-                version_source
+                data
             )
         )
 
-        logger.info(
-            (
-                "Update-Versionen: "
-                "lokal=%s remote=%s"
-            ),
-            self.current_version,
-            remote_version,
-        )
-
         # ----------------------------------------------------
-        # Nicht neuer
+        # Bereits aktuell
         # ----------------------------------------------------
 
         if (
@@ -646,54 +290,29 @@ class UpdateService:
             and remote_version
             .is_prerelease
         ):
-            logger.info(
-                (
-                    "Prerelease %s wird im "
-                    "Stable-Kanal ignoriert."
-                ),
-                remote_version,
-            )
-
             return None
 
         # ----------------------------------------------------
-        # Tree
+        # Der Git-Tag wird automatisch aus APP_VERSION
+        # gebildet.
+        #
+        # 0.4.5a2
+        # ↓
+        # v0.4.5a2
         # ----------------------------------------------------
 
-        files = (
-            self._fetch_update_tree(
-                tree_sha=(
-                    tree_sha
-                )
+        tag = (
+            "v"
+            + str(
+                remote_version
             )
         )
 
-        if not files:
-            raise UpdateServiceError(
-                (
-                    "Der Update-Commit enthält "
-                    "keine aktualisierbaren "
-                    "Python-Dateien."
-                )
+        archive_url = (
+            build_source_archive_url(
+                tag=tag
             )
-
-        # ----------------------------------------------------
-        # version.py muss Teil des Updates sein.
-        # ----------------------------------------------------
-
-        if not any(
-            file.path
-            == REMOTE_VERSION_FILE
-            for file
-            in files
-        ):
-            raise UpdateServiceError(
-                (
-                    "Die Remote version.py "
-                    "wurde nicht im "
-                    "Update-Dateibaum gefunden."
-                )
-            )
+        )
 
         return UpdateInfo(
             current_version=(
@@ -703,25 +322,16 @@ class UpdateService:
                 remote_version
             ),
             version_display=(
-                remote_display
+                version_display
             ),
-            branch=(
-                self.branch
+            tag=tag,
+            archive_url=(
+                archive_url
             ),
-            commit_sha=(
-                commit_sha
-            ),
-            tree_sha=(
-                tree_sha
-            ),
-            commit_url=(
-                commit_url
-            ),
-            files=files,
         )
 
     # ========================================================
-    # Public: Download
+    # Update herunterladen + entpacken
     # ========================================================
 
     def download_update(
@@ -738,21 +348,6 @@ class UpdateService:
             | None
         ) = None,
     ) -> StagedUpdate:
-        """
-        Lädt alle Update-Dateien in:
-
-            cache_root/
-                payload/
-                    main.py
-                    app/
-                        ...
-
-                manifest.json
-
-        Es werden KEINE Dateien der eigentlichen Installation
-        verändert.
-        """
-
         cache_root = (
             Path(
                 cache_root
@@ -761,217 +356,189 @@ class UpdateService:
             .absolute()
         )
 
-        payload_root = (
+        archive_path = (
             cache_root
-            / "payload"
+            / "source.zip"
+        )
+
+        extract_root = (
+            cache_root
+            / "extracted"
+        )
+
+        manifest_path = (
+            cache_root
+            / "manifest.json"
         )
 
         # ----------------------------------------------------
-        # Alten Cache dieses Updates entfernen.
+        # Alten Cache entfernen
         # ----------------------------------------------------
 
         if cache_root.exists():
-            try:
-                shutil.rmtree(
-                    cache_root
-                )
+            shutil.rmtree(
+                cache_root,
+                ignore_errors=True,
+            )
 
-            except OSError as error:
-                raise UpdateServiceError(
-                    (
-                        "Alter Update-Cache konnte "
-                        "nicht gelöscht werden:\n"
-                        f"{cache_root}"
-                    )
-                ) from error
-
-        payload_root.mkdir(
+        cache_root.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        total = len(
-            info.files
-        )
-
-        manifest_files: list[
-            dict[
-                str,
-                object,
-            ]
-        ] = []
-
         try:
-            for (
-                index,
-                remote_file,
-            ) in enumerate(
-                info.files,
-                start=1,
-            ):
-                self._check_cancelled(
-                    cancel_callback
-                )
+            # ================================================
+            # Source ZIP herunterladen
+            # ================================================
 
-                if (
+            self._download_to_file(
+                url=(
+                    info.archive_url
+                ),
+                destination=(
+                    archive_path
+                ),
+                progress_callback=(
                     progress_callback
-                    is not None
-                ):
-                    progress_callback(
-                        index - 1,
-                        total,
-                        remote_file.path,
-                    )
-
-                # ============================================
-                # Download exakt aus dem geprüften Commit.
-                # ============================================
-
-                data = (
-                    self._download_raw_file(
-                        remote_file.path,
-                        ref=(
-                            info.commit_sha
-                        ),
-                    )
-                )
-
-                self._check_cancelled(
+                ),
+                cancel_callback=(
                     cancel_callback
-                )
-
-                # ============================================
-                # Git Blob SHA verifizieren
-                # ============================================
-
-                actual_git_sha = (
-                    self._git_blob_sha(
-                        data
-                    )
-                )
-
-                if (
-                    actual_git_sha
-                    != remote_file.git_sha
-                ):
-                    raise UpdateServiceError(
-                        (
-                            "Git-Integritätsprüfung "
-                            "fehlgeschlagen:\n\n"
-                            f"{remote_file.path}\n\n"
-                            "Erwartet:\n"
-                            f"{remote_file.git_sha}\n\n"
-                            "Erhalten:\n"
-                            f"{actual_git_sha}"
-                        )
-                    )
-
-                # ============================================
-                # Zusätzlich SHA-256 für unseren
-                # lokalen Installations-Helper.
-                # ============================================
-
-                sha256 = (
-                    hashlib.sha256(
-                        data
-                    )
-                    .hexdigest()
-                )
-
-                # ============================================
-                # Sicheres Cache-Ziel
-                # ============================================
-
-                destination = (
-                    self._safe_cache_path(
-                        payload_root,
-                        remote_file.path,
-                    )
-                )
-
-                destination.parent.mkdir(
-                    parents=True,
-                    exist_ok=True,
-                )
-
-                try:
-                    destination.write_bytes(
-                        data
-                    )
-
-                except OSError as error:
-                    raise UpdateServiceError(
-                        (
-                            "Update-Datei konnte "
-                            "nicht in den Cache "
-                            "geschrieben werden:\n"
-                            f"{destination}"
-                        )
-                    ) from error
-
-                # ============================================
-                # Nach dem Schreiben nochmal SHA-256 prüfen.
-                # ============================================
-
-                try:
-                    written_sha256 = (
-                        self._sha256_file(
-                            destination
-                        )
-                    )
-
-                except OSError as error:
-                    raise UpdateServiceError(
-                        (
-                            "Cache-Datei konnte "
-                            "nicht überprüft werden:\n"
-                            f"{destination}"
-                        )
-                    ) from error
-
-                if (
-                    written_sha256
-                    != sha256
-                ):
-                    raise UpdateServiceError(
-                        (
-                            "SHA-256-Prüfung der "
-                            "Cache-Datei ist "
-                            "fehlgeschlagen:\n"
-                            f"{remote_file.path}"
-                        )
-                    )
-
-                manifest_files.append(
-                    {
-                        "path": (
-                            remote_file.path
-                        ),
-                        "size": len(
-                            data
-                        ),
-                        "git_sha": (
-                            remote_file.git_sha
-                        ),
-                        "sha256": (
-                            sha256
-                        ),
-                    }
-                )
-
-                if (
-                    progress_callback
-                    is not None
-                ):
-                    progress_callback(
-                        index,
-                        total,
-                        remote_file.path,
-                    )
+                ),
+            )
 
             self._check_cancelled(
                 cancel_callback
             )
+
+            # ================================================
+            # ZIP prüfen
+            # ================================================
+
+            if not zipfile.is_zipfile(
+                archive_path
+            ):
+                raise UpdateServiceError(
+                    (
+                        "GitHub hat kein gültiges "
+                        "ZIP-Archiv geliefert."
+                    )
+                )
+
+            archive_sha256 = (
+                self._sha256_file(
+                    archive_path
+                )
+            )
+
+            # ================================================
+            # Sicher entpacken
+            # ================================================
+
+            extract_root.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+            self._extract_archive_securely(
+                archive_path=(
+                    archive_path
+                ),
+                destination=(
+                    extract_root
+                ),
+                cancel_callback=(
+                    cancel_callback
+                ),
+            )
+
+            self._check_cancelled(
+                cancel_callback
+            )
+
+            # ================================================
+            # GitHub Root-Ordner finden
+            # ================================================
+
+            payload_root = (
+                self._find_payload_root(
+                    extract_root
+                )
+            )
+
+            # ================================================
+            # Entpackte Version prüfen
+            #
+            # So stellen wir sicher, dass das ZIP wirklich
+            # zur zuvor gefundenen Version gehört.
+            # ================================================
+
+            extracted_version_path = (
+                payload_root
+                / REMOTE_VERSION_PATH
+            )
+
+            if not (
+                extracted_version_path
+                .is_file()
+            ):
+                raise UpdateServiceError(
+                    (
+                        "Das Update enthält keine "
+                        f"{REMOTE_VERSION_PATH}."
+                    )
+                )
+
+            (
+                archive_version,
+                archive_display,
+            ) = (
+                self._parse_version_file(
+                    extracted_version_path
+                    .read_bytes()
+                )
+            )
+
+            if (
+                archive_version
+                != info.version
+            ):
+                raise UpdateServiceError(
+                    (
+                        "Die Version des ZIP-Archivs "
+                        "stimmt nicht mit der zuvor "
+                        "gefundenen Version überein."
+                        "\n\n"
+                        f"Erwartet: {info.version}"
+                        "\n"
+                        f"ZIP: {archive_version}"
+                    )
+                )
+
+            # ================================================
+            # Hauptstruktur prüfen
+            # ================================================
+
+            if not (
+                payload_root
+                / "main.py"
+            ).is_file():
+                raise UpdateServiceError(
+                    (
+                        "Das Update enthält "
+                        "keine main.py."
+                    )
+                )
+
+            if not (
+                payload_root
+                / "app"
+            ).is_dir():
+                raise UpdateServiceError(
+                    (
+                        "Das Update enthält "
+                        "keinen app/-Ordner."
+                    )
+                )
 
             # ================================================
             # Manifest
@@ -980,66 +547,65 @@ class UpdateService:
             manifest = {
                 "schema_version": 1,
 
-                "version": (
-                    str(
-                        info.version
-                    )
+                "version": str(
+                    archive_version
                 ),
 
                 "version_display": (
-                    info.version_display
+                    archive_display
                 ),
 
-                "branch": (
-                    info.branch
+                "tag": (
+                    info.tag
                 ),
 
-                "commit_sha": (
-                    info.commit_sha
+                "archive_sha256": (
+                    archive_sha256
                 ),
 
-                "tree_sha": (
-                    info.tree_sha
+                "archive_path": (
+                    str(
+                        archive_path
+                    )
                 ),
 
-                "file_count": len(
-                    manifest_files
-                ),
-
-                "files": (
-                    manifest_files
+                "payload_root": (
+                    str(
+                        payload_root
+                    )
                 ),
             }
 
-            manifest_path = (
-                cache_root
-                / "manifest.json"
+            manifest_path.write_text(
+                json.dumps(
+                    manifest,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
             )
 
-            try:
-                manifest_path.write_text(
-                    json.dumps(
-                        manifest,
-                        indent=2,
-                        ensure_ascii=False,
-                    )
-                    + "\n",
-                    encoding="utf-8",
-                )
-
-            except OSError as error:
-                raise UpdateServiceError(
-                    (
-                        "Update-Manifest konnte "
-                        "nicht gespeichert werden."
-                    )
-                ) from error
+            return StagedUpdate(
+                info=info,
+                cache_root=(
+                    cache_root
+                ),
+                archive_path=(
+                    archive_path
+                ),
+                extract_root=(
+                    extract_root
+                ),
+                payload_root=(
+                    payload_root
+                ),
+                manifest_path=(
+                    manifest_path
+                ),
+            )
 
         except Exception:
-            # ------------------------------------------------
-            # Ein unvollständiges Update bleibt nicht liegen.
-            # ------------------------------------------------
-
             shutil.rmtree(
                 cache_root,
                 ignore_errors=True,
@@ -1047,438 +613,8 @@ class UpdateService:
 
             raise
 
-        return StagedUpdate(
-            info=info,
-            cache_root=(
-                cache_root
-            ),
-            payload_root=(
-                payload_root
-            ),
-            manifest_path=(
-                manifest_path
-            ),
-        )
-
     # ========================================================
-    # Public: Cache löschen
-    # ========================================================
-
-    @staticmethod
-    def cleanup_staged_update(
-        staged: StagedUpdate,
-    ) -> None:
-        shutil.rmtree(
-            staged.cache_root,
-            ignore_errors=True,
-        )
-
-    # ========================================================
-    # GitHub Branch
-    # ========================================================
-
-    def _fetch_branch(
-        self,
-    ) -> dict[
-        str,
-        Any,
-    ]:
-        branch = quote(
-            self.branch,
-            safe="",
-        )
-
-        url = (
-            f"{GITHUB_API_ROOT}"
-            f"/repos/{self.owner}"
-            f"/{self.repository}"
-            f"/branches/{branch}"
-        )
-
-        data = (
-            self._request_json(
-                url
-            )
-        )
-
-        if not isinstance(
-            data,
-            dict,
-        ):
-            raise UpdateServiceError(
-                (
-                    "GitHub hat keine "
-                    "gültigen Branch-Daten "
-                    "geliefert."
-                )
-            )
-
-        return data
-
-    # ========================================================
-    # Branch Data
-    # ========================================================
-
-    @staticmethod
-    def _parse_branch_data(
-        data: dict[
-            str,
-            Any,
-        ],
-    ) -> tuple[
-        str,
-        str,
-    ]:
-        commit = (
-            data.get(
-                "commit"
-            )
-        )
-
-        if not isinstance(
-            commit,
-            dict,
-        ):
-            raise UpdateServiceError(
-                (
-                    "Der GitHub-Branch besitzt "
-                    "keine Commit-Daten."
-                )
-            )
-
-        commit_sha = (
-            commit.get(
-                "sha"
-            )
-        )
-
-        if not isinstance(
-            commit_sha,
-            str,
-        ):
-            raise UpdateServiceError(
-                (
-                    "Der Branch besitzt "
-                    "keine Commit-SHA."
-                )
-            )
-
-        commit_sha = (
-            commit_sha.strip()
-        )
-
-        if not commit_sha:
-            raise UpdateServiceError(
-                (
-                    "Die Commit-SHA ist leer."
-                )
-            )
-
-        commit_data = (
-            commit.get(
-                "commit"
-            )
-        )
-
-        if not isinstance(
-            commit_data,
-            dict,
-        ):
-            raise UpdateServiceError(
-                (
-                    "GitHub hat keine "
-                    "Commit-Metadaten geliefert."
-                )
-            )
-
-        tree = (
-            commit_data.get(
-                "tree"
-            )
-        )
-
-        if not isinstance(
-            tree,
-            dict,
-        ):
-            raise UpdateServiceError(
-                (
-                    "Der Commit besitzt "
-                    "keine Git-Tree-Daten."
-                )
-            )
-
-        tree_sha = (
-            tree.get(
-                "sha"
-            )
-        )
-
-        if not isinstance(
-            tree_sha,
-            str,
-        ):
-            raise UpdateServiceError(
-                (
-                    "Der Commit besitzt "
-                    "keine Tree-SHA."
-                )
-            )
-
-        tree_sha = (
-            tree_sha.strip()
-        )
-
-        if not tree_sha:
-            raise UpdateServiceError(
-                (
-                    "Die Tree-SHA ist leer."
-                )
-            )
-
-        return (
-            commit_sha,
-            tree_sha,
-        )
-
-    # ========================================================
-    # Git Tree
-    # ========================================================
-
-    def _fetch_update_tree(
-        self,
-        *,
-        tree_sha: str,
-    ) -> tuple[
-        RemoteUpdateFile,
-        ...,
-    ]:
-        query = urlencode(
-            {
-                "recursive": "1",
-            }
-        )
-
-        url = (
-            f"{GITHUB_API_ROOT}"
-            f"/repos/{self.owner}"
-            f"/{self.repository}"
-            f"/git/trees/{tree_sha}"
-            f"?{query}"
-        )
-
-        data = (
-            self._request_json(
-                url
-            )
-        )
-
-        if not isinstance(
-            data,
-            dict,
-        ):
-            raise UpdateServiceError(
-                (
-                    "GitHub hat keinen "
-                    "gültigen Git Tree geliefert."
-                )
-            )
-
-        if bool(
-            data.get(
-                "truncated",
-                False,
-            )
-        ):
-            raise UpdateServiceError(
-                (
-                    "Der Git Tree wurde von "
-                    "GitHub abgeschnitten. "
-                    "Das Update wird aus "
-                    "Sicherheitsgründen abgebrochen."
-                )
-            )
-
-        raw_tree = (
-            data.get(
-                "tree"
-            )
-        )
-
-        if not isinstance(
-            raw_tree,
-            list,
-        ):
-            raise UpdateServiceError(
-                (
-                    "Der Git Tree enthält "
-                    "keine Dateiliste."
-                )
-            )
-
-        files: list[
-            RemoteUpdateFile
-        ] = []
-
-        for item in raw_tree:
-            if not isinstance(
-                item,
-                dict,
-            ):
-                continue
-
-            # ------------------------------------------------
-            # Nur Dateien, keine Trees.
-            # ------------------------------------------------
-
-            if (
-                item.get(
-                    "type"
-                )
-                != "blob"
-            ):
-                continue
-
-            path = (
-                item.get(
-                    "path"
-                )
-            )
-
-            git_sha = (
-                item.get(
-                    "sha"
-                )
-            )
-
-            size = (
-                item.get(
-                    "size",
-                    0,
-                )
-            )
-
-            if not isinstance(
-                path,
-                str,
-            ):
-                continue
-
-            path = (
-                path
-                .replace(
-                    "\\",
-                    "/",
-                )
-                .lstrip(
-                    "/"
-                )
-            )
-
-            if not (
-                self._is_update_file(
-                    path
-                )
-            ):
-                continue
-
-            if not isinstance(
-                git_sha,
-                str,
-            ):
-                continue
-
-            if not isinstance(
-                size,
-                int,
-            ):
-                size = 0
-
-            files.append(
-                RemoteUpdateFile(
-                    path=path,
-                    git_sha=(
-                        git_sha
-                    ),
-                    size=max(
-                        0,
-                        size,
-                    ),
-                )
-            )
-
-        files.sort(
-            key=lambda item: (
-                item.path
-                .casefold()
-            )
-        )
-
-        return tuple(
-            files
-        )
-
-    # ========================================================
-    # Update-Dateifilter
-    # ========================================================
-
-    @staticmethod
-    def _is_update_file(
-        path: str,
-    ) -> bool:
-        """
-        Falls update_config.py bereits die neue
-        is_update_file()-Funktion enthält, benutzen wir sie.
-
-        Sonst:
-
-            main.py
-            app/**/*.py
-        """
-
-        configured_filter = getattr(
-            update_config,
-            "is_update_file",
-            None,
-        )
-
-        if callable(
-            configured_filter
-        ):
-            return bool(
-                configured_filter(
-                    path
-                )
-            )
-
-        normalized = (
-            path
-            .replace(
-                "\\",
-                "/",
-            )
-            .lstrip(
-                "/"
-            )
-        )
-
-        if (
-            normalized
-            == "main.py"
-        ):
-            return True
-
-        return (
-            normalized.startswith(
-                "app/"
-            )
-            and normalized.endswith(
-                ".py"
-            )
-        )
-
-    # ========================================================
-    # Remote version.py
+    # Remote Version Parser
     # ========================================================
 
     @staticmethod
@@ -1498,22 +634,20 @@ class UpdateService:
         except UnicodeDecodeError as error:
             raise UpdateServiceError(
                 (
-                    "Remote version.py "
+                    "Die entfernte version.py "
                     "ist nicht UTF-8."
                 )
             ) from error
 
         try:
-            module = (
-                ast.parse(
-                    source
-                )
+            tree = ast.parse(
+                source
             )
 
         except SyntaxError as error:
             raise UpdateServiceError(
                 (
-                    "Remote version.py "
+                    "Die entfernte version.py "
                     "enthält ungültigen "
                     "Python-Code."
                 )
@@ -1524,20 +658,17 @@ class UpdateService:
             str,
         ] = {}
 
-        for node in module.body:
+        for node in tree.body:
             name: (
                 str
                 | None
             ) = None
 
-            value_node: (
-                ast.expr
-                | None
-            ) = None
+            value_node = None
 
-            # ================================================
+            # -----------------------------------------------
             # APP_VERSION = "..."
-            # ================================================
+            # -----------------------------------------------
 
             if isinstance(
                 node,
@@ -1558,17 +689,15 @@ class UpdateService:
                     target,
                     ast.Name,
                 ):
-                    name = (
-                        target.id
-                    )
+                    name = target.id
 
                     value_node = (
                         node.value
                     )
 
-            # ================================================
+            # -----------------------------------------------
             # APP_VERSION: str = "..."
-            # ================================================
+            # -----------------------------------------------
 
             elif isinstance(
                 node,
@@ -1629,9 +758,9 @@ class UpdateService:
         if not version_text:
             raise UpdateServiceError(
                 (
-                    "Remote version.py "
-                    "enthält keine gültige "
-                    "APP_VERSION."
+                    "APP_VERSION wurde in "
+                    "der entfernten version.py "
+                    "nicht gefunden."
                 )
             )
 
@@ -1665,67 +794,82 @@ class UpdateService:
         )
 
     # ========================================================
-    # Remote Datei
+    # Kleine Datei herunterladen
     # ========================================================
 
-    def _download_raw_file(
-        self,
-        path: str,
+    @staticmethod
+    def _download_bytes(
+        url: str,
         *,
-        ref: str,
+        timeout: float,
     ) -> bytes:
-        """
-        Lädt eine Datei aus genau dem angegebenen
-        Commit-SHA.
-        """
-
-        normalized_path = (
-            path
-            .replace(
-                "\\",
-                "/",
-            )
-            .lstrip(
-                "/"
-            )
-        )
-
-        if not (
-            normalized_path
-        ):
-            raise UpdateServiceError(
-                (
-                    "Leerer GitHub-Dateipfad."
-                )
-            )
-
-        encoded_path = quote(
-            normalized_path,
-            safe="/",
-        )
-
-        query = urlencode(
-            {
-                "ref": ref,
-            }
-        )
-
-        url = (
-            f"{GITHUB_API_ROOT}"
-            f"/repos/{self.owner}"
-            f"/{self.repository}"
-            f"/contents/{encoded_path}"
-            f"?{query}"
-        )
-
         request = Request(
             url,
-            headers=(
-                self._github_headers(
-                    raw=True
+            headers={
+                "User-Agent": (
+                    "XXMI-Mod-Manager-Updater"
+                ),
+            },
+        )
+
+        try:
+            with urlopen(
+                request,
+                timeout=timeout,
+            ) as response:
+                return response.read()
+
+        except HTTPError as error:
+            raise UpdateServiceError(
+                (
+                    "GitHub HTTP "
+                    f"{error.code}."
                 )
-            ),
-            method="GET",
+            ) from error
+
+        except URLError as error:
+            raise UpdateServiceError(
+                (
+                    "GitHub konnte nicht "
+                    "erreicht werden."
+                    "\n\n"
+                    f"{error}"
+                )
+            ) from error
+
+        except TimeoutError as error:
+            raise UpdateServiceError(
+                (
+                    "Zeitüberschreitung bei "
+                    "der Update-Prüfung."
+                )
+            ) from error
+
+    # ========================================================
+    # ZIP Download
+    # ========================================================
+
+    @staticmethod
+    def _download_to_file(
+        *,
+        url: str,
+        destination: Path,
+        progress_callback: (
+            ProgressCallback
+            | None
+        ),
+        cancel_callback: (
+            CancelCallback
+            | None
+        ),
+    ) -> None:
+        request = Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "XXMI-Mod-Manager-Updater"
+                ),
+            },
         )
 
         try:
@@ -1735,42 +879,96 @@ class UpdateService:
                     UPDATE_DOWNLOAD_TIMEOUT
                 ),
             ) as response:
-                return (
-                    response.read()
+                content_length = (
+                    response.headers.get(
+                        "Content-Length"
+                    )
                 )
+
+                try:
+                    total = int(
+                        content_length
+                    )
+
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    total = 0
+
+                received = 0
+
+                with destination.open(
+                    "wb"
+                ) as output:
+                    while True:
+                        if (
+                            cancel_callback
+                            is not None
+                            and cancel_callback()
+                        ):
+                            raise UpdateCancelledError(
+                                (
+                                    "Update-Download "
+                                    "abgebrochen."
+                                )
+                            )
+
+                        chunk = response.read(
+                            1024
+                            * 1024
+                        )
+
+                        if not chunk:
+                            break
+
+                        output.write(
+                            chunk
+                        )
+
+                        received += len(
+                            chunk
+                        )
+
+                        if (
+                            progress_callback
+                            is not None
+                        ):
+                            progress_callback(
+                                received,
+                                total,
+                                "source.zip",
+                            )
+
+        except UpdateCancelledError:
+            raise
 
         except HTTPError as error:
             if error.code == 404:
                 raise UpdateServiceError(
                     (
-                        "Remote Update-Datei "
-                        "wurde nicht gefunden:\n"
-                        f"{normalized_path}"
+                        "Das GitHub Source-ZIP "
+                        "wurde nicht gefunden."
+                        "\n\n"
+                        "Prüfe, ob der passende "
+                        "Git-Tag existiert."
                     )
                 ) from error
 
             raise UpdateServiceError(
                 (
-                    "GitHub HTTP "
-                    f"{error.code} beim "
-                    "Download von:\n"
-                    f"{normalized_path}"
+                    "GitHub Download HTTP "
+                    f"{error.code}."
                 )
             ) from error
 
         except URLError as error:
-            reason = getattr(
-                error,
-                "reason",
-                error,
-            )
-
             raise UpdateServiceError(
                 (
-                    "GitHub konnte beim "
-                    "Dateidownload nicht "
-                    "erreicht werden:\n"
-                    f"{reason}"
+                    "Das Update-ZIP konnte "
+                    "nicht heruntergeladen werden."
+                    "\n\n"
+                    f"{error}"
                 )
             ) from error
 
@@ -1778,213 +976,222 @@ class UpdateService:
             raise UpdateServiceError(
                 (
                     "Zeitüberschreitung beim "
-                    "Download von:\n"
-                    f"{normalized_path}"
+                    "Update-Download."
                 )
             ) from error
 
     # ========================================================
-    # JSON Request
+    # Sicher entpacken
     # ========================================================
 
-    def _request_json(
-        self,
-        url: str,
-    ) -> Any:
-        request = Request(
-            url,
-            headers=(
-                self._github_headers()
-            ),
-            method="GET",
-        )
-
-        try:
-            with urlopen(
-                request,
-                timeout=(
-                    self.timeout
-                ),
-            ) as response:
-                raw = (
-                    response.read()
-                )
-
-        except HTTPError as error:
-            if error.code == 404:
-                raise UpdateServiceError(
-                    (
-                        "GitHub Repository, "
-                        "Branch oder Objekt "
-                        "wurde nicht gefunden."
-                    )
-                ) from error
-
-            if error.code == 403:
-                raise UpdateServiceError(
-                    (
-                        "GitHub hat die Anfrage "
-                        "abgelehnt. Mögliches "
-                        "API-Limit erreicht."
-                    )
-                ) from error
-
-            raise UpdateServiceError(
-                (
-                    "GitHub API HTTP "
-                    f"{error.code}."
-                )
-            ) from error
-
-        except URLError as error:
-            reason = getattr(
-                error,
-                "reason",
-                error,
-            )
-
-            raise UpdateServiceError(
-                (
-                    "GitHub konnte nicht "
-                    "erreicht werden:\n"
-                    f"{reason}"
-                )
-            ) from error
-
-        except TimeoutError as error:
-            raise UpdateServiceError(
-                (
-                    "Zeitüberschreitung bei "
-                    "der GitHub-Anfrage."
-                )
-            ) from error
-
-        try:
-            return (
-                json.loads(
-                    raw.decode(
-                        "utf-8"
-                    )
-                )
-            )
-
-        except (
-            UnicodeDecodeError,
-            json.JSONDecodeError,
-        ) as error:
-            raise UpdateServiceError(
-                (
-                    "GitHub hat keine "
-                    "gültige JSON-Antwort "
-                    "geliefert."
-                )
-            ) from error
-
-    # ========================================================
-    # GitHub Headers
-    # ========================================================
-
-    @staticmethod
-    def _github_headers(
+    @classmethod
+    def _extract_archive_securely(
+        cls,
         *,
-        raw: bool = False,
-    ) -> dict[
-        str,
-        str,
-    ]:
-        headers = {
-            "Accept": (
-                "application/vnd.github.raw+json"
-                if raw
-                else "application/vnd.github+json"
-            ),
-
-            "X-GitHub-Api-Version": (
-                GITHUB_API_VERSION
-            ),
-
-            "User-Agent": (
-                "XXMI-Mod-Manager-Updater"
-            ),
-        }
-
-        token_function = getattr(
-            update_config,
-            "github_token",
-            None,
+        archive_path: Path,
+        destination: Path,
+        cancel_callback: (
+            CancelCallback
+            | None
+        ),
+    ) -> None:
+        destination_resolved = (
+            destination.resolve()
         )
 
-        token: (
-            str
-            | None
-        ) = None
-
-        if callable(
-            token_function
-        ):
-            try:
-                token = (
-                    token_function()
-                )
-
-            except Exception:
-                token = None
-
-        if token:
-            headers[
-                "Authorization"
-            ] = (
-                f"Bearer {token}"
+        with zipfile.ZipFile(
+            archive_path,
+            "r",
+        ) as archive:
+            entries = (
+                archive.infolist()
             )
 
-        return headers
+            if (
+                len(
+                    entries
+                )
+                > MAX_UPDATE_FILE_COUNT
+            ):
+                raise UpdateServiceError(
+                    (
+                        "Das Update-ZIP enthält "
+                        "zu viele Dateien."
+                    )
+                )
+
+            total_uncompressed = sum(
+                max(
+                    0,
+                    entry.file_size,
+                )
+                for entry
+                in entries
+            )
+
+            if (
+                total_uncompressed
+                > MAX_UPDATE_UNCOMPRESSED_SIZE
+            ):
+                raise UpdateServiceError(
+                    (
+                        "Das entpackte Update "
+                        "wäre zu groß."
+                    )
+                )
+
+            # ================================================
+            # Zuerst ALLE Pfade prüfen
+            # ================================================
+
+            for entry in entries:
+                cls._check_cancelled(
+                    cancel_callback
+                )
+
+                normalized = (
+                    entry.filename
+                    .replace(
+                        "\\",
+                        "/",
+                    )
+                )
+
+                path = PurePosixPath(
+                    normalized
+                )
+
+                if path.is_absolute():
+                    raise UpdateServiceError(
+                        (
+                            "Unsicherer absoluter "
+                            "Pfad im Update-ZIP."
+                        )
+                    )
+
+                if (
+                    ".."
+                    in path.parts
+                ):
+                    raise UpdateServiceError(
+                        (
+                            "Unsicherer relativer "
+                            "Pfad im Update-ZIP."
+                        )
+                    )
+
+                if (
+                    path.parts
+                    and ":"
+                    in path.parts[
+                        0
+                    ]
+                ):
+                    raise UpdateServiceError(
+                        (
+                            "Unsicherer Windows-Pfad "
+                            "im Update-ZIP."
+                        )
+                    )
+
+                # --------------------------------------------
+                # Symlinks ablehnen
+                # --------------------------------------------
+
+                unix_mode = (
+                    entry.external_attr
+                    >> 16
+                )
+
+                if stat.S_ISLNK(
+                    unix_mode
+                ):
+                    raise UpdateServiceError(
+                        (
+                            "Symlinks sind im "
+                            "Update-ZIP nicht erlaubt."
+                        )
+                    )
+
+                target = (
+                    destination.joinpath(
+                        *path.parts
+                    )
+                )
+
+                try:
+                    (
+                        target.resolve(
+                            strict=False
+                        )
+                        .relative_to(
+                            destination_resolved
+                        )
+                    )
+
+                except ValueError as error:
+                    raise UpdateServiceError(
+                        (
+                            "Eine Update-Datei "
+                            "würde den Cache "
+                            "verlassen."
+                        )
+                    ) from error
+
+            # ================================================
+            # Erst jetzt entpacken
+            # ================================================
+
+            for entry in entries:
+                cls._check_cancelled(
+                    cancel_callback
+                )
+
+                archive.extract(
+                    entry,
+                    destination,
+                )
 
     # ========================================================
-    # Git Blob Hash
+    # Payload Root
     # ========================================================
 
     @staticmethod
-    def _git_blob_sha(
-        data: bytes,
-    ) -> str:
-        """
-        Berechnet den klassischen Git Blob Object Hash:
+    def _find_payload_root(
+        extract_root: Path,
+    ) -> Path:
+        directories = [
+            path
+            for path
+            in extract_root.iterdir()
+            if path.is_dir()
+        ]
 
-            SHA1(
-                b"blob <size>\\0"
-                + data
+        files = [
+            path
+            for path
+            in extract_root.iterdir()
+            if path.is_file()
+        ]
+
+        if (
+            files
+            or len(
+                directories
+            )
+            != 1
+        ):
+            raise UpdateServiceError(
+                (
+                    "Das GitHub Source-ZIP "
+                    "besitzt eine unerwartete "
+                    "Verzeichnisstruktur."
+                )
             )
 
-        Dieser Wert muss mit der SHA aus dem Git Tree
-        übereinstimmen.
-        """
-
-        header = (
-            f"blob {len(data)}\0"
-            .encode(
-                "ascii"
-            )
-        )
-
-        try:
-            hasher = hashlib.sha1(
-                usedforsecurity=False
-            )
-
-        except TypeError:
-            hasher = hashlib.sha1()
-
-        hasher.update(
-            header
-        )
-
-        hasher.update(
-            data
-        )
-
-        return (
-            hasher.hexdigest()
-        )
+        return directories[
+            0
+        ]
 
     # ========================================================
     # SHA-256
@@ -2019,85 +1226,6 @@ class UpdateService:
         )
 
     # ========================================================
-    # Safe Cache Path
-    # ========================================================
-
-    @staticmethod
-    def _safe_cache_path(
-        root: Path,
-        remote_path: str,
-    ) -> Path:
-        """
-        Verhindert z.B.:
-
-            ../../Windows/System32/...
-        """
-
-        normalized = (
-            remote_path
-            .replace(
-                "\\",
-                "/",
-            )
-        )
-
-        path = PurePosixPath(
-            normalized
-        )
-
-        if path.is_absolute():
-            raise UpdateServiceError(
-                (
-                    "Absoluter Update-Pfad "
-                    "ist nicht erlaubt:\n"
-                    f"{remote_path}"
-                )
-            )
-
-        if (
-            ".."
-            in path.parts
-        ):
-            raise UpdateServiceError(
-                (
-                    "Unsicherer Update-Pfad:\n"
-                    f"{remote_path}"
-                )
-            )
-
-        target = (
-            root.joinpath(
-                *path.parts
-            )
-        )
-
-        root_resolved = (
-            root.resolve()
-        )
-
-        target_resolved = (
-            target.resolve(
-                strict=False
-            )
-        )
-
-        try:
-            target_resolved.relative_to(
-                root_resolved
-            )
-
-        except ValueError as error:
-            raise UpdateServiceError(
-                (
-                    "Update-Datei würde den "
-                    "Cache-Ordner verlassen:\n"
-                    f"{remote_path}"
-                )
-            ) from error
-
-        return target
-
-    # ========================================================
     # Cancel
     # ========================================================
 
@@ -2112,15 +1240,17 @@ class UpdateService:
             callback is not None
             and callback()
         ):
-            raise UpdateServiceError(
-                "Update-Download abgebrochen."
+            raise UpdateCancelledError(
+                (
+                    "Update-Download "
+                    "abgebrochen."
+                )
             )
 
 
 __all__ = [
-    "ReleaseAsset",
-    "RemoteUpdateFile",
     "StagedUpdate",
+    "UpdateCancelledError",
     "UpdateChannel",
     "UpdateInfo",
     "UpdateService",
