@@ -511,7 +511,7 @@
     "updates.dialog.script_install_unavailable": "Automatic script installation is not available on this system.",
 
 
-"updates.dialog.source": "Update source: GitHub Source · {tag}",
+"updates.dialog.source": "Update source: GitHub Source · {branch}",
 
 "updates.status.download_progress": "{file}: {current} of {total}",
 

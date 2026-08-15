@@ -480,15 +480,51 @@ class UpdateController(
 
             return
 
+        QTimer.singleShot(
+            300,
+            self._quit_for_update,
+        )
+
+    def _quit_for_update(
+        self,
+    ) -> None:
+        """
+        Beendet die Anwendung kontrolliert, nachdem der
+        externe Windows-Updater erfolgreich gestartet wurde.
+
+        Wichtig:
+        Der PowerShell-Helper wartet auf das Ende dieses
+        Python-Prozesses, bevor Dateien ersetzt werden.
+        """
+
+        logger.info(
+            "Anwendung wird für Update beendet."
+        )
+
+        # ----------------------------------------------------
+        # Hauptfenster schließen.
+        #
+        # Dadurch läuft MainWindow.closeEvent(), wodurch
+        # Scanner, Imports, Downloads usw. sauber beendet
+        # und die Konfiguration gespeichert werden.
+        # ----------------------------------------------------
+
+        try:
+            self.parent_window.close()
+
+        except RuntimeError:
+            pass
+
+        # ----------------------------------------------------
+        # Qt Eventloop sicher beenden
+        # ----------------------------------------------------
+
         application = (
             QApplication.instance()
         )
 
         if application is not None:
-            QTimer.singleShot(
-                300,
-                application.quit,
-            )
+            application.quit()
 
     # ========================================================
     # Download Failed
