@@ -9,7 +9,9 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-
+from shiboken6 import (
+    isValid,
+)
 from PySide6.QtGui import (
     QPixmap,
     QResizeEvent,
@@ -72,16 +74,15 @@ class LibraryCardPreview(
     QFrame
 ):
     """
-    Zeigt für eine Library-Card genau ein Previewbild.
+    Preview für eine Library-Card.
 
     Reihenfolge:
+    1. lokale Preview
+    2. GameBanana Preview
+    3. Platzhalter
 
-    1. lokales Preview
-    2. GameBanana-Preview
-    3. Placeholder
-
-    Die eigentliche Suche wird vom
-    LibraryPreviewWorker durchgeführt.
+    Worker laufen asynchron. Beim Löschen der Card
+    werden ihre Signale zuerst getrennt.
     """
 
     def __init__(
@@ -97,29 +98,30 @@ class LibraryCardPreview(
             "libraryCardPreview"
         )
 
-        self.setFixedHeight(
-            PREVIEW_HEIGHT
-        )
+        # ====================================================
+        # Lifecycle
+        # ====================================================
 
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
-        )
+        self._disposed = False
 
         self._request_token = 0
+
+        self._workers: set[
+            LibraryPreviewWorker
+        ] = set()
 
         self._local_pixmap: (
             QPixmap
             | None
         ) = None
 
-        self._workers: set[
-            LibraryPreviewWorker
-        ] = set()
-
-        # ----------------------------------------------------
-        # Stack
-        # ----------------------------------------------------
+        # ====================================================
+        # Widgets
+        #
+        # WICHTIG:
+        # ALLE Widgets werden erstellt, BEVOR
+        # _build_ui() oder clear_preview() aufgerufen wird.
+        # ====================================================
 
         self.stack = (
             QStackedWidget(
@@ -127,61 +129,28 @@ class LibraryCardPreview(
             )
         )
 
-        # ----------------------------------------------------
-        # Placeholder
-        # ----------------------------------------------------
-
         self.empty_label = QLabel(
             self
         )
-
-        self.empty_label.setObjectName(
-            "libraryCardPreviewEmpty"
-        )
-
-        self.empty_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        # ----------------------------------------------------
-        # Lokales Bild
-        # ----------------------------------------------------
 
         self.local_label = QLabel(
             self
         )
 
-        self.local_label.setObjectName(
-            "libraryCardPreviewLocal"
-        )
-
-        self.local_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        # ----------------------------------------------------
-        # Remote / GameBanana
-        # ----------------------------------------------------
-
-        self.remote_image = (
+        self.remote_label = (
             GameBananaPreviewImage(
                 parent=self,
-                minimum_height=(
-                    PREVIEW_HEIGHT
-                ),
+                minimum_height=210,
             )
         )
 
-        self.remote_image.setObjectName(
-            "libraryCardPreviewRemote"
-        )
-
-        self.remote_image.setFixedHeight(
-            PREVIEW_HEIGHT
-        )
+        # ====================================================
+        # UI
+        # ====================================================
 
         self._build_ui()
 
+        # Erst JETZT darf clear_preview() laufen.
         self.clear_preview()
 
     # ========================================================
@@ -191,6 +160,14 @@ class LibraryCardPreview(
     def _build_ui(
         self,
     ) -> None:
+        self.setMinimumHeight(
+            210
+        )
+
+        self.setMaximumHeight(
+            240
+        )
+
         layout = QVBoxLayout(
             self
         )
@@ -206,6 +183,46 @@ class LibraryCardPreview(
             0
         )
 
+        # ----------------------------------------------------
+        # Empty
+        # ----------------------------------------------------
+
+        self.empty_label.setObjectName(
+            "libraryCardPreviewEmpty"
+        )
+
+        self.empty_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        self.empty_label.setWordWrap(
+            True
+        )
+
+        # ----------------------------------------------------
+        # Lokal
+        # ----------------------------------------------------
+
+        self.local_label.setObjectName(
+            "libraryCardPreviewLocal"
+        )
+
+        self.local_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        # ----------------------------------------------------
+        # Remote / GameBanana
+        # ----------------------------------------------------
+
+        self.remote_label.setObjectName(
+            "libraryCardPreviewRemote"
+        )
+
+        # ----------------------------------------------------
+        # Stack
+        # ----------------------------------------------------
+
         self.stack.addWidget(
             self.empty_label
         )
@@ -215,7 +232,7 @@ class LibraryCardPreview(
         )
 
         self.stack.addWidget(
-            self.remote_image
+            self.remote_label
         )
 
         layout.addWidget(
@@ -223,26 +240,45 @@ class LibraryCardPreview(
         )
 
     # ========================================================
-    # Mod Preview laden
+    # Mod laden
     # ========================================================
 
     def load_mod(
         self,
         mod: ModInfo,
     ) -> None:
+        if (
+            self._disposed
+            or not isValid(
+                self
+            )
+        ):
+            return
+
+        # Alten Request ungültig machen.
         self._request_token += 1
 
         token = (
             self._request_token
         )
 
+        # ----------------------------------------------------
+        # Anzeige zurücksetzen, ohne Lifecycle zu zerstören
+        # ----------------------------------------------------
+
         self._local_pixmap = None
 
-        self.local_label.clear()
+        if isValid(
+            self.local_label
+        ):
+            self.local_label.clear()
 
-        self.remote_image.set_preview_url(
-            None
-        )
+        if isValid(
+            self.remote_label
+        ):
+            self.remote_label.set_preview_url(
+                None
+            )
 
         self.empty_label.setText(
             tr(
@@ -253,6 +289,10 @@ class LibraryCardPreview(
         self.stack.setCurrentWidget(
             self.empty_label
         )
+
+        # ----------------------------------------------------
+        # Preview Worker
+        # ----------------------------------------------------
 
         worker = (
             LibraryPreviewWorker(
@@ -269,7 +309,7 @@ class LibraryCardPreview(
             result,
             current_worker=worker,
             current_token=token:
-            self._on_preview_loaded(
+            self._on_loaded(
                 result=result,
                 worker=current_worker,
                 token=current_token,
@@ -281,7 +321,7 @@ class LibraryCardPreview(
             _message,
             current_worker=worker,
             current_token=token:
-            self._on_preview_failed(
+            self._on_failed(
                 worker=current_worker,
                 token=current_token,
             )
@@ -292,10 +332,10 @@ class LibraryCardPreview(
         )
 
     # ========================================================
-    # Worker Result
+    # Worker fertig
     # ========================================================
 
-    def _on_preview_loaded(
+    def _on_loaded(
         self,
         *,
         result,
@@ -306,8 +346,14 @@ class LibraryCardPreview(
             worker
         )
 
-        # Ein älterer Worker darf keine inzwischen
-        # ausgewählte neue Preview überschreiben.
+        if (
+            self._disposed
+            or not isValid(
+                self
+            )
+        ):
+            return
+
         if (
             token
             != self._request_token
@@ -315,11 +361,11 @@ class LibraryCardPreview(
             return
 
         # ----------------------------------------------------
-        # Lokal bevorzugen
+        # 1. Lokale Preview bevorzugen
         # ----------------------------------------------------
 
         if result.local_images:
-            path = (
+            local_path = (
                 result.local_images[
                     0
                 ]
@@ -327,7 +373,7 @@ class LibraryCardPreview(
 
             pixmap = QPixmap(
                 str(
-                    path
+                    local_path
                 )
             )
 
@@ -336,38 +382,48 @@ class LibraryCardPreview(
                     pixmap
                 )
 
-                self.stack.setCurrentWidget(
+                if isValid(
                     self.local_label
+                ):
+                    self.stack.setCurrentWidget(
+                        self.local_label
+                    )
+
+                    self._refresh_local_pixmap()
+
+                    return
+
+        # ----------------------------------------------------
+        # 2. GameBanana-Fallback
+        # ----------------------------------------------------
+
+        if result.remote_images:
+            if isValid(
+                self.remote_label
+            ):
+                self.remote_label.set_preview_url(
+                    result.remote_images[
+                        0
+                    ]
                 )
 
-                # Erst nach dem Layout skalieren.
-                QTimer.singleShot(
-                    0,
-                    self._refresh_local_pixmap,
+                self.stack.setCurrentWidget(
+                    self.remote_label
                 )
 
                 return
 
         # ----------------------------------------------------
-        # GameBanana Fallback
+        # 3. Keine Preview
         # ----------------------------------------------------
-
-        if result.remote_images:
-            self.remote_image.set_preview_url(
-                result.remote_images[
-                    0
-                ]
-            )
-
-            self.stack.setCurrentWidget(
-                self.remote_image
-            )
-
-            return
 
         self._show_empty()
 
-    def _on_preview_failed(
+    # ========================================================
+    # Worker Fehler
+    # ========================================================
+
+    def _on_failed(
         self,
         *,
         worker: LibraryPreviewWorker,
@@ -378,6 +434,14 @@ class LibraryCardPreview(
         )
 
         if (
+            self._disposed
+            or not isValid(
+                self
+            )
+        ):
+            return
+
+        if (
             token
             != self._request_token
         ):
@@ -386,36 +450,86 @@ class LibraryCardPreview(
         self._show_empty()
 
     # ========================================================
-    # Placeholder
+    # Empty
     # ========================================================
 
     def _show_empty(
         self,
     ) -> None:
+        if (
+            self._disposed
+            or not isValid(
+                self
+            )
+        ):
+            return
+
         self._local_pixmap = None
 
-        self.local_label.clear()
+        if isValid(
+            self.local_label
+        ):
+            self.local_label.clear()
 
-        self.remote_image.set_preview_url(
-            None
-        )
-
-        self.empty_label.setText(
-            tr(
-                "library.preview.none"
+        if isValid(
+            self.remote_label
+        ):
+            self.remote_label.set_preview_url(
+                None
             )
-        )
 
-        self.stack.setCurrentWidget(
+        if isValid(
             self.empty_label
-        )
+        ):
+            self.empty_label.setText(
+                tr(
+                    "library.preview.none"
+                )
+            )
+
+            self.stack.setCurrentWidget(
+                self.empty_label
+            )
+
+    # ========================================================
+    # Public Reset
+    # ========================================================
 
     def clear_preview(
         self,
     ) -> None:
+        if self._disposed:
+            return
+
+        # Alle früheren Worker-Ergebnisse ungültig.
         self._request_token += 1
 
-        self._show_empty()
+        self._local_pixmap = None
+
+        if isValid(
+            self.local_label
+        ):
+            self.local_label.clear()
+
+        if isValid(
+            self.remote_label
+        ):
+            self.remote_label.set_preview_url(
+                None
+            )
+
+        if isValid(
+            self.empty_label
+        ):
+            self.empty_label.setText(
+                tr(
+                    "library.preview.none"
+                )
+            )
+
+            self.stack.setCurrentWidget(
+                self.empty_label
+            )
 
     # ========================================================
     # Resize
@@ -434,6 +548,19 @@ class LibraryCardPreview(
     def _refresh_local_pixmap(
         self,
     ) -> None:
+        if (
+            self._disposed
+            or not isValid(
+                self
+            )
+        ):
+            return
+
+        if not isValid(
+            self.local_label
+        ):
+            return
+
         pixmap = (
             self._local_pixmap
         )
@@ -444,63 +571,102 @@ class LibraryCardPreview(
         ):
             return
 
-        width = (
+        target = (
             self.local_label
             .contentsRect()
-            .width()
-        )
-
-        height = (
-            self.local_label
-            .contentsRect()
-            .height()
+            .size()
         )
 
         if (
-            width <= 0
-            or height <= 0
+            target.width() <= 0
+            or target.height() <= 0
         ):
             return
 
-        device_ratio = max(
-            1.0,
-            float(
-                self.devicePixelRatioF()
-            ),
-        )
-
-        target_width = max(
-            1,
-            int(
-                width
-                * device_ratio
-            ),
-        )
-
-        target_height = max(
-            1,
-            int(
-                height
-                * device_ratio
-            ),
-        )
-
         scaled = pixmap.scaled(
-            target_width,
-            target_height,
+            target,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
-        )
-
-        scaled.setDevicePixelRatio(
-            device_ratio
         )
 
         self.local_label.setPixmap(
             scaled
         )
 
+    # ========================================================
+    # Lifecycle
+    # ========================================================
 
+    def dispose(
+        self,
+    ) -> None:
+        """
+        Wird von LibraryModCard.dispose() aufgerufen,
+        BEVOR die Card mit deleteLater() gelöscht wird.
+        """
+
+        if self._disposed:
+            return
+
+        self._disposed = True
+
+        # Alle alten Antworten ungültig.
+        self._request_token += 1
+
+        # ----------------------------------------------------
+        # Library Preview Worker abkoppeln
+        # ----------------------------------------------------
+
+        for worker in tuple(
+            self._workers
+        ):
+            try:
+                worker.signals.finished.disconnect()
+
+            except (
+                RuntimeError,
+                TypeError,
+            ):
+                pass
+
+            try:
+                worker.signals.failed.disconnect()
+
+            except (
+                RuntimeError,
+                TypeError,
+            ):
+                pass
+
+        self._workers.clear()
+
+        # ----------------------------------------------------
+        # GameBanana Preview Worker abkoppeln
+        # ----------------------------------------------------
+
+        if hasattr(
+            self,
+            "remote_label",
+        ):
+            remote_label = (
+                self.remote_label
+            )
+
+            if isValid(
+                remote_label
+            ):
+                dispose_remote = getattr(
+                    remote_label,
+                    "dispose",
+                    None,
+                )
+
+                if callable(
+                    dispose_remote
+                ):
+                    dispose_remote()
+
+        self._local_pixmap = None
 # ============================================================
 # Einzelne Mod Card
 # ============================================================
@@ -638,7 +804,36 @@ class LibraryModCard(
         self.preview.load_mod(
             self.mod
         )
+    # ========================================================
+    # Lifecycle
+    # ========================================================
 
+
+    def dispose(
+        self,
+    ) -> None:
+        dispose_preview = getattr(
+            self.preview,
+            "dispose",
+            None,
+        )
+
+
+        if callable(
+            dispose_preview
+        ):
+            dispose_preview()
+
+
+        try:
+            self.toggle_button.clicked.disconnect()
+
+
+        except (
+            RuntimeError,
+            TypeError,
+        ):
+            pass
     # ========================================================
     # UI
     # ========================================================
@@ -1179,18 +1374,49 @@ class LibraryGalleryWidget(
     def clear(
         self,
     ) -> None:
-        for card in self._cards:
+        """
+        Entfernt alle Gallery-Cards sicher.
+
+
+        Wichtig:
+        Preview-Worker werden zuerst von ihren Widgets
+        getrennt und erst danach werden die Qt-Widgets
+        gelöscht.
+        """
+
+
+        cards = tuple(
+            self._cards
+        )
+
+
+        self._cards.clear()
+
+
+        self._card_by_path.clear()
+
+
+        for card in cards:
             self.grid.removeWidget(
                 card
             )
 
+
+            # -----------------------------------------------
+            # Erst asynchrone Callbacks abkoppeln.
+            # -----------------------------------------------
+
+
+            card.dispose()
+
+
+            # -----------------------------------------------
+            # Erst danach Qt-Objekt löschen.
+            # -----------------------------------------------
+
+
             card.deleteLater()
 
-        self._cards.clear()
-
-        self._card_by_path.clear()
-
-        self._current_columns = 0
 
         self.empty_label.setText(
             tr(
@@ -1198,13 +1424,11 @@ class LibraryGalleryWidget(
             )
         )
 
-        self.empty_label.setVisible(
-            True
-        )
 
-        self.scroll_area.setVisible(
-            False
-        )
+        self.empty_label.show()
+
+
+        self.scroll_area.hide()
 
     # ========================================================
     # Filter
@@ -1218,6 +1442,14 @@ class LibraryGalleryWidget(
         mod_type=None,
         status=None,
     ) -> int:
+        """
+        Speichert die aktuellen Filter und
+        aktualisiert anschließend alle Cards.
+
+        Rückgabe:
+            Anzahl sichtbarer Cards.
+        """
+
         self._search_term = (
             search_term
             .strip()
@@ -1239,6 +1471,7 @@ class LibraryGalleryWidget(
         return (
             self._apply_current_filters()
         )
+        
 
     def _apply_current_filters(
         self,

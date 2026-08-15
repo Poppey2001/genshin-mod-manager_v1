@@ -457,5 +457,50 @@
     "library.gallery.empty": "No mods match the current filters.",
 
     "library.gamebanana_metadata.error.title": "GameBanana metadata",
-    "library.gamebanana_metadata.error.message": "The mod was imported, but the GameBanana link could not be saved completely.\n\n{errors}"
+    "library.gamebanana_metadata.error.message": "The mod was imported, but the GameBanana link could not be saved completely.\n\n{errors}",
+
+    "conflicts.title": "Conflicts",
+    "conflicts.description": "Check library conflicts, manually added XXMI mods and possible duplicates.",
+    "conflicts.refresh": "Check again",
+    "conflicts.empty": "No conflicts were found.",
+    "conflicts.count": "{count} conflicts",
+
+    "conflicts.type.library": "Library conflict",
+    "conflicts.type.unmanaged": "Manually added",
+    "conflicts.type.invalid_marker": "Invalid marker",
+    "conflicts.type.orphaned": "Orphaned mod",
+
+    "conflicts.message.library": "Data exists at the active target that cannot be unambiguously assigned to the library mod.",
+    "conflicts.message.unmanaged": "This mod is located in the active XXMI mods directory but is currently not managed by your library.",
+    "conflicts.message.invalid_marker": "This mod contains a damaged, invalid or mismatching manager marker.",
+    "conflicts.message.orphaned": "This active mod was previously managed, but its corresponding library mod could not be found.",
+
+    "conflicts.action.open": "Open folder",
+    "conflicts.action.adopt": "Adopt",
+    "conflicts.action.check_duplicate": "Check duplicate",
+    "conflicts.action.copy_to_library": "Copy to library",
+    "conflicts.action.delete_duplicate": "Delete active copy",
+
+    "conflicts.hash.idle": "Not checked for duplicates yet.",
+    "conflicts.hash.checking": "Running ORFix / 5.7 normalization and duplicate check … {current}/{total} – {name}",
+    "conflicts.hash.duplicate": "An identical mod was found in your library.",
+    "conflicts.hash.no_duplicate": "No identical mod was found in your library.",
+    "conflicts.hash.failed": "The duplicate check failed.",
+    "conflicts.hash.invalid_source": "This entry is not a valid mod directory.",
+    "conflicts.hash.crc32": "CRC32: {value}",
+    "conflicts.hash.sha256": "SHA-256: {value}",
+    "conflicts.hash.duplicate_path": "Library duplicate: {path}",
+
+    "conflicts.delete.title": "Delete active duplicate",
+    "conflicts.delete.message": "CRC32 and SHA-256 match a library mod after ORFix/5.7 normalization.\n\nActive copy:\n{source}\n\nLibrary:\n{library}\n\nPermanently delete the active copy?",
+    "conflicts.delete.failed.title": "Could not delete duplicate",
+    "conflicts.delete.failed.message": "The active copy could not be deleted.\n\n{error}",
+    "conflicts.delete.completed.title": "Duplicate deleted",
+    "conflicts.delete.completed.message": "The confirmed active duplicate copy was deleted.",
+
+    "conflicts.copy.failed.title": "Could not copy mod",
+    "conflicts.copy.missing": "The mod directory no longer exists.",
+
+    "conflicts.manual.title": "Manually added mod",
+    "conflicts.manual.message": "This mod has no unambiguous library source and therefore cannot be adopted automatically. You can import it using “Copy to library” instead."
 }

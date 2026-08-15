@@ -6,6 +6,7 @@ from pathlib import Path
 from PySide6.QtCore import (
     Qt,
     QTimer,
+    Signal,
 )
 
 from PySide6.QtWidgets import (
@@ -21,11 +22,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from app.widgets.library.library_gallery import (
-    LibraryGalleryWidget,
-)
 
-from app.config import AppConfig
+from app.config import (
+    AppConfig,
+)
 
 from app.games import (
     GameScope,
@@ -36,7 +36,9 @@ from app.i18n import (
     translation_manager,
 )
 
-from app.models.mod import ModInfo
+from app.models.mod import (
+    ModInfo,
+)
 
 from app.controllers.library_bulk_controller import (
     LibraryBulkController,
@@ -99,14 +101,21 @@ from app.dialogs.library_operation_dialogs import (
     show_operation_blocked,
 )
 
+from app.services.conflict_scanner import (
+    ConflictItem,
+    ConflictReport,
+    ConflictScanner,
+)
+
 from app.services.mod_importer import (
     ImportBatchResult,
-    ImportStatus
+    ImportStatus,
 )
 
 from app.services.mod_manager import (
     ModManager,
     ModManagerError,
+    ModState,
 )
 
 from app.services.mod_metadata import (
@@ -131,6 +140,10 @@ from app.utils.import_result_formatter import (
 
 from app.widgets.library.library_filter_bar import (
     LibraryFilterBar,
+)
+
+from app.widgets.library.library_gallery import (
+    LibraryGalleryWidget,
 )
 
 from app.widgets.library.library_header import (
@@ -163,32 +176,105 @@ class LibraryPage(
     QWidget
 ):
     """
-    Mod-Bibliothek des aktuell
-    ausgewählten XXMI-Spiels.
+    Library des aktuell ausgewählten XXMI-Spiels.
+
+    Enthält:
+    - Tabellenansicht
+    - Galerieansicht
+    - Preview-Fallback
+    - Mod-Aktivierung
+    - Import
+    - Bulk-Aktionen
+    - GameBanana-Metadaten
+    - Konflikterkennung
     """
+
+    conflict_count_changed = Signal(
+        int
+    )
+
+    conflict_report_changed = Signal(
+        object
+    )
 
     def __init__(
         self,
         config: AppConfig,
+        parent: QWidget | None = None,
     ) -> None:
-        super().__init__()
+        super().__init__(
+            parent
+        )
 
         self.config = config
 
         # ====================================================
-        # Game Scope / gemeinsamer ModManager
+        # Game Scope
         # ====================================================
 
-        self.game_scope = GameScope(
-            config=self.config,
-            game_id=(
-                self.config.selected_game
-            ),
+        self.game_scope = (
+            GameScope(
+                config=self.config,
+                game_id=(
+                    self.config
+                    .selected_game
+                ),
+            )
         )
 
-        self.mod_manager = ModManager(
-            config=self.game_scope
+        # ====================================================
+        # Gemeinsamer ModManager
+        # ====================================================
+
+        self.mod_manager = (
+            ModManager(
+                config=(
+                    self.game_scope
+                )
+            )
         )
+
+        # ====================================================
+        # Konflikte
+        # ====================================================
+
+        self.conflict_scanner = (
+            ConflictScanner(
+                game_scope=(
+                    self.game_scope
+                ),
+                mod_manager=(
+                    self.mod_manager
+                ),
+            )
+        )
+
+        self._conflict_report = (
+            ConflictReport()
+        )
+
+        self._last_scanned_mods: tuple[
+            ModInfo,
+            ...,
+        ] = ()
+
+        # ====================================================
+        # GameBanana Import-Metadaten
+        #
+        # key:
+        #   absoluter Downloadpfad
+        #
+        # value:
+        #   (game_id, mod_id)
+        # ====================================================
+
+        self._pending_gamebanana_imports: dict[
+            str,
+            tuple[
+                str,
+                int,
+            ],
+        ] = {}
 
         # ====================================================
         # Controller
@@ -238,26 +324,8 @@ class LibraryPage(
         )
 
         # ====================================================
-        # Widgets
+        # Hauptwidgets
         # ====================================================
-
-        self.operation_status = (
-            LibraryOperationStatusWidget(
-                parent=self
-            )
-        )
-
-        self.mod_list_widget = (
-            LibraryModListWidget(
-                parent=self
-            )
-        )
-
-        self.filter_bar = (
-            LibraryFilterBar(
-                parent=self
-            )
-        )
 
         self.header_widget = (
             LibraryHeader(
@@ -271,21 +339,40 @@ class LibraryPage(
             )
         )
 
+        self.filter_bar = (
+            LibraryFilterBar(
+                parent=self
+            )
+        )
+
+        self.operation_status = (
+            LibraryOperationStatusWidget(
+                parent=self
+            )
+        )
+
+        # ====================================================
+        # Liste
+        # ====================================================
+
+        self.mod_list_widget = (
+            LibraryModListWidget(
+                parent=self
+            )
+        )
+
+        # ====================================================
+        # Details
+        # ====================================================
+
         self.details_panel = (
             ModDetailsPanel(
                 parent=self
             )
         )
-        self._pending_gamebanana_imports: dict[
-            str,
-            tuple[
-                str,
-                int,
-            ],
-        ] = {}
-        
+
         # ====================================================
-        # Zweite Library-Ansicht
+        # Galerie
         # ====================================================
 
         self.gallery_widget = (
@@ -294,10 +381,14 @@ class LibraryPage(
             )
         )
 
-        self.content_stack = (
-            QStackedWidget(
-                self
-            )
+        # ====================================================
+        # View Switcher
+        # ====================================================
+
+        self.view_title_label = QLabel()
+
+        self.view_title_label.setObjectName(
+            "sectionLabel"
         )
 
         self.list_view_button = (
@@ -348,11 +439,17 @@ class LibraryPage(
             True
         )
 
+        self.content_stack = (
+            QStackedWidget(
+                self
+            )
+        )
+
         # ====================================================
         # Selection Controller
         #
         # WICHTIG:
-        # operation_running_provider bleibt Callable.
+        # is_running bleibt Callable.
         # ====================================================
 
         self.selection_controller = (
@@ -367,7 +464,8 @@ class LibraryPage(
                     self.mod_action_controller
                 ),
                 operation_running_provider=(
-                    self.operation_state.is_running
+                    self.operation_state
+                    .is_running
                 ),
                 refresh_stats_callback=(
                     self._update_stats
@@ -394,7 +492,7 @@ class LibraryPage(
         )
 
         # ====================================================
-        # Header
+        # Header Controller
         # ====================================================
 
         self.header_controller = (
@@ -443,20 +541,182 @@ class LibraryPage(
             .drop_target()
         )
 
-        self._connect_signals()
+        # ====================================================
+        # UI
+        # ====================================================
 
         self._build_ui()
+
+        self._connect_signals()
 
         translation_manager.language_changed.connect(
             self._on_language_changed
         )
 
+        self._retranslate_view_buttons()
+
+        self._set_library_view(
+            0,
+            reapply_filters=False,
+        )
+
+        # ====================================================
+        # Initialer Scan
+        # ====================================================
+
         QTimer.singleShot(
             0,
             self.scan_mods,
         )
-        
-        self._retranslate_view_buttons()
+
+    # ========================================================
+    # UI
+    # ========================================================
+
+    def _build_ui(
+        self,
+    ) -> None:
+        layout = QVBoxLayout(
+            self
+        )
+
+        layout.setContentsMargins(
+            28,
+            24,
+            28,
+            24,
+        )
+
+        layout.setSpacing(
+            16
+        )
+
+        layout.addWidget(
+            self.header_widget
+        )
+
+        layout.addWidget(
+            self.stats_widget
+        )
+
+        layout.addWidget(
+            self.filter_bar
+        )
+
+        layout.addWidget(
+            self._create_view_toolbar()
+        )
+
+        # ----------------------------------------------------
+        # Liste + Details
+        # ----------------------------------------------------
+
+        self.content_stack.addWidget(
+            self._create_content_splitter()
+        )
+
+        # ----------------------------------------------------
+        # Galerie
+        # ----------------------------------------------------
+
+        self.content_stack.addWidget(
+            self.gallery_widget
+        )
+
+        layout.addWidget(
+            self.content_stack,
+            stretch=1,
+        )
+
+        layout.addWidget(
+            self.operation_status
+        )
+
+        self._apply_stylesheet()
+
+    def _create_view_toolbar(
+        self,
+    ) -> QWidget:
+        frame = QFrame()
+
+        frame.setObjectName(
+            "libraryViewToolbar"
+        )
+
+        layout = QHBoxLayout(
+            frame
+        )
+
+        layout.setContentsMargins(
+            10,
+            6,
+            10,
+            6,
+        )
+
+        layout.setSpacing(
+            6
+        )
+
+        layout.addWidget(
+            self.view_title_label
+        )
+
+        layout.addStretch(
+            1
+        )
+
+        layout.addWidget(
+            self.list_view_button
+        )
+
+        layout.addWidget(
+            self.gallery_view_button
+        )
+
+        return frame
+
+    def _create_content_splitter(
+        self,
+    ) -> QSplitter:
+        splitter = QSplitter(
+            Qt.Orientation.Horizontal
+        )
+
+        splitter.setObjectName(
+            "librarySplitter"
+        )
+
+        splitter.setChildrenCollapsible(
+            False
+        )
+
+        splitter.addWidget(
+            self.mod_list_widget
+        )
+
+        splitter.addWidget(
+            self.details_panel
+        )
+
+        splitter.setStretchFactor(
+            0,
+            4,
+        )
+
+        splitter.setStretchFactor(
+            1,
+            1,
+        )
+
+        splitter.setSizes(
+            [
+                980,
+                420,
+            ]
+        )
+
+        return splitter
 
     # ========================================================
     # Signals
@@ -526,7 +786,8 @@ class LibraryPage(
         # ----------------------------------------------------
 
         self.mod_list_widget.info_requested.connect(
-            self.mod_info_controller.show_mod
+            self.mod_info_controller
+            .show_mod
         )
 
         self.mod_list_widget.enable_requested.connect(
@@ -580,16 +841,16 @@ class LibraryPage(
         )
 
         # ----------------------------------------------------
-        # Filter
+        # Galerie
         # ----------------------------------------------------
 
-        self.filter_bar.filters_changed.connect(
-            self._apply_mod_filters
-        )
-        
         self.gallery_widget.toggle_requested.connect(
             self._toggle_gallery_mod
         )
+
+        # ----------------------------------------------------
+        # View
+        # ----------------------------------------------------
 
         self.list_view_button.clicked.connect(
             lambda _checked=False:
@@ -605,8 +866,80 @@ class LibraryPage(
             )
         )
 
+        # ----------------------------------------------------
+        # Filter
+        # ----------------------------------------------------
+
+        self.filter_bar.filters_changed.connect(
+            self._apply_mod_filters
+        )
+
     # ========================================================
-    # Selection / Translation
+    # View
+    # ========================================================
+
+    def _set_library_view(
+        self,
+        index: int,
+        *,
+        reapply_filters: bool = True,
+    ) -> None:
+        index = (
+            1
+            if index == 1
+            else 0
+        )
+
+        self.content_stack.setCurrentIndex(
+            index
+        )
+
+        self.list_view_button.setChecked(
+            index == 0
+        )
+
+        self.gallery_view_button.setChecked(
+            index == 1
+        )
+
+        self._retranslate_view_buttons()
+
+        if reapply_filters:
+            self._apply_mod_filters()
+
+    def _retranslate_view_buttons(
+        self,
+    ) -> None:
+        self.view_title_label.setText(
+            tr(
+                "library.view.title"
+            )
+        )
+
+        self.list_view_button.setText(
+            tr(
+                "library.view.list"
+            )
+        )
+
+        self.gallery_view_button.setText(
+            tr(
+                "library.view.gallery"
+            )
+        )
+
+    def _on_language_changed(
+        self,
+        _language: str | None = None,
+    ) -> None:
+        self._retranslate_view_buttons()
+
+        self._apply_mod_filters()
+
+        self._refresh_selection_ui()
+
+    # ========================================================
+    # Selection
     # ========================================================
 
     def _refresh_selection_ui(
@@ -614,16 +947,9 @@ class LibraryPage(
         *_args,
     ) -> None:
         self.selection_controller.refresh()
-        self.gallery_widget.set_operation_running(
-            self.operation_state
-            .is_running()
-        )
 
-        self._sync_details_ui()
+        self._sync_gallery_operation_state()
 
-    def _sync_details_ui(
-        self,
-    ) -> None:
         selected_mods = (
             self.selection_controller
             .selected_mods()
@@ -642,122 +968,19 @@ class LibraryPage(
             )
         )
 
-        # SelectionController setzt momentan
-        # noch einige zustandsabhängige Texte.
-        # Danach übersetzt das Panel diese
-        # anhand seines gespeicherten States.
         self.details_panel.retranslate_ui()
 
-    def _on_language_changed(
-        self,
-        _language: str | None = None,
-    ) -> None:
-        self._retranslate_view_buttons()
-        
-        self._refresh_selection_ui()
-
     # ========================================================
-    # UI
+    # Gallery Operation State
     # ========================================================
 
-    def _build_ui(
+    def _sync_gallery_operation_state(
         self,
     ) -> None:
-        layout = QVBoxLayout(
-            self
+        self.gallery_widget.set_operation_running(
+            self.operation_state
+            .is_running()
         )
-
-        layout.setContentsMargins(
-            28,
-            24,
-            28,
-            24,
-        )
-
-        layout.setSpacing(
-            16
-        )
-
-        layout.addWidget(
-            self.header_widget
-        )
-
-        layout.addWidget(
-            self.stats_widget
-        )
-
-        layout.addWidget(
-            self.filter_bar
-        )
-
-        layout.addWidget(
-            self._create_view_toolbar()
-        )
-
-        self.content_stack.addWidget(
-            self._create_content_splitter()
-        )
-
-        self.content_stack.addWidget(
-            self.gallery_widget
-        )
-
-        layout.addWidget(
-            self.content_stack,
-            stretch=1,
-        )
-
-        self._set_library_view(
-            0
-        )
-
-        layout.addWidget(
-            self.operation_status
-        )
-
-        self._apply_stylesheet()
-
-    def _create_content_splitter(
-        self,
-    ) -> QSplitter:
-        splitter = QSplitter(
-            Qt.Orientation.Horizontal
-        )
-
-        splitter.setObjectName(
-            "librarySplitter"
-        )
-
-        splitter.setChildrenCollapsible(
-            False
-        )
-
-        splitter.addWidget(
-            self.mod_list_widget
-        )
-
-        splitter.addWidget(
-            self.details_panel
-        )
-
-        splitter.setStretchFactor(
-            0,
-            4,
-        )
-
-        splitter.setStretchFactor(
-            1,
-            1,
-        )
-
-        splitter.setSizes(
-            [
-                980,
-                420,
-            ]
-        )
-
-        return splitter
 
     # ========================================================
     # Statistics
@@ -771,11 +994,179 @@ class LibraryPage(
             .statistics()
         )
 
+        # ----------------------------------------------------
+        # Konfliktzahl kommt NICHT mehr nur aus der Tabelle.
+        #
+        # Dadurch zählen auch manuell in XXMI abgelegte Mods.
+        # ----------------------------------------------------
+
+        conflict_count = (
+            self._conflict_report
+            .count
+        )
+
         self.stats_widget.set_values(
             total=stats.total,
             active=stats.active,
-            conflicts=stats.conflicts,
+            conflicts=conflict_count,
             characters=stats.characters,
+        )
+
+        self.conflict_count_changed.emit(
+            conflict_count
+        )
+
+    # ========================================================
+    # Conflict Scanner
+    # ========================================================
+
+    def refresh_conflicts(
+        self,
+    ) -> None:
+        report = (
+            self.conflict_scanner
+            .scan(
+                self._last_scanned_mods
+            )
+        )
+
+        self._conflict_report = report
+
+        self.conflict_count_changed.emit(
+            report.count
+        )
+
+        self.conflict_report_changed.emit(
+            report
+        )
+
+        self._update_stats()
+
+    def conflict_report(
+        self,
+    ) -> ConflictReport:
+        return (
+            self._conflict_report
+        )
+
+    # ========================================================
+    # Conflict Page: Adopt
+    # ========================================================
+
+    def adopt_conflict(
+        self,
+        conflict: ConflictItem,
+    ) -> None:
+        """
+        Nur echte Library-Konflikte dürfen automatisch
+        übernommen werden.
+
+        Unmanaged Active Mods bleiben unangetastet.
+        """
+
+        if (
+            not conflict.can_adopt
+            or conflict.library_mod_path
+            is None
+        ):
+            QMessageBox.information(
+                self,
+                tr(
+                    "conflicts.manual.title"
+                ),
+                tr(
+                    "conflicts.manual.message"
+                ),
+            )
+
+            return
+
+        target_path = (
+            Path(
+                conflict
+                .library_mod_path
+            )
+            .expanduser()
+            .absolute()
+        )
+
+        mod = next(
+            (
+                candidate
+                for candidate
+                in self._last_scanned_mods
+                if (
+                    Path(
+                        candidate.path
+                    )
+                    .expanduser()
+                    .absolute()
+                    == target_path
+                )
+            ),
+            None,
+        )
+
+        if mod is None:
+            return
+
+        problem = (
+            self.mod_action_controller
+            .validate_adopt(
+                mod
+            )
+        )
+
+        if problem is not None:
+            show_mod_action_problem(
+                result=problem,
+                parent=self,
+            )
+
+            return
+
+        if not confirm_adopt_existing(
+            mod_name=(
+                mod.name
+            ),
+            parent=self,
+        ):
+            return
+
+        try:
+            result = (
+                self.mod_action_controller
+                .adopt(
+                    mod
+                )
+            )
+
+        except ModManagerError as error:
+            QMessageBox.critical(
+                self,
+                tr(
+                    "library.dialog.adopt_failed"
+                ),
+                str(
+                    error
+                ),
+            )
+
+            return
+
+        if show_mod_action_problem(
+            result=result,
+            parent=self,
+        ):
+            return
+
+        self._sync_mod_state(
+            mod=mod,
+            state=result.state,
+        )
+
+        self.operation_status.set_status(
+            result.message
         )
 
     # ========================================================
@@ -799,8 +1190,10 @@ class LibraryPage(
 
         self._refresh_selection_ui()
 
+        self._sync_gallery_operation_state()
+
     # ========================================================
-    # Import Auswahl
+    # Import Picker
     # ========================================================
 
     def _choose_import_archives(
@@ -810,10 +1203,12 @@ class LibraryPage(
             parent=self
         )
 
-        if paths:
-            self._request_import(
-                paths
-            )
+        if not paths:
+            return
+
+        self._request_import(
+            paths
+        )
 
     def _choose_import_directory(
         self,
@@ -822,10 +1217,12 @@ class LibraryPage(
             parent=self
         )
 
-        if paths:
-            self._request_import(
-                paths
-            )
+        if not paths:
+            return
+
+        self._request_import(
+            paths
+        )
 
     # ========================================================
     # Import
@@ -833,51 +1230,60 @@ class LibraryPage(
 
     def _request_import(
         self,
-        paths: list[Path],
+        paths: list[
+            Path
+        ],
     ) -> bool:
-        blocking = (
+        blocking_operation = (
             self.operation_state
             .blocking_operation(
                 LibraryOperation.IMPORT
             )
         )
 
-        if blocking is not None:
+        if blocking_operation is not None:
             show_operation_blocked(
                 requested=(
                     LibraryOperation.IMPORT
                 ),
-                blocking=blocking,
+                blocking=(
+                    blocking_operation
+                ),
                 parent=self,
             )
 
             return False
 
-        prepared = prepare_import_request(
-            paths=paths,
-            parent=self,
+        prepared_import = (
+            prepare_import_request(
+                paths=paths,
+                parent=self,
+            )
         )
 
-        if prepared is None:
+        if prepared_import is None:
             return False
 
         # ====================================================
         # WICHTIG:
-        # Controller zuerst starten.
-        # Erst danach UI = running.
+        # Controller ZUERST starten.
+        # UI ERST DANACH auf running setzen.
         # ====================================================
 
         started = (
-            self.import_controller.start(
+            self.import_controller
+            .start(
                 sources=(
-                    prepared.sources
+                    prepared_import
+                    .sources
                 ),
                 library_root=(
                     self.game_scope
                     .mod_library_directory
                 ),
                 options=(
-                    prepared.options
+                    prepared_import
+                    .options
                 ),
             )
         )
@@ -889,10 +1295,7 @@ class LibraryPage(
                     "library.dialog.import.title"
                 ),
                 tr(
-                    (
-                        "library.status."
-                        "import_start_failed"
-                    )
+                    "library.status.import_start_failed"
                 ),
             )
 
@@ -901,7 +1304,7 @@ class LibraryPage(
         self._set_import_ui_running(
             True,
             source_count=len(
-                prepared.sources
+                prepared_import.sources
             ),
         )
 
@@ -910,7 +1313,8 @@ class LibraryPage(
                 "library.status.import_started"
             )
         )
-        return True 
+
+        return True
 
     def _on_import_progress(
         self,
@@ -933,34 +1337,15 @@ class LibraryPage(
                 result
             )
         )
+
         self._set_import_ui_running(
             False
         )
-        
-        if metadata_errors:
-            QMessageBox.warning(
-                self,
-                tr(
-                    (
-                        "library.gamebanana_metadata."
-                        "error.title"
-                    )
-                ),
-                tr(
-                    (
-                        "library.gamebanana_metadata."
-                        "error.message"
-                    ),
-                    errors=(
-                        "\n".join(
-                            metadata_errors
-                        )
-                    ),
-                ),
-            )
 
-        message = format_import_result(
-            result
+        message = (
+            format_import_result(
+                result
+            )
         )
 
         title = tr(
@@ -979,6 +1364,22 @@ class LibraryPage(
             message,
         )
 
+        if metadata_errors:
+            QMessageBox.warning(
+                self,
+                tr(
+                    "library.gamebanana_metadata.error.title"
+                ),
+                tr(
+                    "library.gamebanana_metadata.error.message",
+                    errors=(
+                        "\n".join(
+                            metadata_errors
+                        )
+                    ),
+                ),
+            )
+
         self.operation_status.set_status(
             format_import_status(
                 result
@@ -995,7 +1396,7 @@ class LibraryPage(
         message: str,
     ) -> None:
         self._pending_gamebanana_imports.clear()
-        
+
         self._set_import_ui_running(
             False
         )
@@ -1018,7 +1419,7 @@ class LibraryPage(
         self,
     ) -> None:
         self._pending_gamebanana_imports.clear()
-        
+
         self._set_import_ui_running(
             False
         )
@@ -1029,31 +1430,179 @@ class LibraryPage(
             )
         )
 
+    # ========================================================
+    # External Import
+    # ========================================================
+
     def request_external_import(
         self,
-        paths: list[Path],
-    ) -> None:
-        """
-        Öffentlicher Einstieg z. B.
-        für GameBanana-Downloads.
-        """
+        paths: list[
+            Path
+        ],
+    ) -> bool:
+        normalized_paths = [
+            Path(
+                path
+            )
+            .expanduser()
+            .absolute()
+            for path
+            in paths
+        ]
 
-        self._request_import(
-            [
-                Path(
-                    path
-                )
-                .expanduser()
-                for path
-                in paths
-            ]
+        return self._request_import(
+            normalized_paths
         )
+
+    # ========================================================
+    # GameBanana Import
+    # ========================================================
+
+    def request_gamebanana_import(
+        self,
+        *,
+        path: Path,
+        game_id: str,
+        mod_id: int,
+    ) -> bool:
+        source = (
+            Path(
+                path
+            )
+            .expanduser()
+            .absolute()
+        )
+
+        if not source.is_file():
+            return False
+
+        if (
+            game_id
+            != self.game_scope.game_id
+        ):
+            return False
+
+        if mod_id <= 0:
+            return False
+
+        key = (
+            self._import_source_key(
+                source
+            )
+        )
+
+        self._pending_gamebanana_imports[
+            key
+        ] = (
+            game_id,
+            int(
+                mod_id
+            ),
+        )
+
+        started = (
+            self._request_import(
+                [
+                    source
+                ]
+            )
+        )
+
+        if not started:
+            self._pending_gamebanana_imports.pop(
+                key,
+                None,
+            )
+
+        return started
+
+    def _apply_pending_gamebanana_metadata(
+        self,
+        result: ImportBatchResult,
+    ) -> list[
+        str
+    ]:
+        errors: list[
+            str
+        ] = []
+
+        for item in result.items:
+            key = (
+                self._import_source_key(
+                    item.source
+                )
+            )
+
+            pending = (
+                self._pending_gamebanana_imports
+                .pop(
+                    key,
+                    None,
+                )
+            )
+
+            if pending is None:
+                continue
+
+            (
+                game_id,
+                mod_id,
+            ) = pending
+
+            if (
+                item.status
+                != ImportStatus.IMPORTED
+                or item.destination
+                is None
+            ):
+                continue
+
+            try:
+                set_gamebanana_mod_id(
+                    item.destination,
+                    game_id=(
+                        game_id
+                    ),
+                    mod_id=(
+                        mod_id
+                    ),
+                )
+
+            except (
+                OSError,
+                ValueError,
+            ) as error:
+                errors.append(
+                    (
+                        f"{item.destination.name}: "
+                        f"{error}"
+                    )
+                )
+
+        return errors
+
+    @staticmethod
+    def _import_source_key(
+        path: Path,
+    ) -> str:
+        return str(
+            Path(
+                path
+            )
+            .expanduser()
+            .absolute()
+        )
+
+    # ========================================================
+    # Cancel Import
+    # ========================================================
 
     def cancel_import(
         self,
     ) -> None:
         if not (
-            self.import_controller.cancel()
+            self.import_controller
+            .cancel()
         ):
             return
 
@@ -1061,10 +1610,7 @@ class LibraryPage(
 
         self.operation_status.set_status(
             tr(
-                (
-                    "library.status."
-                    "import_cancelling"
-                )
+                "library.status.import_cancelling"
             )
         )
 
@@ -1094,20 +1640,14 @@ class LibraryPage(
         except OSError as error:
             self.operation_status.set_status(
                 tr(
-                    (
-                        "library.status."
-                        "directory_failed"
-                    )
+                    "library.status.directory_failed"
                 )
             )
 
             QMessageBox.critical(
                 self,
                 tr(
-                    (
-                        "library.error."
-                        "directory.title"
-                    )
+                    "library.error.directory.title"
                 ),
                 str(
                     error
@@ -1131,10 +1671,7 @@ class LibraryPage(
         ):
             self.operation_status.set_status(
                 tr(
-                    (
-                        "library.status."
-                        "scan_start_failed"
-                    )
+                    "library.status.scan_start_failed"
                 )
             )
 
@@ -1142,26 +1679,19 @@ class LibraryPage(
 
         if (
             request_status
-            == (
-                ScanRequestStatus
-                .RESTART_QUEUED
-            )
+            == ScanRequestStatus.RESTART_QUEUED
         ):
             self.operation_status.set_status(
                 tr(
-                    (
-                        "library.status."
-                        "scan_restart"
-                    )
+                    "library.status.scan_restart"
                 )
             )
 
             return
 
         # ====================================================
-        # WICHTIG:
-        # request_scan muss erfolgreich sein,
-        # bevor running=True.
+        # request_scan() ist jetzt erfolgreich.
+        # Erst jetzt UI sperren.
         # ====================================================
 
         self._set_scan_ui_running(
@@ -1186,6 +1716,32 @@ class LibraryPage(
             )
         )
 
+    def _prepare_scan_start(
+        self,
+    ) -> bool:
+        blocking_operation = (
+            self.operation_state
+            .blocking_operation(
+                LibraryOperation.SCAN
+            )
+        )
+
+        if blocking_operation is None:
+            return True
+
+        self.operation_status.set_status(
+            operation_block_message(
+                requested=(
+                    LibraryOperation.SCAN
+                ),
+                blocking=(
+                    blocking_operation
+                ),
+            )
+        )
+
+        return False
+
     def _set_scan_ui_running(
         self,
         running: bool,
@@ -1200,34 +1756,16 @@ class LibraryPage(
 
         self._refresh_selection_ui()
 
+        self._sync_gallery_operation_state()
+
     def cancel_scan(
         self,
     ) -> None:
         self.scan_controller.cancel()
 
-    def _prepare_scan_start(
-        self,
-    ) -> bool:
-        blocking = (
-            self.operation_state
-            .blocking_operation(
-                LibraryOperation.SCAN
-            )
-        )
-
-        if blocking is None:
-            return True
-
-        self.operation_status.set_status(
-            operation_block_message(
-                requested=(
-                    LibraryOperation.SCAN
-                ),
-                blocking=blocking,
-            )
-        )
-
-        return False
+    # ========================================================
+    # Scan Callbacks
+    # ========================================================
 
     def _on_scan_progress(
         self,
@@ -1310,35 +1848,23 @@ class LibraryPage(
 
         self.operation_status.set_status(
             tr(
-                (
-                    "library.status."
-                    "scan_cancelled"
-                )
+                "library.status.scan_cancelled"
             )
         )
 
     # ========================================================
-    # Scan-Ergebnis anzeigen
+    # Scan Result
     # ========================================================
 
     def _display_result(
         self,
         result: ScanResult,
     ) -> None:
-        """
-        Übernimmt das Ergebnis des Library-Scans
-        und synchronisiert alle Library-Ansichten.
-
-        Sowohl Tabellenansicht als auch Galerie
-        verwenden denselben State-Provider.
-        """
-
-        # ----------------------------------------------------
-        # Ein gemeinsamer State-Provider für beide Ansichten.
-        #
-        # Dadurch zeigen Liste und Galerie immer denselben
-        # Aktivierungs-/Konfliktstatus an.
-        # ----------------------------------------------------
+        self._last_scanned_mods = (
+            tuple(
+                result.mods
+            )
+        )
 
         state_provider = (
             self.mod_action_controller
@@ -1346,7 +1872,7 @@ class LibraryPage(
         )
 
         # ----------------------------------------------------
-        # Listenansicht
+        # Tabelle
         # ----------------------------------------------------
 
         self.mod_list_widget.set_mods(
@@ -1357,10 +1883,7 @@ class LibraryPage(
         )
 
         # ----------------------------------------------------
-        # Galerieansicht
-        #
-        # Die Gallery Cards laden ihre Preview anschließend
-        # selbst asynchron.
+        # Galerie
         # ----------------------------------------------------
 
         self.gallery_widget.set_mods(
@@ -1371,28 +1894,300 @@ class LibraryPage(
         )
 
         # ----------------------------------------------------
-        # Filterdaten aktualisieren
-        #
-        # Erst nachdem beide Ansichten ihre Mods besitzen,
-        # damit anschließend derselbe Filter auf beide
-        # Views angewendet werden kann.
+        # Filter
         # ----------------------------------------------------
 
         self.filter_bar.set_mods(
             result.mods
         )
 
-        # ----------------------------------------------------
-        # Aktuelle Filter anwenden
-        # ----------------------------------------------------
-
         self._apply_mod_filters()
 
         # ----------------------------------------------------
-        # Statistik aktualisieren
+        # Globaler Conflict Scan
         # ----------------------------------------------------
 
-        self._update_stats()
+        self.refresh_conflicts()
+
+    # ========================================================
+    # Filter
+    # ========================================================
+
+    def _apply_mod_filters(
+        self,
+        _value: object | None = None,
+    ) -> None:
+        search_term = (
+            self.filter_bar
+            .search_term()
+        )
+
+        character = (
+            self.filter_bar
+            .selected_character()
+        )
+
+        mod_type = (
+            self.filter_bar
+            .selected_mod_type()
+        )
+
+        status = (
+            self.filter_bar
+            .selected_status()
+        )
+
+        # ----------------------------------------------------
+        # Liste
+        # ----------------------------------------------------
+
+        list_visible = (
+            self.mod_list_widget
+            .apply_filters(
+                search_term=(
+                    search_term
+                ),
+                character=(
+                    character
+                ),
+                mod_type=(
+                    mod_type
+                ),
+                status=(
+                    status
+                ),
+            )
+        )
+
+        # ----------------------------------------------------
+        # Galerie
+        # ----------------------------------------------------
+
+        gallery_visible = (
+            self.gallery_widget
+            .apply_filters(
+                search_term=(
+                    search_term
+                ),
+                character=(
+                    character
+                ),
+                mod_type=(
+                    mod_type
+                ),
+                status=(
+                    status
+                ),
+            )
+        )
+
+        total_mods = (
+            self.mod_list_widget
+            .row_count()
+        )
+
+        visible_mods = (
+            gallery_visible
+            if (
+                self.content_stack
+                .currentWidget()
+                is self.gallery_widget
+            )
+            else list_visible
+        )
+
+        self.operation_status.set_status(
+            tr(
+                "library.status.filter_result",
+                visible=(
+                    visible_mods
+                ),
+                total=(
+                    total_mods
+                ),
+            )
+        )
+
+        self._refresh_selection_ui()
+
+    # ========================================================
+    # State Sync
+    # ========================================================
+
+    def _sync_mod_state(
+        self,
+        *,
+        mod: ModInfo,
+        state: (
+            ModState
+            | None
+        ) = None,
+        reapply_filters: bool = True,
+    ) -> ModState:
+        if state is None:
+            state = (
+                self.mod_action_controller
+                .get_state_for_path(
+                    mod.path
+                )
+            )
+
+        # ----------------------------------------------------
+        # Tabelle
+        # ----------------------------------------------------
+
+        self.mod_list_widget.update_mod_state(
+            mod=mod,
+            state=state,
+        )
+
+        # ----------------------------------------------------
+        # Galerie
+        # ----------------------------------------------------
+
+        self.gallery_widget.update_mod_state(
+            mod=mod,
+            state=state,
+        )
+
+        # ----------------------------------------------------
+        # Filter / Selection
+        # ----------------------------------------------------
+
+        if reapply_filters:
+            self._apply_mod_filters()
+
+        else:
+            self._refresh_selection_ui()
+
+        # ----------------------------------------------------
+        # Konfliktseite / Badge
+        # ----------------------------------------------------
+
+        self.refresh_conflicts()
+
+        return state
+
+    # ========================================================
+    # Detailpanel Toggle
+    # ========================================================
+
+    def _toggle_selected_mod(
+        self,
+    ) -> None:
+        mod = (
+            self.selection_controller
+            .selected_mod()
+        )
+
+        if mod is None:
+            return
+
+        if (
+            self.operation_state
+            .is_running()
+        ):
+            return
+
+        try:
+            result = (
+                self.mod_action_controller
+                .toggle(
+                    mod
+                )
+            )
+
+        except ModManagerError as error:
+            QMessageBox.critical(
+                self,
+                tr(
+                    "library.dialog.mod_management_failed"
+                ),
+                str(
+                    error
+                ),
+            )
+
+            return
+
+        if show_mod_action_problem(
+            result=result,
+            parent=self,
+        ):
+            self._sync_mod_state(
+                mod=mod,
+                state=result.state,
+            )
+
+            return
+
+        self._sync_mod_state(
+            mod=mod,
+            state=result.state,
+        )
+
+        self.operation_status.set_status(
+            result.message
+        )
+
+    # ========================================================
+    # Galerie Toggle
+    # ========================================================
+
+    def _toggle_gallery_mod(
+        self,
+        mod: ModInfo,
+    ) -> None:
+        if (
+            self.operation_state
+            .is_running()
+        ):
+            return
+
+        try:
+            result = (
+                self.mod_action_controller
+                .toggle(
+                    mod
+                )
+            )
+
+        except ModManagerError as error:
+            QMessageBox.critical(
+                self,
+                tr(
+                    "library.dialog.mod_management_failed"
+                ),
+                str(
+                    error
+                ),
+            )
+
+            return
+
+        if show_mod_action_problem(
+            result=result,
+            parent=self,
+        ):
+            self._sync_mod_state(
+                mod=mod,
+                state=result.state,
+            )
+
+            return
+
+        self._sync_mod_state(
+            mod=mod,
+            state=result.state,
+        )
+
+        self.operation_status.set_status(
+            result.message
+        )
+
+    # ========================================================
+    # Selected Conflict Adopt
+    # ========================================================
 
     def _ignore_selected_conflict(
         self,
@@ -1420,13 +2215,11 @@ class LibraryPage(
 
             return
 
-        if not (
-            confirm_adopt_existing(
-                mod_name=(
-                    mod.name
-                ),
-                parent=self,
-            )
+        if not confirm_adopt_existing(
+            mod_name=(
+                mod.name
+            ),
+            parent=self,
         ):
             return
 
@@ -1442,10 +2235,7 @@ class LibraryPage(
             QMessageBox.critical(
                 self,
                 tr(
-                    (
-                        "library.dialog."
-                        "adopt_failed"
-                    )
+                    "library.dialog.adopt_failed"
                 ),
                 str(
                     error
@@ -1460,69 +2250,17 @@ class LibraryPage(
         ):
             return
 
-        self.operation_status.set_status(
-            result.message
+        self._sync_mod_state(
+            mod=mod,
+            state=result.state,
         )
-
-        self.selection_controller.refresh_mod_state(
-            mod
-        )
-
-        self._sync_details_ui()
-
-    def _toggle_selected_mod(
-        self,
-    ) -> None:
-        mod = (
-            self.selection_controller
-            .selected_mod()
-        )
-
-        if mod is None:
-            return
-
-        try:
-            result = (
-                self.mod_action_controller
-                .toggle(
-                    mod
-                )
-            )
-
-        except ModManagerError as error:
-            QMessageBox.critical(
-                self,
-                tr(
-                    (
-                        "library.dialog."
-                        "mod_management_failed"
-                    )
-                ),
-                str(
-                    error
-                ),
-            )
-
-            return
-
-        if show_mod_action_problem(
-            result=result,
-            parent=self,
-        ):
-            return
 
         self.operation_status.set_status(
             result.message
         )
-
-        self.selection_controller.refresh_mod_state(
-            mod
-        )
-
-        self._sync_details_ui()
 
     # ========================================================
-    # GameBanana ID / Metadaten
+    # GameBanana-ID bearbeiten
     # ========================================================
 
     def _edit_selected_gamebanana_id(
@@ -1555,7 +2293,8 @@ class LibraryPage(
         )
 
         current_value = (
-            metadata.gamebanana_mod_id
+            metadata
+            .gamebanana_mod_id
             or 1
         )
 
@@ -1565,16 +2304,10 @@ class LibraryPage(
         ) = QInputDialog.getInt(
             self,
             tr(
-                (
-                    "library.gamebanana_id."
-                    "dialog.title"
-                )
+                "library.gamebanana_id.dialog.title"
             ),
             tr(
-                (
-                    "library.gamebanana_id."
-                    "dialog.message"
-                ),
+                "library.gamebanana_id.dialog.message",
                 mod_name=(
                     mod.name
                 ),
@@ -1607,17 +2340,13 @@ class LibraryPage(
             QMessageBox.critical(
                 self,
                 tr(
-                    (
-                        "library.gamebanana_id."
-                        "error.title"
-                    )
+                    "library.gamebanana_id.error.title"
                 ),
                 tr(
-                    (
-                        "library.gamebanana_id."
-                        "error.message"
+                    "library.gamebanana_id.error.message",
+                    error=(
+                        error
                     ),
-                    error=error,
                 ),
             )
 
@@ -1630,21 +2359,16 @@ class LibraryPage(
             )
         )
 
-        # show_mod lädt nach dem Speichern
-        # automatisch Preview / GB-Fallback neu.
         self.details_panel.show_mod(
             mod=mod,
             state=state,
         )
 
-        self._sync_details_ui()
+        self._refresh_selection_ui()
 
         self.operation_status.set_status(
             tr(
-                (
-                    "library.gamebanana_id."
-                    "status.saved"
-                ),
+                "library.gamebanana_id.status.saved",
                 mod_name=(
                     mod.name
                 ),
@@ -1653,56 +2377,6 @@ class LibraryPage(
                 ),
             )
         )
-
-    # ========================================================
-    # Filter
-    # ========================================================
-
-    def _apply_mod_filters(
-        self,
-        _value: object | None = None,
-    ) -> None:
-        visible = (
-            self.mod_list_widget
-            .apply_filters(
-
-                search_term=(
-                    self.filter_bar
-                    .search_term()
-                ),
-                character=(
-                    self.filter_bar
-                    .selected_character()
-                ),
-                mod_type=(
-                    self.filter_bar
-                    .selected_mod_type()
-                ),
-                status=(
-                    self.filter_bar
-                    .selected_status()
-                ),
-            )
-        )
-
-
-        total = (
-            self.mod_list_widget
-            .row_count()
-        )
-
-        self.operation_status.set_status(
-            tr(
-                (
-                    "library.status."
-                    "filter_result"
-                ),
-                visible=visible,
-                total=total,
-            )
-        )
-
-        self._refresh_selection_ui()
 
     # ========================================================
     # Bulk
@@ -1714,19 +2388,21 @@ class LibraryPage(
             ModInfo
         ],
     ) -> bool:
-        blocking = (
+        blocking_operation = (
             self.operation_state
             .blocking_operation(
                 LibraryOperation.BULK
             )
         )
 
-        if blocking is not None:
+        if blocking_operation is not None:
             show_operation_blocked(
                 requested=(
                     LibraryOperation.BULK
                 ),
-                blocking=blocking,
+                blocking=(
+                    blocking_operation
+                ),
                 parent=self,
             )
 
@@ -1736,16 +2412,10 @@ class LibraryPage(
             QMessageBox.information(
                 self,
                 tr(
-                    (
-                        "library.dialog."
-                        "no_selection.title"
-                    )
+                    "library.dialog.no_selection.title"
                 ),
                 tr(
-                    (
-                        "library.dialog."
-                        "no_selection.message"
-                    )
+                    "library.dialog.no_selection.message"
                 ),
             )
 
@@ -1758,14 +2428,14 @@ class LibraryPage(
         action: BulkAction,
         _checked: bool = False,
     ) -> None:
-        selected = (
+        selected_mods = (
             self.selection_controller
             .selected_mods()
         )
 
         if not (
             self._can_start_bulk_action(
-                selected
+                selected_mods
             )
         ):
             return
@@ -1774,7 +2444,7 @@ class LibraryPage(
             confirm_bulk_action(
                 action=action,
                 selected_count=len(
-                    selected
+                    selected_mods
                 ),
                 parent=self,
             )
@@ -1785,14 +2455,19 @@ class LibraryPage(
 
         # ====================================================
         # WICHTIG:
-        # Controller zuerst starten.
-        # Erst danach running=True.
+        # Controller zuerst.
+        # UI danach.
         # ====================================================
 
         started = (
-            self.bulk_controller.start(
-                mods=selected,
-                action=action,
+            self.bulk_controller
+            .start(
+                mods=(
+                    selected_mods
+                ),
+                action=(
+                    action
+                ),
             )
         )
 
@@ -1803,10 +2478,7 @@ class LibraryPage(
                     "library.dialog.bulk.title"
                 ),
                 tr(
-                    (
-                        "library.status."
-                        "bulk_start_failed"
-                    )
+                    "library.status.bulk_start_failed"
                 ),
             )
 
@@ -1815,28 +2487,22 @@ class LibraryPage(
         self._set_bulk_ui_running(
             running=True,
             item_count=len(
-                selected
+                selected_mods
             ),
         )
 
-        key = {
+        started_key = {
             BulkAction.ENABLE: (
-                (
-                    "library.status."
-                    "bulk_enable_started"
-                )
+                "library.status."
+                "bulk_enable_started"
             ),
             BulkAction.DISABLE: (
-                (
-                    "library.status."
-                    "bulk_disable_started"
-                )
+                "library.status."
+                "bulk_disable_started"
             ),
             BulkAction.ADOPT: (
-                (
-                    "library.status."
-                    "bulk_adopt_started"
-                )
+                "library.status."
+                "bulk_adopt_started"
             ),
         }[
             action
@@ -1844,7 +2510,7 @@ class LibraryPage(
 
         self.operation_status.set_status(
             tr(
-                key
+                started_key
             )
         )
 
@@ -1869,6 +2535,8 @@ class LibraryPage(
 
         self._refresh_selection_ui()
 
+        self._sync_gallery_operation_state()
+
     def _on_bulk_progress(
         self,
         current: int,
@@ -1886,11 +2554,13 @@ class LibraryPage(
         result: BulkBatchResult,
     ) -> None:
         self._set_bulk_ui_running(
-            False
+            running=False
         )
 
-        message = format_bulk_result(
-            result
+        message = (
+            format_bulk_result(
+                result
+            )
         )
 
         title = tr(
@@ -1899,10 +2569,8 @@ class LibraryPage(
 
         dialog = (
             QMessageBox.warning
-            if (
-                bulk_result_requires_warning(
-                    result
-                )
+            if bulk_result_requires_warning(
+                result
             )
             else QMessageBox.information
         )
@@ -1929,7 +2597,7 @@ class LibraryPage(
         message: str,
     ) -> None:
         self._set_bulk_ui_running(
-            False
+            running=False
         )
 
         QMessageBox.critical(
@@ -1950,7 +2618,8 @@ class LibraryPage(
         self,
     ) -> None:
         if not (
-            self.bulk_controller.cancel()
+            self.bulk_controller
+            .cancel()
         ):
             return
 
@@ -1958,11 +2627,120 @@ class LibraryPage(
 
         self.operation_status.set_status(
             tr(
-                (
-                    "library.status."
-                    "bulk_cancelling"
-                )
+                "library.status.bulk_cancelling"
             )
+        )
+
+    # ========================================================
+    # Game Switch
+    # ========================================================
+
+    def can_change_game(
+        self,
+    ) -> bool:
+        return not (
+            self.operation_state
+            .is_running()
+        )
+
+    def on_game_changed(
+        self,
+        game_id: str,
+    ) -> None:
+        if (
+            self.operation_state
+            .is_running()
+        ):
+            return
+
+        # ----------------------------------------------------
+        # Doppelten Startup-Scan vermeiden.
+        # ----------------------------------------------------
+
+        if (
+            game_id
+            == self.game_scope.game_id
+        ):
+            return
+
+        self.game_scope.set_game(
+            game_id
+        )
+
+        self._pending_gamebanana_imports.clear()
+
+        self._last_scanned_mods = ()
+
+        self._conflict_report = (
+            ConflictReport()
+        )
+
+        # ----------------------------------------------------
+        # Alte UI-Daten sofort entfernen.
+        # ----------------------------------------------------
+
+        self.mod_list_widget.set_mods(
+            mods=[],
+            state_provider=(
+                self.mod_action_controller
+                .get_state_for_path
+            ),
+        )
+
+        self.gallery_widget.clear()
+
+        self.filter_bar.set_mods(
+            []
+        )
+
+        mods_directory = (
+            self.game_scope
+            .mod_library_directory
+        )
+
+        self.filter_bar.set_path_text(
+            str(
+                mods_directory
+            )
+        )
+
+        self.filter_bar.set_location_text(
+            tr(
+                "library.location.checking"
+            )
+        )
+
+        self.stats_widget.set_values(
+            total=0,
+            active=0,
+            conflicts=0,
+            characters=0,
+        )
+
+        self.conflict_count_changed.emit(
+            0
+        )
+
+        self.conflict_report_changed.emit(
+            self._conflict_report
+        )
+
+        self._refresh_selection_ui()
+
+        self.operation_status.set_status(
+            tr(
+                "library.status.game_changed",
+                game=(
+                    self.game_scope
+                    .game
+                    .name
+                ),
+            )
+        )
+
+        QTimer.singleShot(
+            0,
+            self.scan_mods,
         )
 
     # ========================================================
@@ -1994,10 +2772,7 @@ class LibraryPage(
         except OSError as error:
             raise RuntimeError(
                 tr(
-                    (
-                        "library.error."
-                        "stylesheet_load"
-                    ),
+                    "library.error.stylesheet_load",
                     path=(
                         style_path
                     ),
@@ -2009,370 +2784,37 @@ class LibraryPage(
         )
 
     # ========================================================
-    # Game Change
+    # Public Conflict / Duplicate API
     # ========================================================
 
-    def can_change_game(
+    def library_mod_paths(
         self,
-    ) -> bool:
-        return not (
-            self.operation_state
-            .is_running()
-        )
-
-    def on_game_changed(
-        self,
-        game_id: str,
-    ) -> None:
-        if (
-            self.operation_state
-            .is_running()
-        ):
-            return
-
-        self.game_scope.set_game(
-            game_id
-        )
-
-        mods_directory = (
-            self.game_scope
-            .mod_library_directory
-        )
-
-        self.mod_list_widget.set_mods(
-            mods=[],
-            state_provider=(
-                self.mod_action_controller
-                .get_state_for_path
-            ),
-        )
-        self.gallery_widget.clear()
-        self.filter_bar.set_mods(
-            []
-        )
-
-        self.filter_bar.set_path_text(
-            str(
-                mods_directory
-            )
-        )
-
-        self.filter_bar.set_location_text(
-            tr(
-                "library.location.checking"
-            )
-        )
-
-        self.stats_widget.set_values(
-            total=0,
-            active=0,
-            conflicts=0,
-            characters=0,
-        )
-
-        self._refresh_selection_ui()
-
-        self.operation_status.set_status(
-            tr(
-                (
-                    "library.status."
-                    "game_changed"
-                ),
-                game=(
-                    self.game_scope
-                    .game.name
-                ),
-            )
-        )
-
-        QTimer.singleShot(
-            0,
-            self.scan_mods,
-        )
-    
-    def _create_view_toolbar(
-        self,
-    ) -> QWidget:
-        frame = QFrame()
-
-        frame.setObjectName(
-            "libraryViewToolbar"
-        )
-
-        layout = QHBoxLayout(
-            frame
-        )
-
-        layout.setContentsMargins(
-            10,
-            6,
-            10,
-            6,
-        )
-
-        layout.setSpacing(
-            6
-        )
-
-        label = QLabel(
-            tr(
-                "library.view.title"
-            )
-        )
-
-        label.setObjectName(
-            "sectionLabel"
-        )
-
-        layout.addWidget(
-            label
-        )
-
-        layout.addStretch(
-            1
-        )
-
-        layout.addWidget(
-            self.list_view_button
-        )
-
-        layout.addWidget(
-            self.gallery_view_button
-        )
-
-        return frame
-
-    def _set_library_view(
-        self,
-        index: int,
-    ) -> None:
-        index = (
-            1
-            if index == 1
-            else 0
-        )
-
-        self.content_stack.setCurrentIndex(
-            index
-        )
-
-        self.list_view_button.setChecked(
-            index == 0
-        )
-
-        self.gallery_view_button.setChecked(
-            index == 1
-        )
-
-        self._retranslate_view_buttons()
-
-    def _retranslate_view_buttons(
-        self,
-    ) -> None:
-        self.list_view_button.setText(
-            tr(
-                "library.view.list"
-            )
-        )
-
-        self.gallery_view_button.setText(
-            tr(
-                "library.view.gallery"
-            )
-        )
-        
-    def _toggle_gallery_mod(
-        self,
-        mod: ModInfo,
-    ) -> None:
-        if (
-            self.operation_state
-            .is_running()
-        ):
-            return
-
-        try:
-            result = (
-                self.mod_action_controller
-                .toggle(
-                    mod
-                )
-            )
-
-        except ModManagerError as error:
-            QMessageBox.critical(
-                self,
-                tr(
-                    (
-                        "library.dialog."
-                        "mod_management_failed"
-                    )
-                ),
-                str(
-                    error
-                ),
-            )
-
-            return
-
-        if show_mod_action_problem(
-            result=result,
-            parent=self,
-        ):
-            return
-
-        new_state = (
-            self.mod_action_controller
-            .get_state_for_path(
+    ) -> tuple[
+        Path,
+        ...,
+    ]:
+        return tuple(
+            Path(
                 mod.path
             )
+            for mod
+            in self._last_scanned_mods
         )
 
-        # Liste aktualisieren
-        self.mod_list_widget.update_mod_state(
-            mod=mod,
-            state=new_state,
-        )
-
-        # Galerie aktualisieren
-        self.gallery_widget.update_mod_state(
-            mod=mod,
-            state=new_state,
-        )
-
-        self._update_stats()
-
-        self.operation_status.set_status(
-            result.message
-        )
-
-        self._refresh_selection_ui()
-
-    def request_gamebanana_import(
+    def current_game_id(
         self,
-        *,
-        path: Path,
-        game_id: str,
-        mod_id: int,
-    ) -> bool:
-        source = (
-            Path(
-                path
-            )
-            .expanduser()
-            .absolute()
-        )
-
-        if not source.is_file():
-            return False
-
-        if (
-            game_id
-            != self.game_scope.game_id
-        ):
-            return False
-
-        if mod_id <= 0:
-            return False
-
-        key = (
-            self._import_source_key(
-                source
-            )
-        )
-
-        self._pending_gamebanana_imports[
-            key
-        ] = (
-            game_id,
-            int(
-                mod_id
-            ),
-        )
-
-        started = (
-            self._request_import(
-                [
-                    source
-                ]
-            )
-        )
-
-        if not started:
-            self._pending_gamebanana_imports.pop(
-                key,
-                None,
-            )
-
-        return started
-
-    def _apply_pending_gamebanana_metadata(
-        self,
-        result: ImportBatchResult,
-    ) -> list[str]:
-        errors: list[str] = []
-
-        for item in result.items:
-            key = (
-                self._import_source_key(
-                    item.source
-                )
-            )
-
-            pending = (
-                self._pending_gamebanana_imports
-                .pop(
-                    key,
-                    None,
-                )
-            )
-
-            if pending is None:
-                continue
-
-            (
-                game_id,
-                mod_id,
-            ) = pending
-
-            if (
-                item.status
-                != ImportStatus.IMPORTED
-                or item.destination
-                is None
-            ):
-                continue
-
-            try:
-                set_gamebanana_mod_id(
-                    item.destination,
-                    game_id=game_id,
-                    mod_id=mod_id,
-                )
-
-            except (
-                OSError,
-                ValueError,
-            ) as error:
-                errors.append(
-                    (
-                        f"{item.destination.name}: "
-                        f"{error}"
-                    )
-                )
-
-        return errors
-
-    @staticmethod
-    def _import_source_key(
-        path: Path,
     ) -> str:
-        return str(
-            Path(
-                path
-            )
-            .expanduser()
-            .absolute()
+        return (
+            self.game_scope
+            .game_id
+        )
+
+    def active_mods_root(
+        self,
+    ) -> Path:
+        return (
+            self.game_scope
+            .active_mods_directory
         )
 
 __all__ = [

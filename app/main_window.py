@@ -4,21 +4,25 @@ import logging
 
 from pathlib import Path
 
+from PySide6.QtCore import (
+    QUrl,
+)
+
 from PySide6.QtGui import (
     QCloseEvent,
+    QDesktopServices,
 )
 
 from PySide6.QtWidgets import (
+    QLabel,
     QMainWindow,
     QMessageBox,
+    QVBoxLayout,
+    QWidget,
 )
 
 from app.config import (
     AppConfig,
-)
-
-from app.controllers.game_controller import (
-    GameController,
 )
 
 from app.dialogs.settings_dialog import (
@@ -28,6 +32,10 @@ from app.dialogs.settings_dialog import (
 from app.i18n import (
     tr,
     translation_manager,
+)
+
+from app.pages.conflicts_page import (
+    ConflictsPage,
 )
 
 from app.pages.gamebanana_page import (
@@ -45,7 +53,11 @@ from app.platform_support import (
 
 from app.ui.main_window_ui import (
     MainWindowUI,
-    create_placeholder_page,
+)
+
+from app.version import (
+    APP_NAME,
+    APP_VERSION_DISPLAY,
 )
 
 
@@ -58,19 +70,24 @@ class MainWindow(
     QMainWindow
 ):
     """
-    Hauptfenster.
+    Hauptfenster des XXMI Mod Managers.
 
-    Diese Klasse enthält nur noch
-    Anwendungslogik und verbindet die
-    einzelnen UI-Komponenten.
+    MainWindowUI:
+        reine sichtbare Oberfläche
+
+    MainWindow:
+        Navigation
+        Game-Wechsel
+        Seiten
+        Settings
+        Konflikte
+        GameBanana -> Library
+        Lifecycle
     """
 
-    PAGE_INDEX = {
-        MainWindowUI.PAGE_LIBRARY: 0,
-        MainWindowUI.PAGE_GAMEBANANA: 1,
-        MainWindowUI.PAGE_PROFILES: 2,
-        MainWindowUI.PAGE_CONFLICTS: 3,
-    }
+    # ========================================================
+    # Init
+    # ========================================================
 
     def __init__(
         self,
@@ -80,12 +97,17 @@ class MainWindow(
 
         self.config = config
 
-        # ----------------------------------------------------
-        # Window
-        # ----------------------------------------------------
+        self._settings_dialog: (
+            SettingsDialog
+            | None
+        ) = None
+
+        # ====================================================
+        # Fenster
+        # ====================================================
 
         self.setMinimumSize(
-            1100,
+            1050,
             650,
         )
 
@@ -94,20 +116,9 @@ class MainWindow(
             self.config.window_height,
         )
 
-        # ----------------------------------------------------
-        # Game Controller
-        # ----------------------------------------------------
-
-        self.game_controller = (
-            GameController(
-                config=self.config,
-                parent=self,
-            )
-        )
-
-        # ----------------------------------------------------
-        # Reine UI
-        # ----------------------------------------------------
+        # ====================================================
+        # UI Shell
+        # ====================================================
 
         self.ui = (
             MainWindowUI(
@@ -120,139 +131,126 @@ class MainWindow(
             self.ui
         )
 
-        # ----------------------------------------------------
-        # Pages
-        # ----------------------------------------------------
+        # ====================================================
+        # Workspace
+        #
+        # Der QStackedWidget wird ausschließlich
+        # von MainWindowUI erzeugt.
+        # ====================================================
 
-        self._create_pages()
+        self.workspace_stack = (
+            self.ui.page_stack
+        )
 
-        # ----------------------------------------------------
-        # Settings Dialog
-        # ----------------------------------------------------
+        # ====================================================
+        # Seiten
+        # ====================================================
 
-        self.settings_dialog = (
-            SettingsDialog(
+        self.library_page = (
+            LibraryPage(
                 config=self.config,
                 parent=self,
             )
         )
 
-        # Erst nach dem Erstellen der Pages,
-        # da der Guard auf deren Status zugreift.
-        self.game_controller.set_change_guard(
-            self._can_change_game
+        self.gamebanana_page = (
+            GameBananaPage(
+                config=self.config,
+                parent=self,
+            )
         )
 
+        self.profiles_page = (
+            self._create_profiles_page()
+        )
+
+        self.conflicts_page = (
+            ConflictsPage(
+                library_paths_provider=(
+                    self.library_page
+                    .library_mod_paths
+                ),
+                game_id_provider=(
+                    self.library_page
+                    .current_game_id
+                ),
+                active_root_provider=(
+                    self.library_page
+                    .active_mods_root
+                ),
+                parent=self,
+            )
+        )
+        # ====================================================
+        # Seiten in den sichtbaren Stack
+        #
+        # 0 = Library
+        # 1 = GameBanana
+        # 2 = Profiles
+        # 3 = Conflicts
+        # ====================================================
+
+        self.workspace_stack.addWidget(
+            self.library_page
+        )
+
+        self.workspace_stack.addWidget(
+            self.gamebanana_page
+        )
+
+        self.workspace_stack.addWidget(
+            self.profiles_page
+        )
+
+        self.workspace_stack.addWidget(
+            self.conflicts_page
+        )
+
+        # ====================================================
+        # Signale
+        # ====================================================
+
         self._connect_signals()
+
+        self._connect_ui_navigation()
 
         translation_manager.language_changed.connect(
             self.retranslate_ui
         )
 
-        self.retranslate_ui()
+        # ====================================================
+        # Initialer Zustand
+        # ====================================================
 
-        self._switch_page(
-            MainWindowUI.PAGE_LIBRARY
-        )
-
-        self._on_game_changed(
+        self.ui.set_active_game(
             self.config.selected_game
         )
 
-        self._refresh_conflict_badge()
+        self._show_library()
+
+        self._set_conflict_count(
+            0
+        )
+
+        self.retranslate_ui()
 
     # ========================================================
-    # Pages
-    # ========================================================
-
-    def _create_pages(
-        self,
-    ) -> None:
-        self.library_page = (
-            LibraryPage(
-                config=self.config
-            )
-        )
-
-        self.gamebanana_page = (
-            GameBananaPage(
-                config=self.config
-            )
-        )
-
-        self.profiles_page = (
-            create_placeholder_page(
-                title="Profile",
-                description=(
-                    "Hier werden später spielbezogene "
-                    "Mod-Profile verwaltet."
-                ),
-            )
-        )
-
-        self.conflicts_page = (
-            create_placeholder_page(
-                title="Konflikte",
-                description=(
-                    "Hier werden alle Konflikte des "
-                    "aktuell ausgewählten Spiels angezeigt."
-                ),
-            )
-        )
-
-        self.ui.page_stack.addWidget(
-            self.library_page
-        )
-
-        self.ui.page_stack.addWidget(
-            self.gamebanana_page
-        )
-
-        self.ui.page_stack.addWidget(
-            self.profiles_page
-        )
-
-        self.ui.page_stack.addWidget(
-            self.conflicts_page
-        )
-
-    # ========================================================
-    # Signals
+    # Interne Signale
     # ========================================================
 
     def _connect_signals(
         self,
     ) -> None:
         # ----------------------------------------------------
-        # Main UI
-        # ----------------------------------------------------
-
-        self.ui.game_selected.connect(
-            self._request_game_change
-        )
-
-        self.ui.page_selected.connect(
-            self._switch_page
-        )
-
-        self.ui.settings_requested.connect(
-            self._open_settings
-        )
-
-        # ----------------------------------------------------
-        # Game Controller
-        # ----------------------------------------------------
-
-        self.game_controller.game_changed.connect(
-            self._on_game_changed
-        )
-
-        self.game_controller.game_change_blocked.connect(
-            self._on_game_change_blocked
-        )
-
-        # ----------------------------------------------------
-        # GameBanana -> Library Import
+        # GameBanana -> Library
+        #
+        # Unterstützt aktuell sowohl:
+        #
+        # path, game_id
+        #
+        # als auch:
+        #
+        # path, game_id, mod_id
         # ----------------------------------------------------
 
         self.gamebanana_page.install_requested.connect(
@@ -260,82 +258,209 @@ class MainWindow(
         )
 
         # ----------------------------------------------------
+        # Library -> Conflict Badge
+        # ----------------------------------------------------
+
+        self.library_page.conflict_count_changed.connect(
+            self._set_conflict_count
+        )
+
+        # ----------------------------------------------------
+        # Library -> Konfliktseite
+        # ----------------------------------------------------
+
+        self.library_page.conflict_report_changed.connect(
+            self.conflicts_page.set_report
+        )
+
+        # ----------------------------------------------------
+        # Konfliktseite -> Library
+        # ----------------------------------------------------
+
+        self.conflicts_page.refresh_requested.connect(
+            self.library_page.refresh_conflicts
+        )
+
+        self.conflicts_page.adopt_requested.connect(
+            self.library_page.adopt_conflict
+        )
+
+        self.conflicts_page.open_requested.connect(
+            self._open_conflict_path
+        )
+        
+        self.conflicts_page.copy_to_library_requested.connect(
+            self._copy_conflict_to_library
+        )
+
+        self.conflicts_page.rescan_requested.connect(
+            self.library_page.scan_mods
+        )
+
+    # ========================================================
+    # MainWindowUI Navigation
+    # ========================================================
+
+    def _connect_ui_navigation(
+        self,
+    ) -> None:
+        """
+        Verbindet exakt die drei Signale,
+        die MainWindowUI bereitstellt.
+        """
+
+        # ----------------------------------------------------
+        # Linke Game-Sidebar
+        # ----------------------------------------------------
+
+        self.ui.game_selected.connect(
+            self._request_game_change
+        )
+
+        # ----------------------------------------------------
+        # Obere Navigation
+        # ----------------------------------------------------
+
+        self.ui.page_selected.connect(
+            self._on_page_selected
+        )
+
+        # ----------------------------------------------------
         # Settings
         # ----------------------------------------------------
 
-        self.settings_dialog.settings_saved.connect(
-            self._on_settings_saved
+        self.ui.settings_requested.connect(
+            self._open_settings
         )
-
-        # ----------------------------------------------------
-        # Conflict Badge
-        # ----------------------------------------------------
-
-        scan_controller = getattr(
-            self.library_page,
-            "scan_controller",
-            None,
-        )
-
-        if scan_controller is not None:
-            scan_controller.finished.connect(
-                self._refresh_conflict_badge
-            )
-
-        import_controller = getattr(
-            self.library_page,
-            "import_controller",
-            None,
-        )
-
-        if import_controller is not None:
-            import_controller.finished.connect(
-                self._refresh_conflict_badge
-            )
-
-        bulk_controller = getattr(
-            self.library_page,
-            "bulk_controller",
-            None,
-        )
-
-        if bulk_controller is not None:
-            bulk_controller.finished.connect(
-                self._refresh_conflict_badge
-            )
 
     # ========================================================
-    # Navigation
+    # Navigation Dispatcher
     # ========================================================
 
-    def _switch_page(
+    def _on_page_selected(
         self,
         page_id: str,
     ) -> None:
-        index = (
-            self.PAGE_INDEX.get(
-                page_id
+        """
+        Reagiert auf:
+
+        library
+        gamebanana
+        profiles
+        conflicts
+        """
+
+        if (
+            page_id
+            == self.ui.PAGE_LIBRARY
+        ):
+            self._show_library()
+
+        elif (
+            page_id
+            == self.ui.PAGE_GAMEBANANA
+        ):
+            self._show_gamebanana()
+
+        elif (
+            page_id
+            == self.ui.PAGE_PROFILES
+        ):
+            self._show_profiles()
+
+        elif (
+            page_id
+            == self.ui.PAGE_CONFLICTS
+        ):
+            self._show_conflicts()
+
+        else:
+            logger.warning(
+                (
+                    "Unbekannte Workspace-Seite "
+                    "angefordert: %s"
+                ),
+                page_id,
             )
-        )
 
-        if index is None:
-            return
+    # ========================================================
+    # Library
+    # ========================================================
 
-        self.ui.page_stack.setCurrentIndex(
-            index
+    def _show_library(
+        self,
+        *_args,
+    ) -> None:
+        self.workspace_stack.setCurrentWidget(
+            self.library_page
         )
 
         self.ui.set_active_page(
-            page_id
+            self.ui.PAGE_LIBRARY
         )
 
-        # GameBanana kann beim Anzeigen
-        # automatisch seine aktuelle Liste laden.
-        if (
-            page_id
-            == MainWindowUI.PAGE_GAMEBANANA
-        ):
-            self.gamebanana_page.update()
+    # ========================================================
+    # GameBanana
+    # ========================================================
+
+    def _show_gamebanana(
+        self,
+        *_args,
+    ) -> None:
+        self.workspace_stack.setCurrentWidget(
+            self.gamebanana_page
+        )
+
+        self.ui.set_active_page(
+            self.ui.PAGE_GAMEBANANA
+        )
+
+    # ========================================================
+    # Profiles
+    # ========================================================
+
+    def _show_profiles(
+        self,
+        *_args,
+    ) -> None:
+        self.workspace_stack.setCurrentWidget(
+            self.profiles_page
+        )
+
+        self.ui.set_active_page(
+            self.ui.PAGE_PROFILES
+        )
+
+    # ========================================================
+    # Conflicts
+    # ========================================================
+
+    def _show_conflicts(
+        self,
+        *_args,
+    ) -> None:
+        # ----------------------------------------------------
+        # Vor dem Öffnen aktuell prüfen.
+        # ----------------------------------------------------
+
+        try:
+            self.library_page.refresh_conflicts()
+
+        except Exception:
+            logger.exception(
+                (
+                    "Konflikte konnten vor dem Öffnen "
+                    "der Konfliktseite nicht aktualisiert werden."
+                )
+            )
+
+        self.workspace_stack.setCurrentWidget(
+            self.conflicts_page
+        )
+
+        self.ui.set_active_page(
+            self.ui.PAGE_CONFLICTS
+        )
 
     # ========================================================
     # Game Change
@@ -344,37 +469,58 @@ class MainWindow(
     def _request_game_change(
         self,
         game_id: str,
+        *_args,
     ) -> None:
-        changed = (
-            self.game_controller
-            .request_game_change(
-                game_id
-            )
+        """
+        Wechselt das aktive XXMI-Spiel.
+
+        Ein Spielwechsel wird verhindert, wenn
+        Library oder GameBanana aktuell beschäftigt sind.
+        """
+
+        game_id = str(
+            game_id
         )
 
-        if not changed:
-            self.ui.set_active_game(
-                self.config.selected_game
-            )
-
-    def _can_change_game(
-        self,
-    ) -> bool:
-        library_handler = getattr(
-            self.library_page,
-            "can_change_game",
-            None,
+        old_game_id = (
+            self.config.selected_game
         )
+
+        # ----------------------------------------------------
+        # Gleiches Spiel
+        # ----------------------------------------------------
 
         if (
-            callable(
-                library_handler
-            )
-            and not library_handler()
+            game_id
+            == old_game_id
         ):
-            return False
+            self.ui.set_active_game(
+                old_game_id
+            )
 
-        gamebanana_handler = getattr(
+            return
+
+        # ----------------------------------------------------
+        # Library beschäftigt?
+        # ----------------------------------------------------
+
+        if not (
+            self.library_page
+            .can_change_game()
+        ):
+            self._show_game_change_blocked()
+
+            self.ui.set_active_game(
+                old_game_id
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # GameBanana beschäftigt?
+        # ----------------------------------------------------
+
+        can_change_game = getattr(
             self.gamebanana_page,
             "can_change_game",
             None,
@@ -382,22 +528,194 @@ class MainWindow(
 
         if (
             callable(
-                gamebanana_handler
+                can_change_game
             )
-            and not gamebanana_handler()
+            and not can_change_game()
         ):
-            return False
+            self._show_game_change_blocked()
 
-        return True
+            self.ui.set_active_game(
+                old_game_id
+            )
 
-    def _on_game_change_blocked(
+            return
+
+        # ====================================================
+        # Config aktualisieren
+        # ====================================================
+
+        self.config.selected_game = (
+            game_id
+        )
+
+        try:
+            # ------------------------------------------------
+            # Library
+            # ------------------------------------------------
+
+            self.library_page.on_game_changed(
+                game_id
+            )
+
+            # ------------------------------------------------
+            # GameBanana
+            # ------------------------------------------------
+
+            gamebanana_change = getattr(
+                self.gamebanana_page,
+                "on_game_changed",
+                None,
+            )
+
+            if callable(
+                gamebanana_change
+            ):
+                gamebanana_change(
+                    game_id
+                )
+
+            # ------------------------------------------------
+            # Profiles
+            # ------------------------------------------------
+
+            profile_change = getattr(
+                self.profiles_page,
+                "on_game_changed",
+                None,
+            )
+
+            if callable(
+                profile_change
+            ):
+                profile_change(
+                    game_id
+                )
+
+            # ------------------------------------------------
+            # Settings Dialog
+            # ------------------------------------------------
+
+            if (
+                self._settings_dialog
+                is not None
+            ):
+                settings_change = getattr(
+                    self._settings_dialog,
+                    "on_game_changed",
+                    None,
+                )
+
+                if callable(
+                    settings_change
+                ):
+                    settings_change(
+                        game_id
+                    )
+
+            # ------------------------------------------------
+            # Sidebar
+            # ------------------------------------------------
+
+            self.ui.set_active_game(
+                game_id
+            )
+
+            # ------------------------------------------------
+            # Speichern
+            # ------------------------------------------------
+
+            self.config.save()
+
+        except Exception as error:
+            # =================================================
+            # Rollback
+            # =================================================
+
+            logger.exception(
+                (
+                    "Spielwechsel von %s nach %s "
+                    "ist fehlgeschlagen."
+                ),
+                old_game_id,
+                game_id,
+            )
+
+            self.config.selected_game = (
+                old_game_id
+            )
+
+            self.ui.set_active_game(
+                old_game_id
+            )
+
+            QMessageBox.critical(
+                self,
+                tr(
+                    "game.change.failed.title"
+                ),
+                str(
+                    error
+                ),
+            )
+
+            return
+
+        # ====================================================
+        # Status
+        # ====================================================
+
+        game_name = (
+            self._current_game_name()
+        )
+
+        self.statusBar().showMessage(
+            tr(
+                "game.status.changed",
+                game=game_name,
+            ),
+            5000,
+        )
+
+    # ========================================================
+    # Game Name
+    # ========================================================
+
+    def _current_game_name(
         self,
-        _game_id: str,
-    ) -> None:
-        self.ui.set_active_game(
+    ) -> str:
+        current_game = getattr(
+            self.config,
+            "current_game",
+            None,
+        )
+
+        if current_game is None:
+            return (
+                self.config.selected_game
+            )
+
+        name = getattr(
+            current_game,
+            "name",
+            None,
+        )
+
+        if name:
+            return str(
+                name
+            )
+
+        return (
             self.config.selected_game
         )
 
+    # ========================================================
+    # Game Switch Blocked
+    # ========================================================
+
+    def _show_game_change_blocked(
+        self,
+    ) -> None:
         QMessageBox.information(
             self,
             tr(
@@ -408,152 +726,94 @@ class MainWindow(
             ),
         )
 
-    def _on_game_changed(
-        self,
-        game_id: str,
-    ) -> None:
-        self.ui.set_active_game(
-            game_id
-        )
-
-        # ----------------------------------------------------
-        # Library
-        # ----------------------------------------------------
-
-        library_handler = getattr(
-            self.library_page,
-            "on_game_changed",
-            None,
-        )
-
-        if callable(
-            library_handler
-        ):
-            library_handler(
-                game_id
-            )
-
-        # ----------------------------------------------------
-        # GameBanana
-        # ----------------------------------------------------
-
-        gamebanana_handler = getattr(
-            self.gamebanana_page,
-            "on_game_changed",
-            None,
-        )
-
-        if callable(
-            gamebanana_handler
-        ):
-            gamebanana_handler(
-                game_id
-            )
-
-        # ----------------------------------------------------
-        # Settings
-        # ----------------------------------------------------
-
-        self.settings_dialog.on_game_changed(
-            game_id
-        )
-
-        self.statusBar().showMessage(
-            tr(
-                "game.status.changed",
-                game=(
-                    self.config
-                    .current_game
-                    .name
-                ),
-            ),
-            4000,
-        )
-
-        self._refresh_conflict_badge()
-
     # ========================================================
     # Conflict Badge
     # ========================================================
 
-    def _refresh_conflict_badge(
+    def _set_conflict_count(
         self,
-        *_args,
+        count: int,
+    ) -> None:
+        self.ui.set_conflict_count(
+            max(
+                0,
+                int(
+                    count
+                ),
+            )
+        )
+
+    # ========================================================
+    # Conflict Folder öffnen
+    # ========================================================
+
+    def _open_conflict_path(
+        self,
+        conflict,
     ) -> None:
         try:
-            stats = (
-                self.library_page
-                .mod_list_widget
-                .statistics()
-            )
-
-            count = int(
-                stats.conflicts
+            path = (
+                Path(
+                    conflict.path
+                )
+                .expanduser()
+                .absolute()
             )
 
         except (
             AttributeError,
             TypeError,
-            ValueError,
         ):
-            count = 0
+            return
 
-        self.ui.set_conflict_count(
-            count
+        target = (
+            path
+            if path.is_dir()
+            else path.parent
+        )
+
+        QDesktopServices.openUrl(
+            QUrl.fromLocalFile(
+                str(
+                    target
+                )
+            )
         )
 
     # ========================================================
-    # Settings
-    # ========================================================
-
-    def _open_settings(
-        self,
-    ) -> None:
-        self.settings_dialog.on_game_changed(
-            self.config.selected_game
-        )
-
-        self.settings_dialog.open_game_settings()
-
-    def _on_settings_saved(
-        self,
-        message: str,
-    ) -> None:
-        self.statusBar().showMessage(
-            message,
-            5000,
-        )
-
-        scan_method = getattr(
-            self.library_page,
-            "scan_mods",
-            None,
-        )
-
-        if callable(
-            scan_method
-        ):
-            scan_method()
-
-    # ========================================================
-    # GameBanana Download -> Import
+    # GameBanana -> Library
     # ========================================================
 
     def _install_gamebanana_download(
         self,
         path,
         game_id: str,
-        mod_id: int,
+        mod_id: int | None = None,
     ) -> None:
+        """
+        Unterstützt beide derzeit möglichen
+        GameBanana-Signalvarianten:
+
+            install_requested(path, game_id)
+
+        und:
+
+            install_requested(path, game_id, mod_id)
+
+        Sobald überall die neue 3-Argument-Signatur
+        verwendet wird, kann der Fallback später weg.
+        """
+
         download_path = (
             Path(
                 path
             )
             .expanduser()
+            .absolute()
         )
 
         # ----------------------------------------------------
-        # Download gehört nicht mehr zum aktuellen Spiel
+        # Spiel wurde zwischenzeitlich gewechselt
         # ----------------------------------------------------
 
         if (
@@ -562,93 +822,305 @@ class MainWindow(
         ):
             QMessageBox.warning(
                 self,
-                "GameBanana",
-                (
-                    "Das aktive Spiel wurde seit dem "
-                    "Download geändert. Der Mod wird "
-                    "nicht automatisch importiert."
+                tr(
+                    "gamebanana.error.install.title"
+                ),
+                tr(
+                    "gamebanana.error.install.game_changed"
                 ),
             )
 
             return
 
-        if not download_path.is_file():
-            QMessageBox.warning(
-                self,
-                "GameBanana",
-                (
-                    "Die heruntergeladene Datei "
-                    "existiert nicht mehr."
-                    "\n\n"
-                    f"{download_path}"
-                ),
-            )
+        # ====================================================
+        # Neue Variante mit GameBanana-ID
+        # ====================================================
 
-            return
-
-        self._switch_page(
-            MainWindowUI.PAGE_LIBRARY
-        )
-
-        importer = getattr(
-            self.library_page,
-            "request_external_import",
-            None,
-        )
-
-        if callable(
-            importer
+        if (
+            mod_id is not None
+            and int(
+                mod_id
+            ) > 0
         ):
-            importer = getattr(
+            request = getattr(
                 self.library_page,
                 "request_gamebanana_import",
                 None,
             )
 
             if callable(
-                importer
+                request
             ):
-                importer(
+                started = request(
                     path=download_path,
                     game_id=game_id,
-                    mod_id=mod_id,
+                    mod_id=int(
+                        mod_id
+                    ),
                 )
+
+                if started:
+                    self._show_library()
 
                 return
 
-            # Nur noch als Fallback.
-            fallback = getattr(
-                self.library_page,
-                "request_external_import",
-                None,
-            )
+        # ====================================================
+        # Legacy-Fallback
+        #
+        # Import funktioniert auch dann, wenn die
+        # GameBananaPage die Mod-ID noch nicht mitsendet.
+        # ====================================================
 
-            if callable(
-                fallback
-            ):
-                fallback(
-                    [
-                        download_path
-                    ]
-                )
+        request_external = getattr(
+            self.library_page,
+            "request_external_import",
+            None,
+        )
+
+        if not callable(
+            request_external
+        ):
+            QMessageBox.warning(
+                self,
+                "GameBanana",
+                (
+                    "Der Download wurde abgeschlossen, "
+                    "konnte aber nicht an die Library "
+                    "übergeben werden."
+                ),
+            )
 
             return
 
-        # Fallback für ältere LibraryPage.
-        fallback = getattr(
-            self.library_page,
-            "_request_import",
+        started = request_external(
+            [
+                download_path
+            ]
+        )
+
+        if started:
+            self._show_library()
+
+    # ========================================================
+    # Settings
+    # ========================================================
+
+    def _open_settings(
+        self,
+        *_args,
+    ) -> None:
+        # ----------------------------------------------------
+        # Bereits geöffnet
+        # ----------------------------------------------------
+
+        if (
+            self._settings_dialog
+            is not None
+        ):
+            try:
+                self._settings_dialog.raise_()
+
+                self._settings_dialog.activateWindow()
+
+                return
+
+            except RuntimeError:
+                self._settings_dialog = None
+
+        # ====================================================
+        # Dialog erstellen
+        # ====================================================
+
+        self._settings_dialog = (
+            SettingsDialog(
+                config=self.config,
+                parent=self,
+            )
+        )
+
+        # ----------------------------------------------------
+        # Aktuelles Spiel
+        # ----------------------------------------------------
+
+        game_change = getattr(
+            self._settings_dialog,
+            "on_game_changed",
             None,
         )
 
         if callable(
-            fallback
+            game_change
         ):
-            fallback(
-                [
-                    download_path
-                ]
+            game_change(
+                self.config.selected_game
             )
+
+        # ----------------------------------------------------
+        # Settings gespeichert
+        # ----------------------------------------------------
+
+        for signal_name in (
+            "settings_saved",
+            "saved",
+        ):
+            signal = getattr(
+                self._settings_dialog,
+                signal_name,
+                None,
+            )
+
+            if signal is None:
+                continue
+
+            connect = getattr(
+                signal,
+                "connect",
+                None,
+            )
+
+            if callable(
+                connect
+            ):
+                connect(
+                    self._on_settings_saved
+                )
+
+                break
+
+        # ----------------------------------------------------
+        # Dialog geschlossen / zerstört
+        # ----------------------------------------------------
+
+        self._settings_dialog.destroyed.connect(
+            self._on_settings_dialog_destroyed
+        )
+
+        self._settings_dialog.show()
+
+    # ========================================================
+    # Settings gespeichert
+    # ========================================================
+
+    def _on_settings_saved(
+        self,
+        *_args,
+    ) -> None:
+        """
+        Pfade oder globale Optionen könnten sich
+        geändert haben.
+        """
+
+        # ----------------------------------------------------
+        # Library neu scannen
+        # ----------------------------------------------------
+
+        self.library_page.scan_mods()
+
+        # ----------------------------------------------------
+        # GameBanana Context aktualisieren
+        # ----------------------------------------------------
+
+        gamebanana_change = getattr(
+            self.gamebanana_page,
+            "on_game_changed",
+            None,
+        )
+
+        if callable(
+            gamebanana_change
+        ):
+            gamebanana_change(
+                self.config.selected_game
+            )
+
+        # ----------------------------------------------------
+        # Konflikte neu prüfen
+        # ----------------------------------------------------
+
+        try:
+            self.library_page.refresh_conflicts()
+
+        except Exception:
+            logger.exception(
+                (
+                    "Konflikte konnten nach dem "
+                    "Speichern der Einstellungen "
+                    "nicht aktualisiert werden."
+                )
+            )
+
+        self.statusBar().showMessage(
+            tr(
+                "settings.status.saved"
+            ),
+            5000,
+        )
+
+    def _on_settings_dialog_destroyed(
+        self,
+        *_args,
+    ) -> None:
+        self._settings_dialog = None
+
+    # ========================================================
+    # Profiles Placeholder
+    # ========================================================
+
+    def _create_profiles_page(
+        self,
+    ) -> QWidget:
+        page = QWidget(
+            self
+        )
+
+        layout = QVBoxLayout(
+            page
+        )
+
+        layout.setContentsMargins(
+            32,
+            28,
+            32,
+            28,
+        )
+
+        layout.setSpacing(
+            10
+        )
+
+        self.profiles_title_label = (
+            QLabel()
+        )
+
+        self.profiles_title_label.setObjectName(
+            "pageTitle"
+        )
+
+        self.profiles_description_label = (
+            QLabel()
+        )
+
+        self.profiles_description_label.setObjectName(
+            "pageDescription"
+        )
+
+        self.profiles_description_label.setWordWrap(
+            True
+        )
+
+        layout.addWidget(
+            self.profiles_title_label
+        )
+
+        layout.addWidget(
+            self.profiles_description_label
+        )
+
+        layout.addStretch(
+            1
+        )
+
+        return page
 
     # ========================================================
     # Launcher
@@ -657,8 +1129,10 @@ class MainWindow(
     def launch_game(
         self,
     ) -> None:
-        launcher_path = (
-            self.config.launcher_path
+        launcher_path = getattr(
+            self.config,
+            "launcher_path",
+            None,
         )
 
         if not launcher_path:
@@ -698,9 +1172,38 @@ class MainWindow(
         self,
         _language: str | None = None,
     ) -> None:
+        # ----------------------------------------------------
+        # Window
+        # ----------------------------------------------------
+
         self.setWindowTitle(
+            (
+                f"{APP_NAME} "
+                f"{APP_VERSION_DISPLAY}"
+            )
+        )
+
+        # ----------------------------------------------------
+        # MainWindowUI
+        # ----------------------------------------------------
+
+        self.ui.retranslate_ui()
+
+        # ----------------------------------------------------
+        # Profile Placeholder
+        # ----------------------------------------------------
+
+        self.profiles_title_label.setText(
             tr(
-                "main.window_title"
+                "navigation.profiles"
+            )
+        )
+
+        # Noch Placeholder bis Profile implementiert wird.
+        self.profiles_description_label.setText(
+            (
+                "Profile für das aktuell ausgewählte "
+                "Spiel werden hier verwaltet."
             )
         )
 
@@ -712,49 +1215,71 @@ class MainWindow(
         self,
         event: QCloseEvent,
     ) -> None:
-        cancel_scan = getattr(
-            self.library_page,
-            "cancel_scan",
-            None,
-        )
+        # ----------------------------------------------------
+        # Library Worker
+        # ----------------------------------------------------
 
-        if callable(
-            cancel_scan
-        ):
-            cancel_scan()
+        try:
+            self.library_page.cancel_scan()
 
-        cancel_import = getattr(
-            self.library_page,
-            "cancel_import",
-            None,
-        )
+        except Exception:
+            logger.exception(
+                "Scan konnte beim Beenden nicht abgebrochen werden."
+            )
 
-        if callable(
-            cancel_import
-        ):
-            cancel_import()
+        try:
+            self.library_page.cancel_import()
 
-        cancel_bulk = getattr(
-            self.library_page,
-            "cancel_bulk_action",
-            None,
-        )
+        except Exception:
+            logger.exception(
+                "Import konnte beim Beenden nicht abgebrochen werden."
+            )
 
-        if callable(
-            cancel_bulk
-        ):
-            cancel_bulk()
+        try:
+            self.library_page.cancel_bulk_action()
 
-        shutdown_gamebanana = getattr(
+        except Exception:
+            logger.exception(
+                (
+                    "Bulk-Aktion konnte beim Beenden "
+                    "nicht abgebrochen werden."
+                )
+            )
+
+        # ----------------------------------------------------
+        # GameBanana Download
+        # ----------------------------------------------------
+
+        controller = getattr(
             self.gamebanana_page,
-            "shutdown",
+            "controller",
             None,
         )
 
-        if callable(
-            shutdown_gamebanana
-        ):
-            shutdown_gamebanana()
+        if controller is not None:
+            cancel_download = getattr(
+                controller,
+                "cancel_download",
+                None,
+            )
+
+            if callable(
+                cancel_download
+            ):
+                try:
+                    cancel_download()
+
+                except Exception:
+                    logger.exception(
+                        (
+                            "GameBanana-Download konnte "
+                            "beim Beenden nicht abgebrochen werden."
+                        )
+                    )
+
+        # ----------------------------------------------------
+        # Fenstergröße speichern
+        # ----------------------------------------------------
 
         self.config.window_width = (
             self.width()
@@ -767,12 +1292,57 @@ class MainWindow(
         try:
             self.config.save()
 
-        except OSError:
+        except OSError as error:
             logger.exception(
                 (
                     "Konfiguration konnte beim "
-                    "Beenden nicht gespeichert werden."
-                )
+                    "Beenden nicht gespeichert werden: %s"
+                ),
+                error,
             )
 
         event.accept()
+
+    # ========================================================
+    # Conflict -> Library
+    # ========================================================
+
+    def _copy_conflict_to_library(
+        self,
+        conflict,
+    ) -> None:
+        path = (
+            Path(
+                conflict.path
+            )
+            .expanduser()
+            .absolute()
+        )
+
+        if not path.exists():
+            QMessageBox.warning(
+                self,
+                tr(
+                    "conflicts.copy.failed.title"
+                ),
+                tr(
+                    "conflicts.copy.missing"
+                ),
+            )
+
+            return
+
+        started = (
+            self.library_page
+            .request_external_import(
+                [
+                    path
+                ]
+            )
+        )
+
+        if started:
+            self._show_library()
+__all__ = [
+    "MainWindow",
+]

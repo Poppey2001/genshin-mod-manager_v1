@@ -457,6 +457,53 @@
     "library.gallery.empty": "Keine Mods entsprechen den aktuellen Filtern.",
 
     "library.gamebanana_metadata.error.title": "GameBanana-Metadaten",
-    "library.gamebanana_metadata.error.message": "Der Mod wurde importiert, aber die GameBanana-Verknüpfung konnte nicht vollständig gespeichert werden.\n\n{errors}"
+    "library.gamebanana_metadata.error.message": "Der Mod wurde importiert, aber die GameBanana-Verknüpfung konnte nicht vollständig gespeichert werden.\n\n{errors}",
+
+    "conflicts.title": "Konflikte",
+    "conflicts.description": "Prüfe Library-Konflikte, manuell hinzugefügte XXMI-Mods und mögliche Duplikate.",
+    "conflicts.refresh": "Neu prüfen",
+    "conflicts.empty": "Es wurden keine Konflikte gefunden.",
+    "conflicts.count": "{count} Konflikte",
+
+    "conflicts.type.library": "Library-Konflikt",
+    "conflicts.type.unmanaged": "Manuell hinzugefügt",
+    "conflicts.type.invalid_marker": "Ungültiger Marker",
+    "conflicts.type.orphaned": "Verwaister Mod",
+
+    "conflicts.message.library": "Am aktiven Ziel befinden sich Daten, die nicht eindeutig dem Library-Mod zugeordnet werden können.",
+    "conflicts.message.unmanaged": "Dieser Mod befindet sich im aktiven XXMI-Mods-Ordner, wird aber derzeit nicht von deiner Library verwaltet.",
+    "conflicts.message.invalid_marker": "Dieser Mod besitzt einen beschädigten, ungültigen oder nicht passenden Manager-Marker.",
+    "conflicts.message.orphaned": "Dieser aktive Mod wurde früher vom Manager verwaltet, aber der zugehörige Library-Mod wurde nicht gefunden.",
+
+    "conflicts.action.open": "Ordner öffnen",
+    "conflicts.action.adopt": "Übernehmen",
+    "conflicts.action.check_duplicate": "Duplikat prüfen",
+    "conflicts.action.copy_to_library": "In Bibliothek kopieren",
+    "conflicts.action.delete_duplicate": "Aktive Kopie löschen",
+
+    "conflicts.hash.idle": "Noch nicht auf Duplikate geprüft.",
+    "conflicts.hash.checking": "ORFix / 5.7-Normalisierung und Duplikatprüfung läuft … {current}/{total} – {name}",
+    "conflicts.hash.duplicate": "Identischer Mod in deiner Bibliothek gefunden.",
+    "conflicts.hash.no_duplicate": "Kein identischer Mod in deiner Bibliothek gefunden.",
+    "conflicts.hash.failed": "Die Duplikatprüfung ist fehlgeschlagen.",
+    "conflicts.hash.invalid_source": "Dieser Eintrag ist kein gültiger Mod-Ordner.",
+    "conflicts.hash.crc32": "CRC32: {value}",
+    "conflicts.hash.sha256": "SHA-256: {value}",
+    "conflicts.hash.duplicate_path": "Library-Duplikat: {path}",
+
+    "conflicts.delete.title": "Aktives Duplikat löschen",
+    "conflicts.delete.message": "CRC32 und SHA-256 stimmen nach ORFix/5.7-Normalisierung mit einem Library-Mod überein.\n\nAktive Kopie:\n{source}\n\nLibrary:\n{library}\n\nSoll die aktive Kopie dauerhaft gelöscht werden?",
+    "conflicts.delete.failed.title": "Duplikat konnte nicht gelöscht werden",
+    "conflicts.delete.failed.message": "Die aktive Kopie konnte nicht gelöscht werden.\n\n{error}",
+    "conflicts.delete.completed.title": "Duplikat gelöscht",
+    "conflicts.delete.completed.message": "Die bestätigte aktive Duplikat-Kopie wurde gelöscht.",
+
+    "conflicts.copy.failed.title": "Mod konnte nicht kopiert werden",
+    "conflicts.copy.missing": "Der Mod-Ordner existiert nicht mehr.",
+
+    "conflicts.manual.title": "Manuell hinzugefügter Mod",
+    "conflicts.manual.message": "Dieser Mod besitzt keine eindeutige Library-Quelle und kann deshalb nicht automatisch übernommen werden. Du kannst ihn stattdessen über „In Bibliothek kopieren“ importieren."
+
+    
 
 }

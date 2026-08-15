@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections import (
     OrderedDict,
 )
-
+from shiboken6 import (
+    isValid,
+)
 from PySide6.QtCore import (
     Qt,
     QThreadPool,
@@ -72,7 +74,7 @@ class GameBananaPreviewImage(
         self.setMinimumHeight(
             minimum_height
         )
-
+        self._disposed = False
         self._show_no_preview()
 
     # ========================================================
@@ -83,6 +85,14 @@ class GameBananaPreviewImage(
         self,
         url: str | None,
     ) -> None:
+        
+        if (
+            self._disposed
+            or not isValid(
+                self
+            )
+        ):
+            return
         normalized = (
             url.strip()
             if isinstance(
@@ -189,6 +199,14 @@ class GameBananaPreviewImage(
         )
 
         if (
+            self._disposed
+            or not isValid(
+                self
+            )
+        ):
+            return
+
+        if (
             url
             != self._requested_url
         ):
@@ -236,6 +254,14 @@ class GameBananaPreviewImage(
         self._workers.discard(
             worker
         )
+
+        if (
+            self._disposed
+            or not isValid(
+                self
+            )
+        ):
+            return
 
         if (
             url
@@ -348,6 +374,53 @@ class GameBananaPreviewImage(
         self.setPixmap(
             scaled
         )
+        
+    # ========================================================
+    # Lifecycle
+    # ========================================================
+
+    def dispose(
+        self,
+    ) -> None:
+        """
+        Trennt alle noch laufenden Worker von diesem Widget.
+
+        Die Worker dürfen im ThreadPool zu Ende laufen,
+        ihre Ergebnisse werden aber nicht mehr an ein bereits
+        gelöschtes Qt-Widget geliefert.
+        """
+
+        if self._disposed:
+            return
+
+        self._disposed = True
+
+        self._requested_url = None
+
+        for worker in tuple(
+            self._workers
+        ):
+            try:
+                worker.signals.finished.disconnect()
+
+            except (
+                RuntimeError,
+                TypeError,
+            ):
+                pass
+
+            try:
+                worker.signals.failed.disconnect()
+
+            except (
+                RuntimeError,
+                TypeError,
+            ):
+                pass
+
+        self._workers.clear()
+
+        self._pixmap_original = None
 
 
 __all__ = [

@@ -1079,4 +1079,142 @@ QPushButton#libraryCardAction:disabled {
 
     border-color: #303640;
 }
+
+/* ============================================================
+   CONFLICTS
+   ============================================================ */
+
+QLabel#conflictCount {
+    color: #ffc76d;
+
+    font-size: 17px;
+    font-weight: 800;
+}
+
+QLabel#conflictsEmpty {
+    color: #747d8b;
+
+    font-size: 14px;
+}
+
+
+/* ============================================================
+   CONFLICT CARD
+   ============================================================ */
+
+QFrame#conflictCard {
+    background-color: #1b1f27;
+
+    border: 1px solid #49391e;
+    border-left: 3px solid #d89b38;
+    border-radius: 11px;
+}
+
+QFrame#conflictCard:hover {
+    background-color: #20252d;
+
+    border-color: #725625;
+    border-left-color: #f0b34d;
+}
+
+QFrame#conflictCard[conflictKind="library"] {
+    border-left-color: #efb24e;
+}
+
+QFrame#conflictCard[conflictKind="unmanaged_active"] {
+    border-left-color: #e47e55;
+}
+
+QFrame#conflictCard[conflictKind="invalid_marker"] {
+    border-left-color: #e85d6a;
+}
+
+QFrame#conflictCard[conflictKind="orphaned_managed"] {
+    border-left-color: #a77bea;
+}
+
+QLabel#conflictTitle {
+    color: #f5f6f8;
+
+    font-size: 15px;
+    font-weight: 800;
+}
+
+QLabel#conflictType {
+    color: #ffc76d;
+
+    background-color: #3b2d15;
+
+    border: 1px solid #665026;
+    border-radius: 8px;
+
+    padding: 4px 8px;
+
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QLabel#conflictMessage {
+    color: #b0b6c1;
+
+    font-size: 12px;
+}
+
+QLabel#conflictPath {
+    color: #747e8c;
+
+    background-color: #13171c;
+
+    border: 1px solid #2c323a;
+    border-radius: 7px;
+
+    padding: 7px 9px;
+
+    font-family: monospace;
+    font-size: 11px;
+}
+/* ============================================================
+   CONFLICT HASH / DUPLICATE
+   ============================================================ */
+
+QLabel#conflictHashStatus {
+    color: #c0c6d1;
+    font-size: 12px;
+    font-weight: 600;
+    padding-top: 5px;
+}
+
+QLabel#conflictHash {
+    color: #8993a3;
+    background-color: #12161c;
+
+    border: 1px solid #2b323d;
+    border-radius: 6px;
+
+    padding: 6px 8px;
+
+    font-family: monospace;
+    font-size: 11px;
+}
+
+QLabel#conflictDuplicate {
+    color: #6fd69a;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QPushButton#dangerButton {
+    background-color: #4a2027;
+    color: #ffbec5;
+
+    border: 1px solid #75343e;
+    border-radius: 7px;
+
+    padding: 7px 12px;
+}
+
+QPushButton#dangerButton:hover {
+    background-color: #612832;
+    border-color: #9a4653;
+}
 }

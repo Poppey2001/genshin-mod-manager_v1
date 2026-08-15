@@ -155,10 +155,19 @@ class ModManager:
     ) -> ModState:
         """
         Ermittelt den aktuellen Aktivierungszustand.
+
+        Unterstützt:
+        - neue relative Active-Mod-Struktur
+        - alte flache Manager-Struktur
+        - alte Symlink-Aktivierungen
+        - nicht verwaltete Ordner
         """
 
         try:
-            source, _relative_path = (
+            (
+                source,
+                relative_path,
+            ) = (
                 self._source_and_relative(
                     mod_path,
                     require_exists=False,
@@ -167,82 +176,125 @@ class ModManager:
 
             active_root = (
                 self._get_active_root(
-                    create=False,
+                    create=False
+                )
+            )
+
+            (
+                enabled_path,
+                disabled_path,
+            ) = (
+                self._resolve_destination_paths(
+                    active_root=active_root,
+                    source=source,
+                    relative_path=relative_path,
                 )
             )
 
         except ModNotConfiguredError:
-            return ModState.NOT_CONFIGURED
+            return (
+                ModState.NOT_CONFIGURED
+            )
 
         except ModManagerError:
-            return ModState.CONFLICT
+            return (
+                ModState.CONFLICT
+            )
 
-        enabled_path, disabled_path = (
-            self._destination_paths(
-                active_root=active_root,
-                source=source,
+        enabled_exists = (
+            self._path_exists(
+                enabled_path
             )
         )
 
-        enabled_exists = (
-            enabled_path.exists()
-            or enabled_path.is_symlink()
+        disabled_exists = (
+            self._path_exists(
+                disabled_path
+            )
         )
 
-        disabled_exists = (
-            disabled_path.exists()
-            or disabled_path.is_symlink()
-        )
+        # ----------------------------------------------------
+        # Beide Varianten gleichzeitig
+        # ----------------------------------------------------
 
         if (
             enabled_exists
             and disabled_exists
         ):
-            return ModState.CONFLICT
+            return (
+                ModState.CONFLICT
+            )
 
         # ----------------------------------------------------
-        # Sehr alte Symlink-Aktivierungen nur noch erkennen.
-        # Neue Aktivierungen verwenden KEINE Symlinks.
+        # Legacy Symlink
         # ----------------------------------------------------
 
         if enabled_path.is_symlink():
             if not enabled_path.exists():
-                return ModState.BROKEN
+                return (
+                    ModState.BROKEN
+                )
 
             if self._symlink_points_to(
                 destination=enabled_path,
                 source=source,
             ):
-                return ModState.ENABLED
+                return (
+                    ModState.ENABLED
+                )
 
-            return ModState.CONFLICT
+            return (
+                ModState.CONFLICT
+            )
 
         if disabled_path.is_symlink():
-            return ModState.CONFLICT
+            return (
+                ModState.CONFLICT
+            )
 
         # ----------------------------------------------------
-        # Verwaltete Kopien
+        # Aktiver Ordner
         # ----------------------------------------------------
 
-        if enabled_path.exists():
+        if enabled_exists:
             if self._marker_matches(
                 destination=enabled_path,
                 source=source,
             ):
-                return ModState.ENABLED
+                return (
+                    ModState.ENABLED
+                )
 
-            return ModState.CONFLICT
+            # Ordner existiert, gehört aber nicht
+            # zu diesem Library-Mod.
+            return (
+                ModState.CONFLICT
+            )
 
-        if disabled_path.exists():
+        # ----------------------------------------------------
+        # Deaktivierter Ordner
+        # ----------------------------------------------------
+
+        if disabled_exists:
             if self._marker_matches(
                 destination=disabled_path,
                 source=source,
             ):
-                return ModState.DISABLED
+                return (
+                    ModState.DISABLED
+                )
 
-            return ModState.CONFLICT
+            return (
+                ModState.CONFLICT
+            )
 
-        return ModState.DISABLED
+        # ----------------------------------------------------
+        # Weder aktiv noch deaktiviert vorhanden
+        # ----------------------------------------------------
+
+        return (
+            ModState.DISABLED
+        )
 
     def adopt_existing(
         self,
@@ -266,10 +318,14 @@ class ModManager:
             )
         )
 
-        enabled_path, disabled_path = (
-            self._destination_paths(
+        (
+            enabled_path,
+            disabled_path,
+        ) = (
+            self._resolve_destination_paths(
                 active_root=active_root,
                 source=source,
+                relative_path=relative_path,
             )
         )
 
@@ -401,10 +457,14 @@ class ModManager:
             )
         )
 
-        enabled_path, disabled_path = (
-            self._destination_paths(
+        (
+            enabled_path,
+            disabled_path,
+        ) = (
+            self._resolve_destination_paths(
                 active_root=active_root,
                 source=source,
+                relative_path=relative_path,
             )
         )
 
@@ -495,9 +555,26 @@ class ModManager:
                     )
                 )
 
+        # ----------------------------------------------------
+        # Erste Aktivierung: echte Kopie
+        # ----------------------------------------------------
             try:
-                disabled_path.rename(
-                    enabled_path
+                enabled_path.parent.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+
+                shutil.copytree(
+                    source,
+                    enabled_path,
+                    symlinks=False,
+                    ignore=self._copy_ignore,
+                )
+
+                self._write_marker(
+                    destination=enabled_path,
+                    source=source,
+                    relative_path=relative_path,
                 )
 
             except OSError as error:
@@ -512,9 +589,7 @@ class ModManager:
 
             return enabled_path
 
-        # ----------------------------------------------------
-        # Erste Aktivierung: echte Kopie
-        # ----------------------------------------------------
+
 
         try:
             shutil.copytree(
@@ -558,7 +633,7 @@ class ModManager:
         Kopie vorgenommen hat, bleiben dadurch erhalten.
         """
 
-        source, _relative_path = (
+        source, relative_path = (
             self._source_and_relative(
                 mod_path,
                 require_exists=False,
@@ -571,10 +646,14 @@ class ModManager:
             )
         )
 
-        enabled_path, disabled_path = (
-            self._destination_paths(
+        (
+            enabled_path,
+            disabled_path,
+        ) = (
+            self._resolve_destination_paths(
                 active_root=active_root,
                 source=source,
+                relative_path=relative_path,
             )
         )
 
@@ -670,7 +749,7 @@ class ModManager:
         Gibt den aktiven Zielpfad zurück.
         """
 
-        source, _relative_path = (
+        source, relative_path = (
             self._source_and_relative(
                 mod_path,
                 require_exists=False,
@@ -683,10 +762,14 @@ class ModManager:
             )
         )
 
-        enabled_path, _disabled_path = (
-            self._destination_paths(
+        (
+            enabled_path,
+            _disabled_path,
+        ) = (
+            self._resolve_destination_paths(
                 active_root=active_root,
                 source=source,
+                relative_path=relative_path,
             )
         )
 
@@ -705,7 +788,7 @@ class ModManager:
         3. Original in der Bibliothek
         """
 
-        source, _relative_path = (
+        source, relative_path = (
             self._source_and_relative(
                 mod_path,
                 require_exists=False,
@@ -722,10 +805,14 @@ class ModManager:
         except ModManagerError:
             return source
 
-        enabled_path, disabled_path = (
-            self._destination_paths(
+        (
+            enabled_path,
+            disabled_path,
+        ) = (
+            self._resolve_destination_paths(
                 active_root=active_root,
                 source=source,
+                relative_path=relative_path,
             )
         )
 
@@ -749,6 +836,18 @@ class ModManager:
         Path,
         Path,
     ]:
+        """
+        Legacy-Zielpfade.
+
+        Ältere Versionen des Managers haben Mods direkt
+        unterhalb des Active-Mods-Ordners abgelegt:
+
+            Mods/My Mod
+            Mods/DISABLED My Mod
+
+        Diese Struktur muss weiterhin erkannt werden.
+        """
+
         enabled_path = (
             active_root
             / source.name
@@ -766,6 +865,154 @@ class ModManager:
             enabled_path,
             disabled_path,
         )
+
+    @staticmethod
+    def _relative_destination_paths(
+        active_root: Path,
+        relative_path: Path,
+    ) -> tuple[
+        Path,
+        Path,
+    ]:
+        """
+        Neue bevorzugte Zielstruktur.
+
+        Beispiel:
+
+            Library:
+            Characters/Arlecchino/My Mod
+
+            Active:
+            Characters/Arlecchino/My Mod
+
+        Die deaktivierte Variante liegt daneben:
+
+            Characters/Arlecchino/DISABLED My Mod
+        """
+
+        enabled_path = (
+            active_root
+            / relative_path
+        )
+
+        disabled_path = (
+            enabled_path.parent
+            / (
+                f"{DISABLED_PREFIX}"
+                f"{enabled_path.name}"
+            )
+        )
+
+        return (
+            enabled_path,
+            disabled_path,
+        )
+
+    def _resolve_destination_paths(
+        self,
+        *,
+        active_root: Path,
+        source: Path,
+        relative_path: Path,
+    ) -> tuple[
+        Path,
+        Path,
+    ]:
+        """
+        Ermittelt den tatsächlich verwendeten Zielpfad.
+
+        Reihenfolge:
+        1. Neue relative Struktur
+        2. Alte flache Struktur
+
+        Existieren beide gleichzeitig, handelt es sich um
+        einen Konflikt und wir verändern nichts automatisch.
+        """
+
+        preferred = (
+            self._relative_destination_paths(
+                active_root=active_root,
+                relative_path=relative_path,
+            )
+        )
+
+        legacy = (
+            self._destination_paths(
+                active_root=active_root,
+                source=source,
+            )
+        )
+
+        # Wenn der Mod direkt in der Library-Wurzel liegt,
+        # sind beide Strukturen identisch.
+        if preferred == legacy:
+            return preferred
+
+        occupied: list[
+            tuple[
+                Path,
+                Path,
+            ]
+        ] = []
+
+        for (
+            enabled_path,
+            disabled_path,
+        ) in (
+            preferred,
+            legacy,
+        ):
+            if (
+                self._path_exists(
+                    enabled_path
+                )
+                or self._path_exists(
+                    disabled_path
+                )
+            ):
+                occupied.append(
+                    (
+                        enabled_path,
+                        disabled_path,
+                    )
+                )
+
+        # ----------------------------------------------------
+        # Mod existiert gleichzeitig im neuen UND alten Layout.
+        # ----------------------------------------------------
+
+        if len(
+            occupied
+        ) > 1:
+            raise ModConflictError(
+                (
+                    "Der Mod wurde an mehreren "
+                    "Active-Mods-Speicherorten gefunden."
+                    "\n\n"
+                    "Relative Struktur:\n"
+                    f"{preferred[0]}\n"
+                    f"{preferred[1]}"
+                    "\n\n"
+                    "Legacy-Struktur:\n"
+                    f"{legacy[0]}\n"
+                    f"{legacy[1]}"
+                )
+            )
+
+        # ----------------------------------------------------
+        # Bereits vorhandene Struktur verwenden.
+        # ----------------------------------------------------
+
+        if occupied:
+            return occupied[
+                0
+            ]
+
+        # ----------------------------------------------------
+        # Bei einem neuen Mod künftig relative Struktur.
+        # ----------------------------------------------------
+
+        return preferred
 
     # ========================================================
     # Bibliothek / Active Mods
