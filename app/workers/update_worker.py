@@ -59,35 +59,25 @@ class UpdateCheckWorker(
     QRunnable
 ):
     """
-    Prüft GitHub auf eine neuere app/version.py.
+    Prüft GitHub auf eine neuere Version.
 
-    Der Worker verändert keine lokalen Dateien.
+    Die lokale Version wird vom UpdateService
+    direkt aus app/version.py übernommen.
+
+    GitHub Owner, Repository und Branch werden
+    ebenfalls vom UpdateService über update_config.py
+    geladen.
     """
 
     def __init__(
         self,
         *,
-        owner: str,
-        repository: str,
-        current_version: str,
-        channel: UpdateChannel,
+        allow_prerelease: bool = True,
     ) -> None:
         super().__init__()
 
-        self.owner = (
-            owner
-        )
-
-        self.repository = (
-            repository
-        )
-
-        self.current_version = (
-            current_version
-        )
-
-        self.channel = (
-            channel
+        self.allow_prerelease = bool(
+            allow_prerelease
         )
 
         self.signals = (
@@ -98,35 +88,21 @@ class UpdateCheckWorker(
             True
         )
 
-    # ========================================================
-    # Run
-    # ========================================================
-
     @Slot()
     def run(
         self,
     ) -> None:
         try:
             service = (
-                UpdateService(
-                    owner=(
-                        self.owner
-                    ),
-                    repository=(
-                        self.repository
-                    ),
-                    current_version=(
-                        self.current_version
-                    ),
-                    channel=(
-                        self.channel
-                    ),
-                )
+                UpdateService()
             )
 
             update = (
-                service
-                .check_for_update()
+                service.check_for_update(
+                    allow_prerelease=(
+                        self.allow_prerelease
+                    )
+                )
             )
 
         except Exception as error:

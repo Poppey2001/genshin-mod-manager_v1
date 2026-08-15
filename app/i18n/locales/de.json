@@ -505,6 +505,9 @@
     "conflicts.manual.message": "Dieser Mod besitzt keine eindeutige Library-Quelle und kann deshalb nicht automatisch übernommen werden. Du kannst ihn stattdessen über „In Bibliothek kopieren“ importieren.",
 
     "updates.dialog.install_unavailable": "Für diese Plattform wurde kein automatisch installierbares Update-Paket gefunden.",
-    "updates.error.unsupported_platform": "Die automatische Installation wird derzeit nur unter Windows unterstützt."
+    "updates.error.unsupported_platform": "Die automatische Installation wird derzeit nur unter Windows unterstützt.",
+
+    "updates.dialog.script_count": "{count} Python-Dateien werden aktualisiert.",
+    "updates.dialog.script_install_unavailable": "Die automatische Script-Installation ist auf diesem System nicht verfügbar."
 
 }
