@@ -40,7 +40,8 @@ from app.update_config import (
     APPIMAGE_SUFFIX,
     GITHUB_API_VERSION,
     UPDATE_CHECK_TIMEOUT,
-    github_token,
+    WINDOWS_UPDATE_KEYWORDS,
+    WINDOWS_UPDATE_SUFFIX,
 )
 
 
@@ -129,6 +130,34 @@ class ReleaseAsset:
             .casefold()
         )
 
+    @property
+    def sha256(
+        self,
+    ) -> str | None:
+        digest = (
+            self.digest
+            or ""
+        ).strip()
+
+        algorithm, separator, value = (
+            digest.partition(
+                ":"
+            )
+        )
+
+        if (
+            separator != ":"
+            or algorithm.casefold()
+            != "sha256"
+            or not value
+        ):
+            return None
+
+        return (
+            value
+            .strip()
+            .casefold()
+        )
 
 # ============================================================
 # Update Info
@@ -238,7 +267,64 @@ class UpdateInfo:
 
         return None
 
+    def find_windows_asset(
+        self,
+    ) -> ReleaseAsset | None:
+        candidates = [
+            asset
+            for asset
+            in self.assets
+            if (
+                asset.name
+                .casefold()
+                .endswith(
+                    WINDOWS_UPDATE_SUFFIX
+                    .casefold()
+                )
+            )
+        ]
 
+        if not candidates:
+            return None
+
+        # ----------------------------------------------------
+        # Bevorzugt eindeutig benanntes Windows-Paket.
+        # ----------------------------------------------------
+
+        for asset in candidates:
+            name = (
+                asset.name
+                .casefold()
+            )
+
+            if (
+                any(
+                    keyword
+                    in name
+                    for keyword
+                    in WINDOWS_UPDATE_KEYWORDS
+                )
+                and (
+                    "windows"
+                    in name
+                    or "win64"
+                    in name
+                )
+            ):
+                return asset
+
+        # ----------------------------------------------------
+        # Nur ein ZIP vorhanden.
+        # ----------------------------------------------------
+
+        if len(
+            candidates
+        ) == 1:
+            return candidates[
+                0
+            ]
+
+        return None
 # ============================================================
 # Service
 # ============================================================
@@ -539,17 +625,6 @@ class UpdateService:
                 "XXMI-Mod-Manager-Updater"
             ),
         }
-
-        token = (
-            github_token()
-        )
-
-        if token:
-            headers[
-                "Authorization"
-            ] = (
-                f"Bearer {token}"
-            )
 
         return headers
 

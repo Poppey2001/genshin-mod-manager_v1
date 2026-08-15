@@ -284,7 +284,7 @@ class UpdateDialog(QDialog):
         ):
             self.status_label.setText(
                 tr(
-                    "updates.dialog.appimage_required"
+                   "updates.dialog.install_unavailable"
                 )
             )
 

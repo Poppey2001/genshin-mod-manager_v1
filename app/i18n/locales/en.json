@@ -502,5 +502,8 @@
     "conflicts.copy.missing": "The mod directory no longer exists.",
 
     "conflicts.manual.title": "Manually added mod",
-    "conflicts.manual.message": "This mod has no unambiguous library source and therefore cannot be adopted automatically. You can import it using “Copy to library” instead."
+    "conflicts.manual.message": "This mod has no unambiguous library source and therefore cannot be adopted automatically. You can import it using “Copy to library” instead.",
+
+    "updates.dialog.install_unavailable": "No automatically installable update package was found for this platform.",
+    "updates.error.unsupported_platform": "Automatic installation is currently supported on Windows only."
 }

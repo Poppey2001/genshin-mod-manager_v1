@@ -381,10 +381,20 @@ class UpdateDownloadWorker(
             destination
         )
 
-        destination.chmod(
-            destination.stat().st_mode
-            | 0o111
-        )
+        # ----------------------------------------------------
+        # Nur Linux/macOS brauchen +x.
+        # Windows-ZIP nicht.
+        # ----------------------------------------------------
+
+        if (
+            destination.suffix
+            .casefold()
+            == ".appimage"
+        ):
+            destination.chmod(
+                destination.stat().st_mode
+                | 0o111
+            )
 
         return destination
 

@@ -28,10 +28,12 @@ from app.i18n import (
     tr,
 )
 
-from app.services.appimage_updater import (
-    cleanup_previous_update_backup,
-    is_appimage_runtime,
-    stage_update_and_launch_helper,
+from app.services.runtime_platform import (
+    is_windows,
+)
+
+from app.services.windows_updater import (
+    stage_windows_update,
 )
 
 from app.services.update_service import (
@@ -119,39 +121,31 @@ class UpdateController(
     def start_auto_check(
         self,
     ) -> None:
-        """
-        Wird genau einmal nach Start des MainWindow
-        aufgerufen.
-        """
+        # ====================================================
+        # Automatischer Install-Updater aktuell nur Windows.
+        # ====================================================
 
-        QTimer.singleShot(
-            15_000,
-            cleanup_previous_update_backup,
-        )
-
-        enabled = bool(
-            getattr(
-                self.config,
-                "auto_check_updates",
-                True,
-            )
-        )
-
-        if not enabled:
+        if not is_windows():
             logger.info(
                 (
-                    "Automatische "
-                    "Update-Prüfung deaktiviert."
+                    "Automatischer Update-Check "
+                    "übersprungen: Kein Windows."
                 )
             )
 
             return
 
+        if not getattr(
+            self.config,
+            "auto_check_updates",
+            True,
+        ):
+            return
+
         QTimer.singleShot(
-            3_000,
+            3000,
             self._run_auto_check,
         )
-
     def _run_auto_check(
         self,
     ) -> None:
@@ -426,16 +420,28 @@ class UpdateController(
         self,
         update: UpdateInfo,
     ) -> None:
-        asset = (
-            update
-            .find_appimage_asset()
-        )
+        asset: (
+            ReleaseAsset
+            | None
+        ) = None
 
-        install_supported = (
-            is_appimage_runtime()
-            and asset is not None
-            and asset.sha256 is not None
-        )
+        install_supported = False
+
+        # ====================================================
+        # Windows
+        # ====================================================
+
+        if is_windows():
+            asset = (
+                update
+                .find_windows_asset()
+            )
+
+            install_supported = (
+                asset is not None
+                and asset.sha256
+                is not None
+            )
 
         self._current_update = (
             update
@@ -584,17 +590,32 @@ class UpdateController(
 
             return
 
+        # ====================================================
+        # Windows
+        # ====================================================
+
+        if not is_windows():
+            dialog.show_error(
+                tr(
+                    "updates.error.unsupported_platform"
+                )
+            )
+
+            return
+
         dialog.show_installing()
 
         try:
-            stage_update_and_launch_helper(
-                downloaded_file
+            stage_windows_update(
+                archive_path=(
+                    downloaded_file
+                )
             )
 
         except Exception as error:
             logger.exception(
                 (
-                    "AppImage Update konnte "
+                    "Windows-Update konnte "
                     "nicht vorbereitet werden."
                 )
             )
@@ -607,12 +628,12 @@ class UpdateController(
 
             return
 
-        logger.info(
-            (
-                "AppImage Update vorbereitet. "
-                "Anwendung wird beendet."
-            )
-        )
+        # ====================================================
+        # Hauptanwendung beenden.
+        #
+        # Der PowerShell-Helper wartet auf genau diesen
+        # Prozess und tauscht danach die Dateien aus.
+        # ====================================================
 
         application = (
             QApplication.instance()
