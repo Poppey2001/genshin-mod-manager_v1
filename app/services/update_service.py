@@ -751,10 +751,6 @@ class UpdateService:
                     archive_display
                 ),
 
-                "tag": (
-                    info.tag
-                ),
-
                 "archive_sha256": (
                     archive_sha256
                 ),

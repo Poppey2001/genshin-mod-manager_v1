@@ -10,7 +10,9 @@ from typing import Callable
 from app.models.mod import ModInfo
 from app.services.character_detector import detect_characters
 from app.services.mod_structure_detector import (
+    MOD_TYPE_ALIASES,
     detect_mod_structure,
+    normalize_key,
 )
 from app.platform_support import (
     is_network_path,
@@ -181,146 +183,136 @@ class ModScanner:
         cancel_callback: CancelCallback | None,
     ) -> list[Path]:
         """
-        Findet direkte und verschachtelte Mods.
+        Findet nur tatsächliche Mod-Roots.
 
-        Unterstützte Beispiele:
+        Direkte INI-/Metadaten-Dateien gelten als sicherer Mod-Marker.
+        Liegt die INI tiefer in einer Struktur wie
 
-        Bibliothek/Mod
-        Bibliothek/Charakter/Mod
-        Bibliothek/Charakter/Character Skin/Mod
+            Charakter / Character Skin / Mod / Body / mod.ini
+
+        wird der Pfad auf den logischen Mod-Root ``Mod`` hochgezogen.
+        Container wie ``Character Skin`` werden dadurch nicht mehr als
+        einzelner Mod erkannt und beim Aktivieren nicht komplett kopiert.
         """
-
-        found_mods: list[Path] = []
+        direct_marker_directories: list[Path] = []
 
         def scan_directory(
             directory: Path,
             depth: int,
         ) -> None:
-            self._check_cancelled(
-                cancel_callback
-            )
+            self._check_cancelled(cancel_callback)
 
-            if depth > MAX_SCAN_DEPTH:
+            if depth > MAX_SCAN_DEPTH + 3:
                 return
 
             try:
-                entries = list(
-                 os.scandir(directory)
-            )
-            except (
-                OSError,
-                PermissionError,
-            ):
+                entries = list(os.scandir(directory))
+            except (OSError, PermissionError):
                 return
 
-            directories: list[Path] = []
             has_direct_mod_marker = False
+            child_directories: list[Path] = []
 
             for entry in entries:
-                self._check_cancelled(
-                    cancel_callback
-                )
+                self._check_cancelled(cancel_callback)
 
                 if entry.name.startswith("."):
                     continue
 
                 try:
-                    if entry.is_file(
-                        follow_symlinks=False
-                    ):
+                    if entry.is_file(follow_symlinks=False):
                         lower_name = entry.name.casefold()
-
                         if (
                             lower_name.endswith(".ini")
                             or lower_name in MOD_MARKER_FILES
                         ):
                             has_direct_mod_marker = True
-
-                    elif entry.is_dir(
-                        follow_symlinks=True
-                    ):
-                        if (
-                            entry.name
-                            not in IGNORED_DIRECTORIES
-                        ):
-                            directories.append(
-                                Path(entry.path)
-                            )
-
+                    elif entry.is_dir(follow_symlinks=False):
+                        if entry.name not in IGNORED_DIRECTORIES:
+                            child_directories.append(Path(entry.path))
                 except OSError:
                     continue
 
-            # Ein Ordner mit einer direkten INI- oder Metadaten-Datei
-            # wird als eigentlicher Mod behandelt.
-            if depth >= 1 and has_direct_mod_marker:
-                found_mods.append(directory)
+            if has_direct_mod_marker:
+                direct_marker_directories.append(directory)
                 return
 
-            # Bei der Struktur Charakter / Typ / Mod ist die dritte
-            # Ebene der Mod-Ordner. Dort suchen wir zusätzlich in
-            # Unterordnern nach INI-Dateien.
-            if (
-                depth >= 3
-                and self._contains_mod_marker(
-                    directory,
-                    cancel_callback,
-                )
-            ):
-                found_mods.append(directory)
-                return
-
-            directories.sort(
+            child_directories.sort(
                 key=lambda path: path.name.casefold()
             )
-
-            for child_directory in directories:
+            for child_directory in child_directories:
                 scan_directory(
                     child_directory,
                     depth + 1,
                 )
 
         try:
-            root_directories = []
-
-            with os.scandir(root) as entries:
-                for entry in entries:
-                    self._check_cancelled(
-                        cancel_callback
-                    )
-
-                    if entry.name.startswith("."):
-                        continue
-
-                    try:
-                        if entry.is_dir(
-                            follow_symlinks=True
-                        ):
-                            root_directories.append(
-                                Path(entry.path)
-                            )
-                    except OSError:
-                        continue
-
+            root_directories = [
+                Path(entry.path)
+                for entry in os.scandir(root)
+                if (
+                    not entry.name.startswith(".")
+                    and entry.name not in IGNORED_DIRECTORIES
+                    and entry.is_dir(follow_symlinks=False)
+                )
+            ]
         except PermissionError as error:
             raise PermissionError(
                 f"Keine Leseberechtigung für: {root}"
             ) from error
+        except OSError:
+            root_directories = []
 
         root_directories.sort(
             key=lambda path: path.name.casefold()
         )
-
         for directory in root_directories:
-            scan_directory(
-                directory,
-                depth=1,
+            scan_directory(directory, depth=1)
+
+        found_mods: dict[str, Path] = {}
+        for marker_directory in direct_marker_directories:
+            logical_root = self._logical_mod_root(
+                library_root=root,
+                marker_directory=marker_directory,
             )
+            key = str(logical_root.resolve(strict=False)).casefold()
+            found_mods[key] = logical_root
 
-        found_mods.sort(
-            key=lambda path: str(path).casefold()
-        )
+        result = list(found_mods.values())
+        result.sort(key=lambda path: str(path).casefold())
+        return result
 
-        return found_mods    
+    @staticmethod
+    def _logical_mod_root(
+        *,
+        library_root: Path,
+        marker_directory: Path,
+    ) -> Path:
+        """
+        Hebt einen tiefen INI-Pfad auf den Mod-Root direkt unterhalb
+        eines bekannten Mod-Typ-Ordners an.
+        """
+        try:
+            relative = marker_directory.relative_to(library_root)
+        except ValueError:
+            return marker_directory
+
+        parts = relative.parts
+        if len(parts) < 2:
+            return marker_directory
+
+        known_type_keys = set(MOD_TYPE_ALIASES)
+        for index, part in enumerate(parts[:-1]):
+            if normalize_key(part) not in known_type_keys:
+                continue
+
+            mod_index = index + 1
+            if mod_index >= len(parts):
+                break
+
+            return library_root.joinpath(*parts[: mod_index + 1])
+
+        return marker_directory
     def _contains_mod_marker(
         self,
         directory: Path,

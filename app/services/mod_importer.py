@@ -292,35 +292,46 @@ class ModImporter:
         options: ImportOptions,
         cancel_callback: CancelCallback | None,
     ) -> ImportItemResult:
+        self._check_cancelled(cancel_callback)
+
+        try:
+            import_source = self._select_mod_source(
+                root=source,
+                display_name=source.name,
+                cancel_callback=cancel_callback,
+            )
+        except ModImportError as error:
+            return ImportItemResult(
+                source=source,
+                destination=None,
+                status=ImportStatus.FAILED,
+                message=str(error),
+            )
+
         destination = self._select_destination(
             target_root=target_root,
-            requested_name=source.name,
+            requested_name=import_source.name,
             conflict_policy=options.conflict_policy,
         )
-
         if destination is None:
             return ImportItemResult(
                 source=source,
                 destination=None,
                 status=ImportStatus.SKIPPED,
-                message=(
-                    "Ein gleichnamiger Mod existiert bereits."
-                ),
+                message="Ein gleichnamiger Mod existiert bereits.",
             )
 
         self._copy_tree_atomic(
-            source=source,
+            source=import_source,
             destination=destination,
             cancel_callback=cancel_callback,
         )
-
         return ImportItemResult(
             source=source,
             destination=destination,
             status=ImportStatus.IMPORTED,
             message="Mod-Ordner wurde importiert.",
         )
-
     def _import_archive(
         self,
         archive_path: Path,
@@ -496,46 +507,162 @@ class ModImporter:
         extraction_root: Path,
         archive_path: Path,
     ) -> tuple[Path, str]:
-        try:
-            entries = [
-                path
-                for path in extraction_root.iterdir()
-                if path.name not in {
-                    "__MACOSX",
-                    ".DS_Store",
-                }
-            ]
-        except OSError as error:
-            raise ModImportError(
-                "Der extrahierte Archivinhalt "
-                "konnte nicht gelesen werden.\n\n"
-                f"{error}"
-            ) from error
-
-        if not entries:
-            raise ModImportError(
-                "Das Archiv enthält keine importierbaren Dateien."
-            )
-
-        if (
-            len(entries) == 1
-            and entries[0].is_dir()
-            and not entries[0].is_symlink()
-        ):
-            return (
-                entries[0],
-                sanitize_path_segment(
-                    entries[0].name
-                ),
-            )
-
-        return (
-            extraction_root,
-            archive_name_without_suffix(
-                archive_path
-            ),
+        """
+        Wählt aus einem entpackten Archiv ausschließlich den eigentlichen
+        Mod-Ordner aus. README-Dateien, Screenshots und sonstige Dateien
+        neben dem Mod werden dadurch nicht mehr in die Library kopiert.
+        """
+        import_source = self._select_mod_source(
+            root=extraction_root,
+            display_name=archive_path.name,
+            cancel_callback=None,
         )
 
+        if import_source == extraction_root:
+            requested_name = archive_name_without_suffix(
+                archive_path
+            )
+        else:
+            requested_name = import_source.name
+
+        return (
+            import_source,
+            sanitize_path_segment(requested_name),
+        )
+
+    def _select_mod_source(
+        self,
+        *,
+        root: Path,
+        display_name: str,
+        cancel_callback: CancelCallback | None,
+    ) -> Path:
+        """Findet einen eindeutigen Mod-Ordner innerhalb von *root*."""
+        if not root.is_dir():
+            raise ModImportError(
+                f"Die Mod-Quelle ist kein Ordner: {root}"
+            )
+
+        if self._has_direct_mod_marker(root):
+            return root
+
+        candidates = self._find_mod_candidates(
+            root=root,
+            cancel_callback=cancel_callback,
+        )
+
+        if not candidates:
+            raise ModImportError(
+                "Es wurde kein gültiger Mod-Ordner mit einer INI- oder "
+                f"Metadaten-Datei gefunden: {display_name}"
+            )
+
+        if len(candidates) == 1:
+            return candidates[0]
+
+        common_parent = self._common_parent(candidates)
+        if common_parent is not None and common_parent != root:
+            # Mehrere INI-Unterordner können zu EINEM Mod gehören, z. B.
+            # ModName/Body/*.ini + ModName/Head/*.ini. In diesem Fall ist
+            # der gemeinsame Unterordner der tatsächliche Mod-Root.
+            return common_parent
+
+        names = ", ".join(
+            candidate.relative_to(root).as_posix()
+            for candidate in candidates[:8]
+        )
+        if len(candidates) > 8:
+            names += ", ..."
+
+        raise ModImportError(
+            "Die Quelle enthält mehrere voneinander getrennte Mod-Ordner. "
+            "Aus Sicherheitsgründen wird nicht der komplette Ordner "
+            "kopiert. Importiere die Mods einzeln.\n\n"
+            f"Gefunden: {names}"
+        )
+
+    def _find_mod_candidates(
+        self,
+        *,
+        root: Path,
+        cancel_callback: CancelCallback | None,
+        max_depth: int = 6,
+    ) -> list[Path]:
+        candidates: list[Path] = []
+        root_depth = len(root.parts)
+
+        def scan(directory: Path) -> None:
+            self._check_cancelled(cancel_callback)
+
+            depth = len(directory.parts) - root_depth
+            if depth > max_depth:
+                return
+
+            if directory != root and self._has_direct_mod_marker(directory):
+                candidates.append(directory)
+                return
+
+            try:
+                children = [
+                    child
+                    for child in directory.iterdir()
+                    if (
+                        child.is_dir()
+                        and not child.is_symlink()
+                        and not child.name.startswith(".")
+                        and child.name != "__MACOSX"
+                    )
+                ]
+            except OSError:
+                return
+
+            children.sort(key=lambda path: path.name.casefold())
+            for child in children:
+                scan(child)
+
+        scan(root)
+        return candidates
+
+    @staticmethod
+    def _has_direct_mod_marker(directory: Path) -> bool:
+        try:
+            for entry in directory.iterdir():
+                if not entry.is_file():
+                    continue
+
+                lower_name = entry.name.casefold()
+                if (
+                    lower_name.endswith(".ini")
+                    or lower_name in {
+                        "mod.json",
+                        "metadata.json",
+                        "character.txt",
+                        "characters.txt",
+                    }
+                ):
+                    return True
+        except OSError:
+            return False
+
+        return False
+
+    @staticmethod
+    def _common_parent(paths: list[Path]) -> Path | None:
+        if not paths:
+            return None
+
+        common_parts = list(paths[0].parts)
+        for path in paths[1:]:
+            new_length = 0
+            for left, right in zip(common_parts, path.parts):
+                if left != right:
+                    break
+                new_length += 1
+            common_parts = common_parts[:new_length]
+            if not common_parts:
+                return None
+
+        return Path(*common_parts)
     def _select_destination(
         self,
         target_root: Path,

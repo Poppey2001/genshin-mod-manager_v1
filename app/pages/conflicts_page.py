@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import (
-    Callable,
-)
-
+from collections.abc import Callable
 from pathlib import Path
 
-from shiboken6 import (
-    isValid,
-)
+from shiboken6 import isValid
 
 from PySide6.QtCore import (
     Qt,
@@ -52,9 +47,7 @@ from app.workers.mod_duplicate_worker import (
 # Conflict Card
 # ============================================================
 
-class ConflictCard(
-    QFrame
-):
+class ConflictCard(QFrame):
     adopt_requested = Signal(
         object
     )
@@ -86,6 +79,8 @@ class ConflictCard(
             parent
         )
 
+        # Jede Karte besitzt absichtlich ihr
+        # eigenes ConflictItem.
         self.conflict = conflict
 
         self._duplicate_result: (
@@ -112,9 +107,9 @@ class ConflictCard(
             conflict.kind.value,
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Labels
-        # ----------------------------------------------------
+        # ====================================================
 
         self.title_label = QLabel(
             conflict.title
@@ -138,29 +133,19 @@ class ConflictCard(
 
         self.duplicate_label = QLabel()
 
-        # ----------------------------------------------------
+        # ====================================================
         # Buttons
-        # ----------------------------------------------------
+        # ====================================================
 
-        self.check_button = (
-            QPushButton()
-        )
+        self.check_button = QPushButton()
 
-        self.copy_button = (
-            QPushButton()
-        )
+        self.copy_button = QPushButton()
 
-        self.open_button = (
-            QPushButton()
-        )
+        self.open_button = QPushButton()
 
-        self.adopt_button = (
-            QPushButton()
-        )
+        self.adopt_button = QPushButton()
 
-        self.delete_button = (
-            QPushButton()
-        )
+        self.delete_button = QPushButton()
 
         self._build_ui()
 
@@ -188,9 +173,9 @@ class ConflictCard(
             9
         )
 
-        # ----------------------------------------------------
-        # Top
-        # ----------------------------------------------------
+        # ====================================================
+        # Header
+        # ====================================================
 
         top = QHBoxLayout()
 
@@ -215,9 +200,9 @@ class ConflictCard(
             top
         )
 
-        # ----------------------------------------------------
-        # Message
-        # ----------------------------------------------------
+        # ====================================================
+        # Description
+        # ====================================================
 
         self.message_label.setObjectName(
             "conflictMessage"
@@ -231,9 +216,9 @@ class ConflictCard(
             self.message_label
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Path
-        # ----------------------------------------------------
+        # ====================================================
 
         self.path_label.setObjectName(
             "conflictPath"
@@ -252,9 +237,9 @@ class ConflictCard(
             self.path_label
         )
 
-        # ----------------------------------------------------
-        # Hash information
-        # ----------------------------------------------------
+        # ====================================================
+        # Hash
+        # ====================================================
 
         self.hash_status_label.setObjectName(
             "conflictHashStatus"
@@ -311,9 +296,9 @@ class ConflictCard(
             self.duplicate_label
         )
 
-        # ----------------------------------------------------
-        # Buttons
-        # ----------------------------------------------------
+        # ====================================================
+        # Actions
+        # ====================================================
 
         actions = QHBoxLayout()
 
@@ -375,9 +360,9 @@ class ConflictCard(
             actions
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Connections
-        # ----------------------------------------------------
+        # ====================================================
 
         self.check_button.clicked.connect(
             self._request_duplicate_check
@@ -400,7 +385,7 @@ class ConflictCard(
         )
 
     # ========================================================
-    # Signals
+    # Requests
     # ========================================================
 
     def _request_duplicate_check(
@@ -415,6 +400,7 @@ class ConflictCard(
         self,
         _checked: bool = False,
     ) -> None:
+        # Immer exakt das ConflictItem DIESER Karte.
         self.copy_to_library_requested.emit(
             self.conflict
         )
@@ -439,10 +425,7 @@ class ConflictCard(
         self,
         _checked: bool = False,
     ) -> None:
-        if (
-            self._duplicate_result
-            is None
-        ):
+        if self._duplicate_result is None:
             return
 
         self.delete_duplicate_requested.emit(
@@ -451,7 +434,7 @@ class ConflictCard(
         )
 
     # ========================================================
-    # Hash UI
+    # Duplicate UI
     # ========================================================
 
     def set_checking(
@@ -461,9 +444,7 @@ class ConflictCard(
             "checking"
         )
 
-        self._duplicate_result = (
-            None
-        )
+        self._duplicate_result = None
 
         self.check_button.setEnabled(
             False
@@ -500,16 +481,12 @@ class ConflictCard(
         self,
         result: DuplicateCheckResult,
     ) -> None:
-        self._duplicate_result = (
-            result
-        )
+        self._duplicate_result = result
 
         self._hash_state = (
-            (
-                "duplicate"
-                if result.is_duplicate
-                else "unique"
-            )
+            "duplicate"
+            if result.is_duplicate
+            else "unique"
         )
 
         self.check_button.setEnabled(
@@ -526,9 +503,7 @@ class ConflictCard(
         self,
         message: str,
     ) -> None:
-        self._duplicate_result = (
-            None
-        )
+        self._duplicate_result = None
 
         self._hash_state = (
             "error"
@@ -561,10 +536,6 @@ class ConflictCard(
         *,
         preserve_error: bool = False,
     ) -> None:
-        # ----------------------------------------------------
-        # Type
-        # ----------------------------------------------------
-
         type_key = {
             ConflictKind.LIBRARY: (
                 "conflicts.type.library"
@@ -588,13 +559,6 @@ class ConflictCard(
             )
         )
 
-        # ----------------------------------------------------
-        # Message
-        #
-        # Wir zeigen nicht mehr den deutschen
-        # hardcoded Scanner-Text an.
-        # ----------------------------------------------------
-
         message_key = {
             ConflictKind.LIBRARY: (
                 "conflicts.message.library"
@@ -617,10 +581,6 @@ class ConflictCard(
                 message_key
             )
         )
-
-        # ----------------------------------------------------
-        # Buttons
-        # ----------------------------------------------------
 
         self.check_button.setText(
             tr(
@@ -651,10 +611,6 @@ class ConflictCard(
                 "conflicts.action.delete_duplicate"
             )
         )
-
-        # ----------------------------------------------------
-        # Hash State
-        # ----------------------------------------------------
 
         if (
             self._hash_state
@@ -736,8 +692,7 @@ class ConflictCard(
                     tr(
                         "conflicts.hash.duplicate_path",
                         path=(
-                            result
-                            .duplicate_path
+                            result.duplicate_path
                         ),
                     )
                 )
@@ -762,17 +717,14 @@ class ConflictCard(
             )
 
             if not preserve_error:
-                # Technische Fehlermeldung behalten.
                 pass
 
 
 # ============================================================
-# Page
+# Conflicts Page
 # ============================================================
 
-class ConflictsPage(
-    QWidget
-):
+class ConflictsPage(QWidget):
     refresh_requested = Signal()
 
     rescan_requested = Signal()
@@ -794,10 +746,7 @@ class ConflictsPage(
         *,
         library_paths_provider: Callable[
             [],
-            tuple[
-                Path,
-                ...,
-            ],
+            tuple[Path, ...],
         ],
         game_id_provider: Callable[
             [],
@@ -850,9 +799,9 @@ class ConflictsPage(
             ModDuplicateService()
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Widgets
-        # ----------------------------------------------------
+        # ====================================================
 
         self.title_label = QLabel()
 
@@ -860,15 +809,11 @@ class ConflictsPage(
 
         self.count_label = QLabel()
 
-        self.refresh_button = (
-            QPushButton()
-        )
+        self.refresh_button = QPushButton()
 
         self.empty_label = QLabel()
 
-        self.scroll_area = (
-            QScrollArea()
-        )
+        self.scroll_area = QScrollArea()
 
         self.content = QWidget()
 
@@ -911,10 +856,6 @@ class ConflictsPage(
         layout.setSpacing(
             16
         )
-
-        # ----------------------------------------------------
-        # Header
-        # ----------------------------------------------------
 
         header = QHBoxLayout()
 
@@ -975,9 +916,9 @@ class ConflictsPage(
             header
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Empty
-        # ----------------------------------------------------
+        # ====================================================
 
         self.empty_label.setObjectName(
             "conflictsEmpty"
@@ -996,9 +937,9 @@ class ConflictsPage(
             stretch=1,
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Scroll
-        # ----------------------------------------------------
+        # ====================================================
 
         self.content_layout.setContentsMargins(
             0,
@@ -1048,9 +989,7 @@ class ConflictsPage(
 
         self._clear_cards()
 
-        for conflict in (
-            report.items
-        ):
+        for conflict in report.items:
             card = ConflictCard(
                 conflict=conflict,
                 parent=self.content,
@@ -1138,9 +1077,7 @@ class ConflictsPage(
 
         if (
             card is None
-            or not isValid(
-                card
-            )
+            or not isValid(card)
         ):
             return
 
@@ -1159,21 +1096,15 @@ class ConflictsPage(
 
         card.set_checking()
 
-        worker = (
-            ModDuplicateWorker(
-                source=path,
-                library_paths=(
-                    tuple(
-                        self.library_paths_provider()
-                    )
-                ),
-                game_id=(
-                    self.game_id_provider()
-                ),
-                service=(
-                    self.duplicate_service
-                ),
-            )
+        worker = ModDuplicateWorker(
+            source=path,
+            library_paths=tuple(
+                self.library_paths_provider()
+            ),
+            game_id=(
+                self.game_id_provider()
+            ),
+            service=self.duplicate_service,
         )
 
         worker.signals.progress.connect(
@@ -1203,8 +1134,10 @@ class ConflictsPage(
         total: int,
         name: str,
     ) -> None:
-        card = self._card_for_source(
-            source_key
+        card = (
+            self._card_for_source(
+                source_key
+            )
         )
 
         if card is None:
@@ -1225,11 +1158,13 @@ class ConflictsPage(
             worker
         )
 
-        card = self._card_for_source(
-            str(
-                result.source
-                .expanduser()
-                .absolute()
+        card = (
+            self._card_for_source(
+                str(
+                    result.source
+                    .expanduser()
+                    .absolute()
+                )
             )
         )
 
@@ -1250,8 +1185,10 @@ class ConflictsPage(
             worker
         )
 
-        card = self._card_for_source(
-            source_key
+        card = (
+            self._card_for_source(
+                source_key
+            )
         )
 
         if card is None:
@@ -1273,9 +1210,7 @@ class ConflictsPage(
             .absolute()
         )
 
-        for card in (
-            self._cards
-        ):
+        for card in self._cards:
             if not isValid(
                 card
             ):
@@ -1323,12 +1258,8 @@ class ConflictsPage(
             ),
             tr(
                 "conflicts.delete.message",
-                source=(
-                    result.source
-                ),
-                library=(
-                    duplicate_path
-                ),
+                source=result.source,
+                library=duplicate_path,
             ),
             (
                 QMessageBox.StandardButton.Yes
@@ -1359,9 +1290,7 @@ class ConflictsPage(
                 ),
                 tr(
                     "conflicts.delete.failed.message",
-                    error=(
-                        error
-                    ),
+                    error=error,
                 ),
             )
 
@@ -1414,15 +1343,11 @@ class ConflictsPage(
         self.count_label.setText(
             tr(
                 "conflicts.count",
-                count=(
-                    self._report.count
-                ),
+                count=self._report.count,
             )
         )
 
-        for card in (
-            self._cards
-        ):
+        for card in self._cards:
             if isValid(
                 card
             ):
