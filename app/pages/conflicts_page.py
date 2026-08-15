@@ -762,6 +762,10 @@ class ConflictsPage(QWidget):
             parent
         )
 
+        self.setObjectName(
+            "conflictsPage"
+        )
+
         self.library_paths_provider = (
             library_paths_provider
         )
@@ -814,8 +818,14 @@ class ConflictsPage(QWidget):
         self.empty_label = QLabel()
 
         self.scroll_area = QScrollArea()
+        self.scroll_area.setObjectName(
+            "conflictsScroll"
+        )
 
         self.content = QWidget()
+        self.content.setObjectName(
+            "conflictsContent"
+        )
 
         self.content_layout = (
             QVBoxLayout(
@@ -824,6 +834,7 @@ class ConflictsPage(QWidget):
         )
 
         self._build_ui()
+        self._apply_stylesheet()
 
         translation_manager.language_changed.connect(
             self.retranslate_ui
@@ -833,6 +844,36 @@ class ConflictsPage(QWidget):
 
         self.set_report(
             ConflictReport()
+        )
+
+    # ========================================================
+    # Style
+    # ========================================================
+
+    def _apply_stylesheet(
+        self,
+    ) -> None:
+        # ConflictsPage is a sibling of LibraryPage.  The QSS was
+        # previously applied only to LibraryPage, which means the
+        # conflict page fell back to the native light Qt palette on
+        # Windows.  Load the same shared Library/Conflict QSS here.
+        style_path = (
+            Path(__file__)
+            .resolve()
+            .parents[1]
+            / "styles"
+            / "library.qss"
+        )
+
+        try:
+            stylesheet = style_path.read_text(
+                encoding="utf-8"
+            )
+        except OSError:
+            return
+
+        self.setStyleSheet(
+            stylesheet
         )
 
     # ========================================================

@@ -892,6 +892,7 @@ QToolTip {
     border-radius: 6px;
 
     padding: 6px;
+}
 /* ============================================================
    LIBRARY VIEW SWITCHER
    ============================================================ */
@@ -1217,4 +1218,262 @@ QPushButton#dangerButton:hover {
     background-color: #612832;
     border-color: #9a4653;
 }
+
+/* GMM UI OVERHAUL V1 */
+
+/* ============================================================
+   LIBRARY PAGE / WORKSPACE
+   ============================================================ */
+
+QWidget#libraryPage {
+    background-color: #101319;
+    color: #e7e9ef;
+}
+
+QFrame#libraryHeader {
+    background-color: transparent;
+    border: none;
+}
+
+QLabel#pageTitle {
+    color: #ffffff;
+    font-size: 27px;
+    font-weight: 800;
+}
+
+QLabel#pageDescription {
+    color: #89919f;
+    font-size: 13px;
+}
+
+QFrame[statCard="true"] {
+    min-height: 82px;
+    max-height: 94px;
+    background-color: #181c23;
+    border: 1px solid #292f39;
+    border-radius: 12px;
+}
+
+QFrame[statCard="true"]:hover {
+    background-color: #1c2129;
+    border-color: #363e4a;
+}
+
+QLabel#statValue {
+    font-size: 24px;
+}
+
+QFrame#filterCard {
+    background-color: #171b22;
+    border: 1px solid #292f39;
+    border-radius: 12px;
+}
+
+QLabel#libraryPath {
+    background-color: #11151a;
+    border: 1px solid #292f39;
+    border-radius: 8px;
+}
+
+QLineEdit#searchInput,
+QComboBox#filterCombo {
+    background-color: #11151a;
+    border-color: #2c333e;
+}
+
+QLineEdit#searchInput:focus,
+QComboBox#filterCombo:focus {
+    border-color: #8067ff;
+}
+
+QFrame#libraryWorkspace {
+    background-color: #151920;
+    border: 1px solid #292f39;
+    border-radius: 14px;
+}
+
+QFrame#libraryViewToolbar {
+    background-color: #181c23;
+    border: none;
+    border-bottom: 1px solid #292f39;
+    border-top-left-radius: 13px;
+    border-top-right-radius: 13px;
+}
+
+QLabel#libraryViewTitle {
+    color: #aeb5c2;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+QFrame#libraryViewModeFrame {
+    background-color: #101319;
+    border: 1px solid #2a303a;
+    border-radius: 9px;
+}
+
+QPushButton#libraryViewButton {
+    min-height: 31px;
+    padding-left: 13px;
+    padding-right: 13px;
+    background-color: transparent;
+    color: #8f98a7;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    font-weight: 700;
+}
+
+QPushButton#libraryViewButton:hover {
+    background-color: #232932;
+    color: #f4f5f7;
+}
+
+QPushButton#libraryViewButton:checked {
+    background-color: #372c66;
+    color: #ffffff;
+    border-color: #58499a;
+}
+
+QFrame#listPanel {
+    background-color: #151920;
+    border: none;
+    border-right: 1px solid #292f39;
+    border-radius: 0px;
+}
+
+QFrame#detailsPanel {
+    background-color: #161a21;
+    border: none;
+    border-radius: 0px;
+}
+
+QSplitter#librarySplitter {
+    background-color: transparent;
+    border: none;
+}
+
+QSplitter#librarySplitter::handle {
+    background-color: #101319;
+    width: 8px;
+}
+
+QSplitter#librarySplitter::handle:hover {
+    background-color: #30275b;
+}
+
+QTableWidget#modTable {
+    background-color: #14181f;
+    alternate-background-color: #171c23;
+    border: none;
+    border-radius: 0px;
+}
+
+QTableWidget#modTable::item {
+    min-height: 38px;
+    padding: 9px 10px;
+    border-bottom: 1px solid #252b34;
+}
+
+QHeaderView::section {
+    background-color: #1b2028;
+    color: #aeb5c2;
+    border: none;
+    border-bottom: 1px solid #2c333d;
+    padding: 9px 10px;
+    font-weight: 800;
+}
+
+QWidget#libraryGallery {
+    background-color: #151920;
+}
+
+QScrollArea#libraryGalleryScroll,
+QWidget#libraryGalleryContent {
+    background-color: #151920;
+    border: none;
+}
+
+QFrame#libraryModCard {
+    background-color: #1a1f27;
+    border: 1px solid #2c333e;
+    border-radius: 14px;
+}
+
+QFrame#libraryModCard:hover {
+    background-color: #20262f;
+    border-color: #6252ad;
+}
+
+QFrame#libraryModCard[modState="enabled"] {
+    border-color: #347957;
+}
+
+QFrame#libraryModCard[modState="conflict"] {
+    border-color: #9b6d24;
+}
+
+/* ============================================================
+   CONFLICT PAGE - WINDOWS SAFE
+   ============================================================ */
+
+QWidget#conflictsPage {
+    background-color: #101319;
+    color: #e7e9ef;
+}
+
+QWidget#conflictsPage QLabel {
+    background-color: transparent;
+    color: #e7e9ef;
+}
+
+QScrollArea#conflictsScroll {
+    background-color: #101319;
+    border: none;
+}
+
+QScrollArea#conflictsScroll > QWidget,
+QScrollArea#conflictsScroll > QWidget > QWidget {
+    background-color: #101319;
+}
+
+QWidget#conflictsContent {
+    background-color: #101319;
+}
+
+QFrame#conflictCard {
+    background-color: #181c23;
+    border: 1px solid #49391e;
+    border-left: 3px solid #d89b38;
+    border-radius: 11px;
+}
+
+QFrame#conflictCard:hover {
+    background-color: #1e232b;
+}
+
+QLabel#conflictTitle {
+    color: #f5f6f8;
+}
+
+QLabel#conflictMessage {
+    color: #b0b6c1;
+}
+
+QLabel#conflictPath {
+    color: #929baa;
+    background-color: #11151a;
+    border: 1px solid #2b323b;
+}
+
+QLabel#conflictHashStatus {
+    color: #c0c6d1;
+}
+
+QLabel#conflictHash {
+    color: #929baa;
+    background-color: #11151a;
+}
+
+QLabel#conflictDuplicate {
+    color: #6fd69a;
 }

@@ -436,17 +436,23 @@ class LibraryPage(QWidget):
     def _build_ui(
         self,
     ) -> None:
-        layout = QVBoxLayout(self)
+        self.setObjectName(
+            "libraryPage"
+        )
+
+        layout = QVBoxLayout(
+            self
+        )
 
         layout.setContentsMargins(
-            28,
-            24,
-            28,
-            24,
+            22,
+            20,
+            22,
+            16,
         )
 
         layout.setSpacing(
-            16
+            14
         )
 
         layout.addWidget(
@@ -461,7 +467,30 @@ class LibraryPage(QWidget):
             self.filter_bar
         )
 
-        layout.addWidget(
+        workspace = QFrame(
+            self
+        )
+
+        workspace.setObjectName(
+            "libraryWorkspace"
+        )
+
+        workspace_layout = QVBoxLayout(
+            workspace
+        )
+
+        workspace_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+
+        workspace_layout.setSpacing(
+            0
+        )
+
+        workspace_layout.addWidget(
             self._create_view_toolbar()
         )
 
@@ -473,8 +502,13 @@ class LibraryPage(QWidget):
             self.gallery_widget
         )
 
-        layout.addWidget(
+        workspace_layout.addWidget(
             self.content_stack,
+            stretch=1,
+        )
+
+        layout.addWidget(
+            workspace,
             stretch=1,
         )
 
@@ -487,23 +521,31 @@ class LibraryPage(QWidget):
     def _create_view_toolbar(
         self,
     ) -> QWidget:
-        frame = QFrame()
+        frame = QFrame(
+            self
+        )
 
         frame.setObjectName(
             "libraryViewToolbar"
         )
 
-        layout = QHBoxLayout(frame)
+        layout = QHBoxLayout(
+            frame
+        )
 
         layout.setContentsMargins(
+            14,
             10,
-            6,
+            14,
             10,
-            6,
         )
 
         layout.setSpacing(
-            6
+            8
+        )
+
+        self.view_title_label.setObjectName(
+            "libraryViewTitle"
         )
 
         layout.addWidget(
@@ -514,12 +556,47 @@ class LibraryPage(QWidget):
             1
         )
 
-        layout.addWidget(
+        mode_frame = QFrame(
+            frame
+        )
+
+        mode_frame.setObjectName(
+            "libraryViewModeFrame"
+        )
+
+        mode_layout = QHBoxLayout(
+            mode_frame
+        )
+
+        mode_layout.setContentsMargins(
+            3,
+            3,
+            3,
+            3,
+        )
+
+        mode_layout.setSpacing(
+            2
+        )
+
+        self.list_view_button.setMinimumWidth(
+            112
+        )
+
+        self.gallery_view_button.setMinimumWidth(
+            112
+        )
+
+        mode_layout.addWidget(
             self.list_view_button
         )
 
-        layout.addWidget(
+        mode_layout.addWidget(
             self.gallery_view_button
+        )
+
+        layout.addWidget(
+            mode_frame
         )
 
         return frame
@@ -539,6 +616,10 @@ class LibraryPage(QWidget):
             False
         )
 
+        splitter.setHandleWidth(
+            8
+        )
+
         splitter.addWidget(
             self.mod_list_widget
         )
@@ -549,26 +630,22 @@ class LibraryPage(QWidget):
 
         splitter.setStretchFactor(
             0,
-            4,
+            5,
         )
 
         splitter.setStretchFactor(
             1,
-            1,
+            2,
         )
 
         splitter.setSizes(
             [
-                980,
+                1080,
                 420,
             ]
         )
 
         return splitter
-
-    # ========================================================
-    # Signals
-    # ========================================================
 
     def _connect_signals(
         self,
@@ -728,13 +805,15 @@ class LibraryPage(QWidget):
         )
 
         self.list_view_button.setText(
-            tr(
+            "☷  "
+            + tr(
                 "library.view.list"
             )
         )
 
         self.gallery_view_button.setText(
-            tr(
+            "▦  "
+            + tr(
                 "library.view.gallery"
             )
         )

@@ -72,6 +72,10 @@ class SettingsPage(QWidget):
     ) -> None:
         super().__init__()
 
+        self.setObjectName(
+            "settingsPage"
+        )
+
         self.config = config
 
         # --------------------------------------------------
@@ -1601,6 +1605,33 @@ class SettingsPage(QWidget):
     ) -> None:
         self.setStyleSheet(
             """
+
+            QWidget#settingsPage {
+                background-color: #16191f;
+                color: #e7e9ef;
+            }
+
+            QWidget#settingsPage QLabel {
+                color: #e7e9ef;
+                background-color: transparent;
+            }
+
+            QWidget#settingsPage QRadioButton {
+                color: #e7e9ef;
+                background-color: transparent;
+            }
+
+            QLabel#pageTitle {
+                color: #ffffff;
+                font-size: 26px;
+                font-weight: 800;
+            }
+
+            QLabel#pageDescription {
+                color: #8f96a3;
+                font-size: 13px;
+            }
+
             QGroupBox {
                 background-color: #20232a;
                 border: 1px solid #30343d;
@@ -1707,6 +1738,11 @@ class SettingsPage(QWidget):
             QScrollArea#settingsScrollArea {
                 background-color: #16181d;
                 border: none;
+            }
+
+            QScrollArea#settingsScrollArea > QWidget,
+            QScrollArea#settingsScrollArea > QWidget > QWidget {
+                background-color: #16181d;
             }
 
             QWidget#settingsScrollContent {

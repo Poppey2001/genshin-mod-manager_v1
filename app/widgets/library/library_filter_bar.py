@@ -107,14 +107,14 @@ class LibraryFilterBar(QFrame):
             True
         )
         self.search_input.setMinimumWidth(
-            290
+            240
         )
 
         self.character_filter.setObjectName(
             "filterCombo"
         )
         self.character_filter.setMinimumWidth(
-            170
+            150
         )
         self.character_filter.addItem(
             tr("library.filter.all_characters"),
@@ -129,7 +129,7 @@ class LibraryFilterBar(QFrame):
             "filterCombo"
         )
         self.mod_type_filter.setMinimumWidth(
-            160
+            145
         )
         self.mod_type_filter.addItem(
             tr("library.filter.all_mod_types"),
@@ -141,7 +141,7 @@ class LibraryFilterBar(QFrame):
         )
 
         self.status_filter.setMinimumWidth(
-            150
+            140
         )
 
         self.status_filter.addItem(
