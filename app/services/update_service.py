@@ -4,18 +4,26 @@ import json
 import logging
 import platform
 
-from dataclasses import dataclass
+from dataclasses import (
+    dataclass,
+)
 
-from enum import Enum
+from enum import (
+    Enum,
+)
 
-from typing import Any
+from typing import (
+    Any,
+)
 
 from urllib.error import (
     HTTPError,
     URLError,
 )
 
-from urllib.parse import urlencode
+from urllib.parse import (
+    urlencode,
+)
 
 from urllib.request import (
     Request,
@@ -28,10 +36,11 @@ from packaging.version import (
 )
 
 from app.update_config import (
-    APPIMAGE_ARCHITECTURE,
+    APPIMAGE_ARCHITECTURE_ALIASES,
     APPIMAGE_SUFFIX,
     GITHUB_API_VERSION,
     UPDATE_CHECK_TIMEOUT,
+    github_token,
 )
 
 
@@ -45,11 +54,19 @@ GITHUB_API_BASE_URL = (
 )
 
 
+# ============================================================
+# Exceptions
+# ============================================================
+
 class UpdateServiceError(
     RuntimeError
 ):
     pass
 
+
+# ============================================================
+# Channel
+# ============================================================
 
 class UpdateChannel(
     str,
@@ -59,18 +76,63 @@ class UpdateChannel(
     PRERELEASE = "prerelease"
 
 
+# ============================================================
+# Release Asset
+# ============================================================
+
 @dataclass(
     frozen=True,
     slots=True,
 )
 class ReleaseAsset:
     name: str
+
     download_url: str
+
     size: int
 
-    content_type: str | None = None
-    digest: str | None = None
+    content_type: (
+        str
+        | None
+    ) = None
 
+    digest: (
+        str
+        | None
+    ) = None
+
+    @property
+    def sha256(
+        self,
+    ) -> str | None:
+        digest = (
+            self.digest
+            or ""
+        ).strip()
+
+        algorithm, separator, value = (
+            digest.partition(
+                ":"
+            )
+        )
+
+        if (
+            separator != ":"
+            or algorithm.casefold()
+            != "sha256"
+            or not value
+        ):
+            return None
+
+        return (
+            value.strip()
+            .casefold()
+        )
+
+
+# ============================================================
+# Update Info
+# ============================================================
 
 @dataclass(
     frozen=True,
@@ -89,7 +151,10 @@ class UpdateInfo:
 
     release_url: str
 
-    published_at: str | None
+    published_at: (
+        str
+        | None
+    )
 
     prerelease: bool
 
@@ -103,9 +168,15 @@ class UpdateInfo:
     ) -> ReleaseAsset | None:
         candidates = [
             asset
-            for asset in self.assets
-            if asset.name.casefold().endswith(
-                APPIMAGE_SUFFIX.casefold()
+            for asset
+            in self.assets
+            if (
+                asset.name
+                .casefold()
+                .endswith(
+                    APPIMAGE_SUFFIX
+                    .casefold()
+                )
             )
         ]
 
@@ -118,53 +189,59 @@ class UpdateInfo:
             .casefold()
         )
 
-        architecture_names = {
-            "x86_64": {
-                "x86_64",
-                "amd64",
-            },
-            "amd64": {
-                "x86_64",
-                "amd64",
-            },
-            "aarch64": {
-                "aarch64",
-                "arm64",
-            },
-            "arm64": {
-                "aarch64",
-                "arm64",
-            },
+        aliases = {
+            value.casefold()
+            for value
+            in APPIMAGE_ARCHITECTURE_ALIASES
         }
 
-        expected_names = (
-            architecture_names.get(
-                machine,
+        # ----------------------------------------------------
+        # Systemarchitektur zusätzlich berücksichtigen
+        # ----------------------------------------------------
+
+        if machine in {
+            "x86_64",
+            "amd64",
+        }:
+            aliases.update(
                 {
-                    APPIMAGE_ARCHITECTURE
-                    .casefold()
-                },
+                    "x86_64",
+                    "amd64",
+                }
             )
-        )
 
         for asset in candidates:
             name = (
-                asset.name.casefold()
+                asset.name
+                .casefold()
             )
 
             if any(
-                architecture
+                alias
                 in name
-                for architecture
-                in expected_names
+                for alias
+                in aliases
             ):
                 return asset
 
-        if len(candidates) == 1:
-            return candidates[0]
+        # ----------------------------------------------------
+        # Nur ein AppImage vorhanden:
+        # dann dieses verwenden.
+        # ----------------------------------------------------
+
+        if len(
+            candidates
+        ) == 1:
+            return candidates[
+                0
+            ]
 
         return None
 
+
+# ============================================================
+# Service
+# ============================================================
 
 class UpdateService:
     def __init__(
@@ -178,7 +255,9 @@ class UpdateService:
             UPDATE_CHECK_TIMEOUT
         ),
     ) -> None:
-        self.owner = owner.strip()
+        self.owner = (
+            owner.strip()
+        )
 
         self.repository = (
             repository.strip()
@@ -195,14 +274,16 @@ class UpdateService:
             )
 
         try:
-            self.current_version = Version(
-                current_version
+            self.current_version = (
+                Version(
+                    current_version
+                )
             )
 
         except InvalidVersion as error:
             raise ValueError(
                 (
-                    "Ungültige aktuelle "
+                    "Ungültige lokale "
                     f"Version: {current_version}"
                 )
             ) from error
@@ -210,9 +291,15 @@ class UpdateService:
         self.channel = channel
 
         self.timeout = max(
-            float(timeout),
             1.0,
+            float(
+                timeout
+            ),
         )
+
+    # ========================================================
+    # Public
+    # ========================================================
 
     def check_for_update(
         self,
@@ -221,19 +308,23 @@ class UpdateService:
             self._fetch_releases()
         )
 
-        candidates: list[
+        available: list[
             UpdateInfo
         ] = []
 
-        for release in releases:
+        for raw_release in releases:
             update = (
                 self._parse_release(
-                    release
+                    raw_release
                 )
             )
 
             if update is None:
                 continue
+
+            # ------------------------------------------------
+            # Nicht neuer
+            # ------------------------------------------------
 
             if (
                 update.version
@@ -241,24 +332,34 @@ class UpdateService:
             ):
                 continue
 
-            if not self._channel_allows(
-                update
+            # ------------------------------------------------
+            # Kanal
+            # ------------------------------------------------
+
+            if not (
+                self._channel_allows(
+                    update
+                )
             ):
                 continue
 
-            candidates.append(
+            available.append(
                 update
             )
 
-        if not candidates:
+        if not available:
             return None
 
         return max(
-            candidates,
-            key=lambda update: (
-                update.version
+            available,
+            key=lambda item: (
+                item.version
             ),
         )
+
+    # ========================================================
+    # Channel
+    # ========================================================
 
     def _channel_allows(
         self,
@@ -284,6 +385,178 @@ class UpdateService:
 
         return False
 
+    # ========================================================
+    # GitHub
+    # ========================================================
+
+    def _fetch_releases(
+        self,
+    ) -> list[
+        dict[
+            str,
+            Any,
+        ]
+    ]:
+        query = urlencode(
+            {
+                "per_page": 100,
+                "page": 1,
+            }
+        )
+
+        url = (
+            f"{GITHUB_API_BASE_URL}"
+            f"/repos/{self.owner}"
+            f"/{self.repository}"
+            f"/releases"
+            f"?{query}"
+        )
+
+        request = Request(
+            url,
+            headers=(
+                self._github_headers()
+            ),
+            method="GET",
+        )
+
+        try:
+            with urlopen(
+                request,
+                timeout=(
+                    self.timeout
+                ),
+            ) as response:
+                raw = response.read()
+
+        except HTTPError as error:
+            if error.code == 404:
+                raise UpdateServiceError(
+                    (
+                        "GitHub Repository wurde "
+                        "nicht gefunden. Prüfe "
+                        "GITHUB_OWNER und "
+                        "GITHUB_REPOSITORY."
+                    )
+                ) from error
+
+            if error.code == 403:
+                raise UpdateServiceError(
+                    (
+                        "GitHub hat die Anfrage "
+                        "abgelehnt oder das "
+                        "API-Limit wurde erreicht."
+                    )
+                ) from error
+
+            raise UpdateServiceError(
+                (
+                    "GitHub API HTTP "
+                    f"{error.code}."
+                )
+            ) from error
+
+        except URLError as error:
+            reason = getattr(
+                error,
+                "reason",
+                error,
+            )
+
+            raise UpdateServiceError(
+                (
+                    "GitHub konnte nicht "
+                    "erreicht werden: "
+                    f"{reason}"
+                )
+            ) from error
+
+        except TimeoutError as error:
+            raise UpdateServiceError(
+                (
+                    "Zeitüberschreitung bei "
+                    "der Update-Prüfung."
+                )
+            ) from error
+
+        try:
+            data = json.loads(
+                raw.decode(
+                    "utf-8"
+                )
+            )
+
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ) as error:
+            raise UpdateServiceError(
+                (
+                    "GitHub hat keine gültige "
+                    "JSON-Antwort geliefert."
+                )
+            ) from error
+
+        if not isinstance(
+            data,
+            list,
+        ):
+            raise UpdateServiceError(
+                (
+                    "Unerwartetes "
+                    "GitHub-Antwortformat."
+                )
+            )
+
+        return [
+            item
+            for item
+            in data
+            if isinstance(
+                item,
+                dict,
+            )
+        ]
+
+    # ========================================================
+    # Header
+    # ========================================================
+
+    @staticmethod
+    def _github_headers(
+    ) -> dict[
+        str,
+        str,
+    ]:
+        headers = {
+            "Accept": (
+                "application/vnd.github+json"
+            ),
+            "X-GitHub-Api-Version": (
+                GITHUB_API_VERSION
+            ),
+            "User-Agent": (
+                "XXMI-Mod-Manager-Updater"
+            ),
+        }
+
+        token = (
+            github_token()
+        )
+
+        if token:
+            headers[
+                "Authorization"
+            ] = (
+                f"Bearer {token}"
+            )
+
+        return headers
+
+    # ========================================================
+    # Release Parsing
+    # ========================================================
+
     def _parse_release(
         self,
         release: dict[
@@ -299,49 +572,47 @@ class UpdateService:
         ):
             return None
 
-        tag_name = release.get(
+        tag = release.get(
             "tag_name"
         )
 
         if not isinstance(
-            tag_name,
+            tag,
             str,
         ):
             return None
 
-        tag_name = (
-            tag_name.strip()
-        )
+        tag = tag.strip()
 
-        if not tag_name:
+        if not tag:
             return None
 
         version_text = (
             self._version_from_tag(
-                tag_name
+                tag
             )
         )
 
         try:
-            version = Version(
-                version_text
+            version = (
+                Version(
+                    version_text
+                )
             )
 
         except InvalidVersion:
             logger.warning(
                 (
-                    "Release mit ungültiger "
-                    "Version ignoriert: %s"
+                    "Ungültiger Release-Tag "
+                    "ignoriert: %s"
                 ),
-                tag_name,
+                tag,
             )
 
             return None
 
-        release_name = (
-            release.get(
-                "name"
-            )
+        release_name = release.get(
+            "name"
         )
 
         if not isinstance(
@@ -352,22 +623,18 @@ class UpdateService:
 
         release_name = (
             release_name.strip()
+            or tag
         )
 
-        if not release_name:
-            release_name = tag_name
-
-        release_notes = (
-            release.get(
-                "body"
-            )
+        notes = release.get(
+            "body"
         )
 
         if not isinstance(
-            release_notes,
+            notes,
             str,
         ):
-            release_notes = ""
+            notes = ""
 
         release_url = (
             release.get(
@@ -393,49 +660,63 @@ class UpdateService:
         ):
             published_at = None
 
-        assets = (
-            self._parse_assets(
-                release.get(
-                    "assets"
-                )
-            )
-        )
-
         return UpdateInfo(
             current_version=(
                 self.current_version
             ),
             version=version,
-            tag_name=tag_name,
-            release_name=release_name,
-            release_notes=release_notes,
-            release_url=release_url,
-            published_at=published_at,
+            tag_name=tag,
+            release_name=(
+                release_name
+            ),
+            release_notes=notes,
+            release_url=(
+                release_url
+            ),
+            published_at=(
+                published_at
+            ),
             prerelease=bool(
                 release.get(
                     "prerelease",
                     False,
                 )
             ),
-            assets=assets,
+            assets=(
+                self._parse_assets(
+                    release.get(
+                        "assets"
+                    )
+                )
+            ),
         )
 
     @staticmethod
     def _version_from_tag(
-        tag_name: str,
+        tag: str,
     ) -> str:
-        tag_name = (
-            tag_name.strip()
-        )
+        tag = tag.strip()
 
         if (
-            len(tag_name) > 1
-            and tag_name[0]
-            in {"v", "V"}
+            len(
+                tag
+            ) > 1
+            and tag[
+                0
+            ] in {
+                "v",
+                "V",
+            }
         ):
-            return tag_name[1:]
+            return tag[
+                1:
+            ]
 
-        return tag_name
+        return tag
+
+    # ========================================================
+    # Assets
+    # ========================================================
 
     @staticmethod
     def _parse_assets(
@@ -454,21 +735,19 @@ class UpdateService:
             ReleaseAsset
         ] = []
 
-        for raw_asset in raw_assets:
+        for item in raw_assets:
             if not isinstance(
-                raw_asset,
+                item,
                 dict,
             ):
                 continue
 
-            name = raw_asset.get(
+            name = item.get(
                 "name"
             )
 
-            download_url = (
-                raw_asset.get(
-                    "browser_download_url"
-                )
+            download_url = item.get(
+                "browser_download_url"
             )
 
             if not isinstance(
@@ -483,7 +762,7 @@ class UpdateService:
             ):
                 continue
 
-            size = raw_asset.get(
+            size = item.get(
                 "size",
                 0,
             )
@@ -494,10 +773,8 @@ class UpdateService:
             ):
                 size = 0
 
-            content_type = (
-                raw_asset.get(
-                    "content_type"
-                )
+            content_type = item.get(
+                "content_type"
             )
 
             if not isinstance(
@@ -506,7 +783,7 @@ class UpdateService:
             ):
                 content_type = None
 
-            digest = raw_asset.get(
+            digest = item.get(
                 "digest"
             )
 
@@ -534,115 +811,11 @@ class UpdateService:
             assets
         )
 
-    def _fetch_releases(
-        self,
-    ) -> list[
-        dict[str, Any]
-    ]:
-        query = urlencode(
-            {
-                "per_page": 100,
-                "page": 1,
-            }
-        )
 
-        url = (
-            f"{GITHUB_API_BASE_URL}"
-            f"/repos/{self.owner}"
-            f"/{self.repository}"
-            f"/releases"
-            f"?{query}"
-        )
-
-        request = Request(
-            url,
-            headers={
-                "Accept": (
-                    "application/vnd.github+json"
-                ),
-                "X-GitHub-Api-Version": (
-                    GITHUB_API_VERSION
-                ),
-                "User-Agent": (
-                    "Genshin-Mod-Manager-Updater"
-                ),
-            },
-            method="GET",
-        )
-
-        try:
-            with urlopen(
-                request,
-                timeout=self.timeout,
-            ) as response:
-                raw_data = (
-                    response.read()
-                )
-
-        except HTTPError as error:
-            raise UpdateServiceError(
-                (
-                    "GitHub API HTTP "
-                    f"{error.code}"
-                )
-            ) from error
-
-        except URLError as error:
-            reason = getattr(
-                error,
-                "reason",
-                error,
-            )
-
-            raise UpdateServiceError(
-                (
-                    "GitHub konnte nicht "
-                    f"erreicht werden: {reason}"
-                )
-            ) from error
-
-        except TimeoutError as error:
-            raise UpdateServiceError(
-                (
-                    "Zeitüberschreitung bei "
-                    "der Update-Prüfung."
-                )
-            ) from error
-
-        try:
-            data = json.loads(
-                raw_data.decode(
-                    "utf-8"
-                )
-            )
-
-        except (
-            UnicodeDecodeError,
-            json.JSONDecodeError,
-        ) as error:
-            raise UpdateServiceError(
-                (
-                    "Ungültige Antwort "
-                    "von GitHub."
-                )
-            ) from error
-
-        if not isinstance(
-            data,
-            list,
-        ):
-            raise UpdateServiceError(
-                (
-                    "Unerwartetes GitHub-"
-                    "Antwortformat."
-                )
-            )
-
-        return [
-            item
-            for item in data
-            if isinstance(
-                item,
-                dict,
-            )
-        ]
+__all__ = [
+    "ReleaseAsset",
+    "UpdateChannel",
+    "UpdateInfo",
+    "UpdateService",
+    "UpdateServiceError",
+]

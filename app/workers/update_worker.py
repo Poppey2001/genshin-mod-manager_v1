@@ -23,7 +23,9 @@ from PySide6.QtCore import (
     Slot,
 )
 
-from app.config import CACHE_DIR
+from app.config import (
+    CACHE_DIR,
+)
 
 from app.services.update_service import (
     ReleaseAsset,
@@ -31,13 +33,30 @@ from app.services.update_service import (
     UpdateService,
 )
 
+from app.update_config import (
+    UPDATE_DOWNLOAD_TIMEOUT,
+)
 
-class UpdateCheckSignals(QObject):
-    finished = Signal(object)
-    failed = Signal(str)
+
+# ============================================================
+# Check
+# ============================================================
+
+class UpdateCheckSignals(
+    QObject
+):
+    finished = Signal(
+        object
+    )
+
+    failed = Signal(
+        str
+    )
 
 
-class UpdateCheckWorker(QRunnable):
+class UpdateCheckWorker(
+    QRunnable
+):
     def __init__(
         self,
         *,
@@ -48,18 +67,21 @@ class UpdateCheckWorker(QRunnable):
     ) -> None:
         super().__init__()
 
-        self.signals = (
-            UpdateCheckSignals()
-        )
-
         self.owner = owner
-        self.repository = repository
+
+        self.repository = (
+            repository
+        )
 
         self.current_version = (
             current_version
         )
 
         self.channel = channel
+
+        self.signals = (
+            UpdateCheckSignals()
+        )
 
         self.setAutoDelete(
             True
@@ -70,19 +92,24 @@ class UpdateCheckWorker(QRunnable):
         self,
     ) -> None:
         try:
-            service = UpdateService(
-                owner=self.owner,
-                repository=(
-                    self.repository
-                ),
-                current_version=(
-                    self.current_version
-                ),
-                channel=self.channel,
+            service = (
+                UpdateService(
+                    owner=self.owner,
+                    repository=(
+                        self.repository
+                    ),
+                    current_version=(
+                        self.current_version
+                    ),
+                    channel=(
+                        self.channel
+                    ),
+                )
             )
 
-            update = (
-                service.check_for_update()
+            result = (
+                service
+                .check_for_update()
             )
 
         except Exception as error:
@@ -96,24 +123,36 @@ class UpdateCheckWorker(QRunnable):
             return
 
         self.signals.finished.emit(
-            update
+            result
         )
 
 
-class UpdateDownloadSignals(QObject):
+# ============================================================
+# Download
+# ============================================================
+
+class UpdateDownloadSignals(
+    QObject
+):
     progress = Signal(
         int,
         int,
     )
 
-    finished = Signal(object)
+    finished = Signal(
+        object
+    )
 
-    failed = Signal(str)
+    failed = Signal(
+        str
+    )
 
     cancelled = Signal()
 
 
-class UpdateDownloadWorker(QRunnable):
+class UpdateDownloadWorker(
+    QRunnable
+):
     def __init__(
         self,
         *,
@@ -144,7 +183,8 @@ class UpdateDownloadWorker(QRunnable):
         self,
     ) -> bool:
         return (
-            self._cancel_event.is_set()
+            self._cancel_event
+            .is_set()
         )
 
     @Slot()
@@ -159,6 +199,7 @@ class UpdateDownloadWorker(QRunnable):
         except Exception as error:
             if self.is_cancelled():
                 self.signals.cancelled.emit()
+
                 return
 
             self.signals.failed.emit(
@@ -171,14 +212,12 @@ class UpdateDownloadWorker(QRunnable):
             return
 
         if self.is_cancelled():
-            try:
-                result.unlink(
-                    missing_ok=True
-                )
-            except OSError:
-                pass
+            result.unlink(
+                missing_ok=True
+            )
 
             self.signals.cancelled.emit()
+
             return
 
         self.signals.finished.emit(
@@ -188,30 +227,16 @@ class UpdateDownloadWorker(QRunnable):
     def _download(
         self,
     ) -> Path:
-        digest = self.asset.digest
-
-        if not digest:
-            raise RuntimeError(
-                (
-                    "Das Release besitzt keinen "
-                    "SHA-256-Digest."
-                )
-            )
-
-        algorithm, separator, expected_hash = (
-            digest.partition(":")
+        expected_hash = (
+            self.asset.sha256
         )
 
-        if (
-            separator != ":"
-            or algorithm.casefold()
-            != "sha256"
-            or not expected_hash
-        ):
+        if not expected_hash:
             raise RuntimeError(
                 (
-                    "Der Release-Digest wird "
-                    "nicht unterstützt."
+                    "Das GitHub Release "
+                    "besitzt keinen gültigen "
+                    "SHA-256-Digest."
                 )
             )
 
@@ -230,14 +255,14 @@ class UpdateDownloadWorker(QRunnable):
             / self.asset.name
         )
 
-        partial_file = (
-            destination.with_suffix(
-                destination.suffix
+        partial = (
+            destination.with_name(
+                destination.name
                 + ".part"
             )
         )
 
-        partial_file.unlink(
+        partial.unlink(
             missing_ok=True
         )
 
@@ -245,22 +270,27 @@ class UpdateDownloadWorker(QRunnable):
             self.asset.download_url,
             headers={
                 "User-Agent": (
-                    "Genshin-Mod-Manager-Updater"
+                    "XXMI-Mod-Manager-Updater"
                 ),
             },
         )
 
-        hasher = hashlib.sha256()
+        hasher = (
+            hashlib.sha256()
+        )
 
         received = 0
 
         try:
             with urlopen(
                 request,
-                timeout=30,
+                timeout=(
+                    UPDATE_DOWNLOAD_TIMEOUT
+                ),
             ) as response:
                 content_length = (
-                    response.headers.get(
+                    response.headers
+                    .get(
                         "Content-Length"
                     )
                 )
@@ -280,7 +310,7 @@ class UpdateDownloadWorker(QRunnable):
                         else 0
                     )
 
-                with partial_file.open(
+                with partial.open(
                     "wb"
                 ) as output:
                     while True:
@@ -290,7 +320,8 @@ class UpdateDownloadWorker(QRunnable):
                             )
 
                         chunk = response.read(
-                            1024 * 1024
+                            1024
+                            * 1024
                         )
 
                         if not chunk:
@@ -318,32 +349,35 @@ class UpdateDownloadWorker(QRunnable):
             URLError,
             TimeoutError,
         ):
-            partial_file.unlink(
+            partial.unlink(
                 missing_ok=True
             )
 
             raise
 
         actual_hash = (
-            hasher.hexdigest()
+            hasher
+            .hexdigest()
+            .casefold()
         )
 
         if not hmac.compare_digest(
-            actual_hash.casefold(),
-            expected_hash.casefold(),
+            actual_hash,
+            expected_hash,
         ):
-            partial_file.unlink(
+            partial.unlink(
                 missing_ok=True
             )
 
             raise RuntimeError(
                 (
                     "SHA-256-Prüfung "
+                    "des Updates ist "
                     "fehlgeschlagen."
                 )
             )
 
-        partial_file.replace(
+        partial.replace(
             destination
         )
 
@@ -353,3 +387,9 @@ class UpdateDownloadWorker(QRunnable):
         )
 
         return destination
+
+
+__all__ = [
+    "UpdateCheckWorker",
+    "UpdateDownloadWorker",
+]

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+from pathlib import Path
+
 from PySide6.QtCore import (
     QObject,
     QThreadPool,
@@ -14,13 +16,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import AppConfig
+from app.config import (
+    AppConfig,
+)
 
 from app.dialogs.update_dialog import (
     UpdateDialog,
 )
 
-from app.i18n import tr
+from app.i18n import (
+    tr,
+)
 
 from app.services.appimage_updater import (
     cleanup_previous_update_backup,
@@ -55,7 +61,9 @@ logger = logging.getLogger(
 )
 
 
-class UpdateController(QObject):
+class UpdateController(
+    QObject
+):
     def __init__(
         self,
         *,
@@ -73,7 +81,8 @@ class UpdateController(QObject):
         )
 
         self.thread_pool = (
-            QThreadPool.globalInstance()
+            QThreadPool
+            .globalInstance()
         )
 
         self._check_worker: (
@@ -103,23 +112,39 @@ class UpdateController(QObject):
 
         self._manual_check = False
 
-    # ==================================================
-    # Start
-    # ==================================================
+    # ========================================================
+    # Startup
+    # ========================================================
 
     def start_auto_check(
         self,
     ) -> None:
+        """
+        Wird genau einmal nach Start des MainWindow
+        aufgerufen.
+        """
+
         QTimer.singleShot(
-            30_000,
+            15_000,
             cleanup_previous_update_backup,
         )
 
-        if not getattr(
-            self.config,
-            "auto_check_updates",
-            True,
-        ):
+        enabled = bool(
+            getattr(
+                self.config,
+                "auto_check_updates",
+                True,
+            )
+        )
+
+        if not enabled:
+            logger.info(
+                (
+                    "Automatische "
+                    "Update-Prüfung deaktiviert."
+                )
+            )
+
             return
 
         QTimer.singleShot(
@@ -134,6 +159,10 @@ class UpdateController(QObject):
             manual=False
         )
 
+    # ========================================================
+    # Manual
+    # ========================================================
+
     def check_now(
         self,
     ) -> None:
@@ -141,16 +170,23 @@ class UpdateController(QObject):
             manual=True
         )
 
-    # ==================================================
-    # Prüfen
-    # ==================================================
+    # ========================================================
+    # Check
+    # ========================================================
 
     def check_for_updates(
         self,
         *,
         manual: bool,
     ) -> None:
-        if self._check_worker is not None:
+        # ----------------------------------------------------
+        # Bereits aktiv
+        # ----------------------------------------------------
+
+        if (
+            self._check_worker
+            is not None
+        ):
             if manual:
                 QMessageBox.information(
                     self.parent_window,
@@ -164,30 +200,56 @@ class UpdateController(QObject):
 
             return
 
+        # ----------------------------------------------------
+        # Repository
+        # ----------------------------------------------------
+
         if not (
             github_repository_configured()
         ):
+            message = (
+                "GitHub Repository ist "
+                "nicht konfiguriert. "
+                "Trage GITHUB_OWNER in "
+                "app/update_config.py ein."
+            )
+
             if manual:
                 QMessageBox.warning(
                     self.parent_window,
                     tr(
                         "updates.check.title"
                     ),
-                    tr(
-                        "updates.error.repo_not_configured"
-                    ),
+                    message,
                 )
 
             else:
                 logger.warning(
-                    (
-                        "Auto-Update deaktiviert: "
-                        "GitHub Repository nicht "
-                        "konfiguriert."
-                    )
+                    message
                 )
 
             return
+
+        # ----------------------------------------------------
+        # Dialog existiert bereits
+        # ----------------------------------------------------
+
+        if (
+            self._dialog
+            is not None
+        ):
+            try:
+                self._dialog.raise_()
+                self._dialog.activateWindow()
+
+                return
+
+            except RuntimeError:
+                self._dialog = None
+
+        # ----------------------------------------------------
+        # Channel
+        # ----------------------------------------------------
 
         channel_value = getattr(
             self.config,
@@ -196,8 +258,10 @@ class UpdateController(QObject):
         )
 
         try:
-            channel = UpdateChannel(
-                channel_value
+            channel = (
+                UpdateChannel(
+                    channel_value
+                )
             )
 
         except ValueError:
@@ -205,20 +269,32 @@ class UpdateController(QObject):
                 UpdateChannel.PRERELEASE
             )
 
-        self._manual_check = manual
-
-        worker = UpdateCheckWorker(
-            owner=GITHUB_OWNER,
-            repository=(
-                GITHUB_REPOSITORY
-            ),
-            current_version=(
-                APP_VERSION
-            ),
-            channel=channel,
+        self._manual_check = (
+            manual
         )
 
-        self._check_worker = worker
+        # ----------------------------------------------------
+        # Worker
+        # ----------------------------------------------------
+
+        worker = (
+            UpdateCheckWorker(
+                owner=(
+                    GITHUB_OWNER
+                ),
+                repository=(
+                    GITHUB_REPOSITORY
+                ),
+                current_version=(
+                    APP_VERSION
+                ),
+                channel=channel,
+            )
+        )
+
+        self._check_worker = (
+            worker
+        )
 
         worker.signals.finished.connect(
             self._on_check_finished
@@ -228,9 +304,24 @@ class UpdateController(QObject):
             self._on_check_failed
         )
 
+        logger.info(
+            (
+                "Prüfe GitHub auf Updates: "
+                "%s/%s – lokal %s – Kanal %s"
+            ),
+            GITHUB_OWNER,
+            GITHUB_REPOSITORY,
+            APP_VERSION,
+            channel.value,
+        )
+
         self.thread_pool.start(
             worker
         )
+
+    # ========================================================
+    # Check Ergebnis
+    # ========================================================
 
     def _on_check_finished(
         self,
@@ -240,9 +331,19 @@ class UpdateController(QObject):
             self._manual_check
         )
 
-        self._check_worker = None
+        self._check_worker = (
+            None
+        )
 
         if update is None:
+            logger.info(
+                (
+                    "Kein Update verfügbar. "
+                    "Lokale Version: %s"
+                ),
+                APP_VERSION,
+            )
+
             if manual:
                 QMessageBox.information(
                     self.parent_window,
@@ -251,7 +352,9 @@ class UpdateController(QObject):
                     ),
                     tr(
                         "updates.check.up_to_date",
-                        version=APP_VERSION,
+                        version=(
+                            APP_VERSION
+                        ),
                     ),
                 )
 
@@ -261,7 +364,23 @@ class UpdateController(QObject):
             update,
             UpdateInfo,
         ):
+            logger.warning(
+                (
+                    "Ungültiges Update-Ergebnis: %r"
+                ),
+                update,
+            )
+
             return
+
+        logger.info(
+            (
+                "Update gefunden: "
+                "%s -> %s"
+            ),
+            update.current_version,
+            update.version,
+        )
 
         self._show_update(
             update
@@ -275,7 +394,17 @@ class UpdateController(QObject):
             self._manual_check
         )
 
-        self._check_worker = None
+        self._check_worker = (
+            None
+        )
+
+        logger.warning(
+            (
+                "Update-Prüfung "
+                "fehlgeschlagen: %s"
+            ),
+            message,
+        )
 
         if manual:
             QMessageBox.warning(
@@ -289,46 +418,41 @@ class UpdateController(QObject):
                 ),
             )
 
-        else:
-            logger.warning(
-                (
-                    "Automatische Update-Prüfung "
-                    "fehlgeschlagen: %s"
-                ),
-                message,
-            )
-
-    # ==================================================
+    # ========================================================
     # Dialog
-    # ==================================================
+    # ========================================================
 
     def _show_update(
         self,
         update: UpdateInfo,
     ) -> None:
         asset = (
-            update.find_appimage_asset()
+            update
+            .find_appimage_asset()
         )
 
         install_supported = (
             is_appimage_runtime()
             and asset is not None
-            and bool(
-                asset.digest
-                if asset is not None
-                else False
-            )
+            and asset.sha256 is not None
         )
 
-        self._current_update = update
-        self._current_asset = asset
+        self._current_update = (
+            update
+        )
+
+        self._current_asset = (
+            asset
+        )
 
         dialog = UpdateDialog(
             update=update,
             install_supported=(
                 install_supported
             ),
-            parent=self.parent_window,
+            parent=(
+                self.parent_window
+            ),
         )
 
         self._dialog = dialog
@@ -342,7 +466,6 @@ class UpdateController(QObject):
         )
 
         dialog.show()
-
         dialog.raise_()
         dialog.activateWindow()
 
@@ -350,37 +473,46 @@ class UpdateController(QObject):
         self,
         _result: int,
     ) -> None:
-        if self._download_worker is not None:
+        if (
+            self._download_worker
+            is not None
+        ):
             return
 
         self._dialog = None
 
         self._current_update = None
+
         self._current_asset = None
 
-    # ==================================================
+    # ========================================================
     # Download
-    # ==================================================
+    # ========================================================
 
     def _start_download(
         self,
     ) -> None:
-        if self._download_worker is not None:
+        if (
+            self._download_worker
+            is not None
+        ):
             return
+
+        dialog = (
+            self._dialog
+        )
 
         asset = (
             self._current_asset
         )
 
-        dialog = self._dialog
-
         if (
-            asset is None
-            or dialog is None
+            dialog is None
+            or asset is None
         ):
             return
 
-        if not asset.digest:
+        if asset.sha256 is None:
             dialog.show_error(
                 tr(
                     "updates.error.no_digest"
@@ -389,11 +521,15 @@ class UpdateController(QObject):
 
             return
 
-        worker = UpdateDownloadWorker(
-            asset=asset
+        worker = (
+            UpdateDownloadWorker(
+                asset=asset
+            )
         )
 
-        self._download_worker = worker
+        self._download_worker = (
+            worker
+        )
 
         worker.signals.progress.connect(
             dialog.update_progress
@@ -417,18 +553,24 @@ class UpdateController(QObject):
             worker
         )
 
+    # ========================================================
+    # Download abgeschlossen
+    # ========================================================
+
     def _on_download_finished(
         self,
         downloaded_file: object,
     ) -> None:
-        self._download_worker = None
+        self._download_worker = (
+            None
+        )
 
-        dialog = self._dialog
+        dialog = (
+            self._dialog
+        )
 
         if dialog is None:
             return
-
-        from pathlib import Path
 
         if not isinstance(
             downloaded_file,
@@ -452,16 +594,25 @@ class UpdateController(QObject):
         except Exception as error:
             logger.exception(
                 (
-                    "AppImage-Update konnte "
+                    "AppImage Update konnte "
                     "nicht vorbereitet werden."
                 )
             )
 
             dialog.show_error(
-                str(error)
+                str(
+                    error
+                )
             )
 
             return
+
+        logger.info(
+            (
+                "AppImage Update vorbereitet. "
+                "Anwendung wird beendet."
+            )
+        )
 
         application = (
             QApplication.instance()
@@ -473,13 +624,30 @@ class UpdateController(QObject):
                 application.quit,
             )
 
+    # ========================================================
+    # Download Fehler
+    # ========================================================
+
     def _on_download_failed(
         self,
         message: str,
     ) -> None:
-        self._download_worker = None
+        self._download_worker = (
+            None
+        )
 
-        if self._dialog is not None:
+        logger.warning(
+            (
+                "Update Download "
+                "fehlgeschlagen: %s"
+            ),
+            message,
+        )
+
+        if (
+            self._dialog
+            is not None
+        ):
             self._dialog.show_error(
                 message
             )
@@ -487,21 +655,34 @@ class UpdateController(QObject):
     def _on_download_cancelled(
         self,
     ) -> None:
-        self._download_worker = None
+        self._download_worker = (
+            None
+        )
 
-        if self._dialog is not None:
+        if (
+            self._dialog
+            is not None
+        ):
             self._dialog.show_error(
                 tr(
                     "updates.status.cancelled"
                 )
             )
 
-    # ==================================================
+    # ========================================================
     # Shutdown
-    # ==================================================
+    # ========================================================
 
     def shutdown(
         self,
     ) -> None:
-        if self._download_worker is not None:
+        if (
+            self._download_worker
+            is not None
+        ):
             self._download_worker.cancel()
+
+
+__all__ = [
+    "UpdateController",
+]

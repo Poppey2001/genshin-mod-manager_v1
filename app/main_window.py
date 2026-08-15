@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import logging
+from app.controllers.update_controller import (
+    UpdateController,
+)
 
+from app.widgets.settings.update_settings_group import (
+    UpdateSettingsGroup,
+)
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -96,7 +102,10 @@ class MainWindow(
         super().__init__()
 
         self.config = config
-
+        self.update_controller: (
+            UpdateController
+            | None
+        ) = None
         self._settings_dialog: (
             SettingsDialog
             | None
@@ -213,7 +222,18 @@ class MainWindow(
         self._connect_signals()
 
         self._connect_ui_navigation()
+        # ====================================================
+        # Auto Updater
+        # ====================================================
 
+        self.update_controller = (
+            UpdateController(
+                config=self.config,
+                parent_window=self,
+            )
+        )
+
+        self.update_controller.start_auto_check()
         translation_manager.language_changed.connect(
             self.retranslate_ui
         )
@@ -938,6 +958,27 @@ class MainWindow(
             )
         )
 
+        # ====================================================
+        # Update Settings
+        # ====================================================
+
+        update_group = (
+            self._settings_dialog
+            .findChild(
+                UpdateSettingsGroup
+            )
+        )
+
+        if (
+            update_group is not None
+            and self.update_controller
+            is not None
+        ):
+            update_group.check_requested.connect(
+                self.update_controller
+                .check_now
+            )
+
         # ----------------------------------------------------
         # Aktuelles Spiel
         # ----------------------------------------------------
@@ -1300,7 +1341,11 @@ class MainWindow(
                 ),
                 error,
             )
-
+        if (
+            self.update_controller
+            is not None
+        ):
+            self.update_controller.shutdown()
         event.accept()
 
     # ========================================================
