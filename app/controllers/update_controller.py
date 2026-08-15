@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import logging
 
-from pathlib import Path
-
 from PySide6.QtCore import (
     QObject,
     QThreadPool,
@@ -28,23 +26,19 @@ from app.i18n import (
     tr,
 )
 
-from app.services.runtime_platform import (
-    is_windows,
-)
-
-from app.services.windows_updater import (
-    stage_windows_update,
-)
-
 from app.services.update_service import (
-    ReleaseAsset,
-    UpdateChannel,
     UpdateInfo,
+    StagedUpdate,
+)
+
+from app.services.windows_script_updater import (
+    cleanup_successful_update_cache,
+    external_scripts_available,
+    is_windows,
+    launch_script_update_helper,
 )
 
 from app.update_config import (
-    GITHUB_OWNER,
-    GITHUB_REPOSITORY,
     github_repository_configured,
 )
 
@@ -107,11 +101,6 @@ class UpdateController(
             | None
         ) = None
 
-        self._current_asset: (
-            ReleaseAsset
-            | None
-        ) = None
-
         self._manual_check = False
 
     # ========================================================
@@ -121,18 +110,22 @@ class UpdateController(
     def start_auto_check(
         self,
     ) -> None:
-        # ====================================================
-        # Automatischer Install-Updater aktuell nur Windows.
-        # ====================================================
+        # ----------------------------------------------------
+        # Alten erfolgreichen Update-Cache löschen.
+        # Etwas verzögert, damit der PowerShell Helper
+        # sicher beendet ist.
+        # ----------------------------------------------------
+
+        QTimer.singleShot(
+            3000,
+            cleanup_successful_update_cache,
+        )
+
+        # ----------------------------------------------------
+        # Auto Update nur Windows
+        # ----------------------------------------------------
 
         if not is_windows():
-            logger.info(
-                (
-                    "Automatischer Update-Check "
-                    "übersprungen: Kein Windows."
-                )
-            )
-
             return
 
         if not getattr(
@@ -143,19 +136,16 @@ class UpdateController(
             return
 
         QTimer.singleShot(
-            3000,
+            5000,
             self._run_auto_check,
         )
+
     def _run_auto_check(
         self,
     ) -> None:
         self.check_for_updates(
             manual=False
         )
-
-    # ========================================================
-    # Manual
-    # ========================================================
 
     def check_now(
         self,
@@ -173,122 +163,52 @@ class UpdateController(
         *,
         manual: bool,
     ) -> None:
-        # ----------------------------------------------------
-        # Bereits aktiv
-        # ----------------------------------------------------
-
         if (
             self._check_worker
             is not None
         ):
-            if manual:
-                QMessageBox.information(
-                    self.parent_window,
-                    tr(
-                        "updates.check.title"
-                    ),
-                    tr(
-                        "updates.check.already_running"
-                    ),
-                )
-
             return
-
-        # ----------------------------------------------------
-        # Repository
-        # ----------------------------------------------------
 
         if not (
             github_repository_configured()
         ):
-            message = (
-                "GitHub Repository ist "
-                "nicht konfiguriert. "
-                "Trage GITHUB_OWNER in "
-                "app/update_config.py ein."
-            )
-
             if manual:
                 QMessageBox.warning(
                     self.parent_window,
                     tr(
                         "updates.check.title"
                     ),
-                    message,
-                )
-
-            else:
-                logger.warning(
-                    message
+                    tr(
+                        "updates.error.repo_not_configured"
+                    ),
                 )
 
             return
 
-        # ----------------------------------------------------
-        # Dialog existiert bereits
-        # ----------------------------------------------------
-
-        if (
-            self._dialog
-            is not None
-        ):
-            try:
-                self._dialog.raise_()
-                self._dialog.activateWindow()
-
-                return
-
-            except RuntimeError:
-                self._dialog = None
-
-        # ----------------------------------------------------
-        # Channel
-        # ----------------------------------------------------
-
-        channel_value = getattr(
+        channel = getattr(
             self.config,
             "update_channel",
             "prerelease",
         )
 
-        try:
-            channel = (
-                UpdateChannel(
-                    channel_value
-                )
-            )
-
-        except ValueError:
-            channel = (
-                UpdateChannel.PRERELEASE
-            )
+        allow_prerelease = (
+            channel
+            != "stable"
+        )
 
         self._manual_check = (
             manual
         )
 
-        # ----------------------------------------------------
-        # Worker
-        # ----------------------------------------------------
-
         worker = (
             UpdateCheckWorker(
-                owner=(
-                    GITHUB_OWNER
-                ),
-                repository=(
-                    GITHUB_REPOSITORY
-                ),
-                current_version=(
-                    APP_VERSION
-                ),
-                channel=channel,
+                allow_prerelease=(
+                    allow_prerelease
+                )
             )
         )
 
-        self._check_worker = (
-            worker
-        )
+        self._check_worker = worker
 
         worker.signals.finished.connect(
             self._on_check_finished
@@ -298,46 +218,25 @@ class UpdateController(
             self._on_check_failed
         )
 
-        logger.info(
-            (
-                "Prüfe GitHub auf Updates: "
-                "%s/%s – lokal %s – Kanal %s"
-            ),
-            GITHUB_OWNER,
-            GITHUB_REPOSITORY,
-            APP_VERSION,
-            channel.value,
-        )
-
         self.thread_pool.start(
             worker
         )
 
     # ========================================================
-    # Check Ergebnis
+    # Check Result
     # ========================================================
 
     def _on_check_finished(
         self,
-        update: object,
+        result: object,
     ) -> None:
         manual = (
             self._manual_check
         )
 
-        self._check_worker = (
-            None
-        )
+        self._check_worker = None
 
-        if update is None:
-            logger.info(
-                (
-                    "Kein Update verfügbar. "
-                    "Lokale Version: %s"
-                ),
-                APP_VERSION,
-            )
-
+        if result is None:
             if manual:
                 QMessageBox.information(
                     self.parent_window,
@@ -355,30 +254,45 @@ class UpdateController(
             return
 
         if not isinstance(
-            update,
+            result,
             UpdateInfo,
         ):
-            logger.warning(
-                (
-                    "Ungültiges Update-Ergebnis: %r"
-                ),
-                update,
-            )
-
             return
 
-        logger.info(
-            (
-                "Update gefunden: "
-                "%s -> %s"
-            ),
-            update.current_version,
-            update.version,
+        self._current_update = (
+            result
         )
 
-        self._show_update(
-            update
+        install_supported = (
+            is_windows()
+            and external_scripts_available()
         )
+
+        dialog = (
+            UpdateDialog(
+                update=result,
+                install_supported=(
+                    install_supported
+                ),
+                parent=(
+                    self.parent_window
+                ),
+            )
+        )
+
+        self._dialog = dialog
+
+        dialog.install_requested.connect(
+            self._start_download
+        )
+
+        dialog.finished.connect(
+            self._on_dialog_finished
+        )
+
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     def _on_check_failed(
         self,
@@ -388,9 +302,7 @@ class UpdateController(
             self._manual_check
         )
 
-        self._check_worker = (
-            None
-        )
+        self._check_worker = None
 
         logger.warning(
             (
@@ -413,85 +325,6 @@ class UpdateController(
             )
 
     # ========================================================
-    # Dialog
-    # ========================================================
-
-    def _show_update(
-        self,
-        update: UpdateInfo,
-    ) -> None:
-        asset: (
-            ReleaseAsset
-            | None
-        ) = None
-
-        install_supported = False
-
-        # ====================================================
-        # Windows
-        # ====================================================
-
-        if is_windows():
-            asset = (
-                update
-                .find_windows_asset()
-            )
-
-            install_supported = (
-                asset is not None
-                and asset.sha256
-                is not None
-            )
-
-        self._current_update = (
-            update
-        )
-
-        self._current_asset = (
-            asset
-        )
-
-        dialog = UpdateDialog(
-            update=update,
-            install_supported=(
-                install_supported
-            ),
-            parent=(
-                self.parent_window
-            ),
-        )
-
-        self._dialog = dialog
-
-        dialog.install_requested.connect(
-            self._start_download
-        )
-
-        dialog.finished.connect(
-            self._on_dialog_finished
-        )
-
-        dialog.show()
-        dialog.raise_()
-        dialog.activateWindow()
-
-    def _on_dialog_finished(
-        self,
-        _result: int,
-    ) -> None:
-        if (
-            self._download_worker
-            is not None
-        ):
-            return
-
-        self._dialog = None
-
-        self._current_update = None
-
-        self._current_asset = None
-
-    # ========================================================
     # Download
     # ========================================================
 
@@ -504,41 +337,27 @@ class UpdateController(
         ):
             return
 
-        dialog = (
-            self._dialog
-        )
-
-        asset = (
-            self._current_asset
-        )
-
         if (
-            dialog is None
-            or asset is None
+            self._current_update
+            is None
+            or self._dialog
+            is None
         ):
-            return
-
-        if asset.sha256 is None:
-            dialog.show_error(
-                tr(
-                    "updates.error.no_digest"
-                )
-            )
-
             return
 
         worker = (
             UpdateDownloadWorker(
-                asset=asset
+                info=(
+                    self._current_update
+                )
             )
         )
 
-        self._download_worker = (
-            worker
-        )
+        self._download_worker = worker
 
         worker.signals.progress.connect(
-            dialog.update_progress
+            self._dialog
+            .update_progress
         )
 
         worker.signals.finished.connect(
@@ -553,23 +372,21 @@ class UpdateController(
             self._on_download_cancelled
         )
 
-        dialog.start_download()
+        self._dialog.start_download()
 
         self.thread_pool.start(
             worker
         )
 
     # ========================================================
-    # Download abgeschlossen
+    # Download Finished
     # ========================================================
 
     def _on_download_finished(
         self,
-        downloaded_file: object,
+        result: object,
     ) -> None:
-        self._download_worker = (
-            None
-        )
+        self._download_worker = None
 
         dialog = (
             self._dialog
@@ -579,8 +396,8 @@ class UpdateController(
             return
 
         if not isinstance(
-            downloaded_file,
-            Path,
+            result,
+            StagedUpdate,
         ):
             dialog.show_error(
                 tr(
@@ -590,33 +407,18 @@ class UpdateController(
 
             return
 
-        # ====================================================
-        # Windows
-        # ====================================================
-
-        if not is_windows():
-            dialog.show_error(
-                tr(
-                    "updates.error.unsupported_platform"
-                )
-            )
-
-            return
-
         dialog.show_installing()
 
         try:
-            stage_windows_update(
-                archive_path=(
-                    downloaded_file
-                )
+            launch_script_update_helper(
+                result
             )
 
         except Exception as error:
             logger.exception(
                 (
-                    "Windows-Update konnte "
-                    "nicht vorbereitet werden."
+                    "Windows Script Update "
+                    "konnte nicht gestartet werden."
                 )
             )
 
@@ -628,42 +430,25 @@ class UpdateController(
 
             return
 
-        # ====================================================
-        # Hauptanwendung beenden.
-        #
-        # Der PowerShell-Helper wartet auf genau diesen
-        # Prozess und tauscht danach die Dateien aus.
-        # ====================================================
-
         application = (
             QApplication.instance()
         )
 
         if application is not None:
             QTimer.singleShot(
-                250,
+                300,
                 application.quit,
             )
 
     # ========================================================
-    # Download Fehler
+    # Errors
     # ========================================================
 
     def _on_download_failed(
         self,
         message: str,
     ) -> None:
-        self._download_worker = (
-            None
-        )
-
-        logger.warning(
-            (
-                "Update Download "
-                "fehlgeschlagen: %s"
-            ),
-            message,
-        )
+        self._download_worker = None
 
         if (
             self._dialog
@@ -676,9 +461,7 @@ class UpdateController(
     def _on_download_cancelled(
         self,
     ) -> None:
-        self._download_worker = (
-            None
-        )
+        self._download_worker = None
 
         if (
             self._dialog
@@ -689,6 +472,20 @@ class UpdateController(
                     "updates.status.cancelled"
                 )
             )
+
+    def _on_dialog_finished(
+        self,
+        _result: int,
+    ) -> None:
+        if (
+            self._download_worker
+            is not None
+        ):
+            return
+
+        self._dialog = None
+
+        self._current_update = None
 
     # ========================================================
     # Shutdown

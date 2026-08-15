@@ -1,12 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import (
-    QUrl,
     Signal,
-)
-
-from PySide6.QtGui import (
-    QDesktopServices,
 )
 
 from PySide6.QtWidgets import (
@@ -15,7 +10,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QProgressBar,
     QPushButton,
-    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -30,7 +24,9 @@ from app.services.update_service import (
 )
 
 
-class UpdateDialog(QDialog):
+class UpdateDialog(
+    QDialog
+):
     install_requested = Signal()
 
     def __init__(
@@ -52,40 +48,24 @@ class UpdateDialog(QDialog):
 
         self._busy = False
 
-        self.title_label = QLabel(
-            self
+        self.title_label = QLabel()
+
+        self.version_label = QLabel()
+
+        self.files_label = QLabel()
+
+        self.status_label = QLabel()
+
+        self.progress_bar = (
+            QProgressBar()
         )
 
-        self.version_label = QLabel(
-            self
+        self.later_button = (
+            QPushButton()
         )
 
-        self.notes_label = QLabel(
-            self
-        )
-
-        self.notes_view = QTextBrowser(
-            self
-        )
-
-        self.status_label = QLabel(
-            self
-        )
-
-        self.progress_bar = QProgressBar(
-            self
-        )
-
-        self.release_button = QPushButton(
-            self
-        )
-
-        self.later_button = QPushButton(
-            self
-        )
-
-        self.install_button = QPushButton(
-            self
+        self.install_button = (
+            QPushButton()
         )
 
         self._build_ui()
@@ -100,11 +80,7 @@ class UpdateDialog(QDialog):
         self,
     ) -> None:
         self.setMinimumWidth(
-            560
-        )
-
-        self.setMinimumHeight(
-            420
+            500
         )
 
         layout = QVBoxLayout(
@@ -126,64 +102,43 @@ class UpdateDialog(QDialog):
             "updateTitle"
         )
 
+        self.title_label.setWordWrap(
+            True
+        )
+
         self.version_label.setWordWrap(
             True
         )
 
-        self.notes_label.setObjectName(
-            "updateSectionTitle"
-        )
-
-        self.notes_view.setOpenExternalLinks(
-            False
-        )
-
-        self.notes_view.setPlainText(
-            self.update.release_notes.strip()
-        )
-
-        self.progress_bar.setVisible(
-            False
-        )
-
-        self.progress_bar.setRange(
-            0,
-            100,
-        )
-
-        self.progress_bar.setValue(
-            0
+        self.files_label.setWordWrap(
+            True
         )
 
         self.status_label.setWordWrap(
             True
         )
 
-        self.release_button.clicked.connect(
-            self._open_release_page
+        self.progress_bar.hide()
+
+        self.progress_bar.setRange(
+            0,
+            max(
+                1,
+                self.update.file_count,
+            ),
         )
 
-        self.later_button.clicked.connect(
-            self.reject
+        actions = QHBoxLayout()
+
+        actions.addStretch(
+            1
         )
 
-        self.install_button.clicked.connect(
-            self.install_requested.emit
-        )
-
-        button_layout = QHBoxLayout()
-
-        button_layout.addWidget(
-            self.release_button
-        )
-
-        button_layout.addStretch()
-
-        button_layout.addWidget(
+        actions.addWidget(
             self.later_button
         )
 
-        button_layout.addWidget(
+        actions.addWidget(
             self.install_button
         )
 
@@ -196,12 +151,7 @@ class UpdateDialog(QDialog):
         )
 
         layout.addWidget(
-            self.notes_label
-        )
-
-        layout.addWidget(
-            self.notes_view,
-            stretch=1,
+            self.files_label
         )
 
         layout.addWidget(
@@ -213,7 +163,15 @@ class UpdateDialog(QDialog):
         )
 
         layout.addLayout(
-            button_layout
+            actions
+        )
+
+        self.later_button.clicked.connect(
+            self.reject
+        )
+
+        self.install_button.clicked.connect(
+            self.install_requested.emit
         )
 
     def retranslate_ui(
@@ -236,33 +194,23 @@ class UpdateDialog(QDialog):
             tr(
                 "updates.dialog.version",
                 current=(
-                    self.update.current_version
+                    self.update
+                    .current_version
                 ),
                 new=(
-                    self.update.version
+                    self.update
+                    .version_display
                 ),
             )
         )
 
-        self.notes_label.setText(
+        self.files_label.setText(
             tr(
-                "updates.dialog.release_notes"
-            )
-        )
-
-        if not (
-            self.update.release_notes
-            .strip()
-        ):
-            self.notes_view.setPlainText(
-                tr(
-                    "updates.dialog.no_notes"
-                )
-            )
-
-        self.release_button.setText(
-            tr(
-                "updates.dialog.open_release"
+                "updates.dialog.script_count",
+                count=(
+                    self.update
+                    .file_count
+                ),
             )
         )
 
@@ -284,7 +232,7 @@ class UpdateDialog(QDialog):
         ):
             self.status_label.setText(
                 tr(
-                   "updates.dialog.install_unavailable"
+                    "updates.dialog.script_install_unavailable"
                 )
             )
 
@@ -298,13 +246,14 @@ class UpdateDialog(QDialog):
     ) -> None:
         self._busy = True
 
-        self.progress_bar.setVisible(
-            True
-        )
+        self.progress_bar.show()
 
         self.progress_bar.setRange(
             0,
-            100,
+            max(
+                1,
+                self.update.file_count,
+            ),
         )
 
         self.progress_bar.setValue(
@@ -313,7 +262,7 @@ class UpdateDialog(QDialog):
 
         self.status_label.setText(
             tr(
-                "updates.status.downloading"
+                "updates.status.downloading_scripts"
             )
         )
 
@@ -327,35 +276,46 @@ class UpdateDialog(QDialog):
 
     def update_progress(
         self,
-        received: int,
+        current: int,
         total: int,
+        path: str,
     ) -> None:
-        if total <= 0:
-            self.progress_bar.setRange(
-                0,
-                0,
-            )
-
-            return
-
         self.progress_bar.setRange(
             0,
-            100,
-        )
-
-        percentage = int(
-            received
-            / total
-            * 100
+            max(
+                total,
+                1,
+            ),
         )
 
         self.progress_bar.setValue(
-            max(
-                0,
-                min(
-                    percentage,
-                    100,
-                ),
+            current
+        )
+
+        self.status_label.setText(
+            tr(
+                "updates.status.downloading_file",
+                current=current,
+                total=total,
+                path=path,
+            )
+        )
+
+    def show_installing(
+        self,
+    ) -> None:
+        self._busy = True
+
+        self.progress_bar.setRange(
+            0,
+            0,
+        )
+
+        self.progress_bar.show()
+
+        self.status_label.setText(
+            tr(
+                "updates.status.installing"
             )
         )
 
@@ -365,9 +325,7 @@ class UpdateDialog(QDialog):
     ) -> None:
         self._busy = False
 
-        self.progress_bar.setVisible(
-            False
-        )
+        self.progress_bar.hide()
 
         self.status_label.setText(
             tr(
@@ -384,26 +342,6 @@ class UpdateDialog(QDialog):
             self.install_supported
         )
 
-    def show_installing(
-        self,
-    ) -> None:
-        self._busy = True
-
-        self.progress_bar.setRange(
-            0,
-            0,
-        )
-
-        self.progress_bar.setVisible(
-            True
-        )
-
-        self.status_label.setText(
-            tr(
-                "updates.status.installing"
-            )
-        )
-
     def reject(
         self,
     ) -> None:
@@ -412,14 +350,7 @@ class UpdateDialog(QDialog):
 
         super().reject()
 
-    def _open_release_page(
-        self,
-    ) -> None:
-        if not self.update.release_url:
-            return
 
-        QDesktopServices.openUrl(
-            QUrl(
-                self.update.release_url
-            )
-        )
+__all__ = [
+    "UpdateDialog",
+]

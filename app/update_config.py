@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 
 # ============================================================
 # GitHub
@@ -9,6 +11,10 @@ GITHUB_OWNER = "Poppey2001"
 
 GITHUB_REPOSITORY = (
     "genshin-mod-manager_v1"
+)
+
+UPDATE_BRANCH = (
+    "main"
 )
 
 GITHUB_API_VERSION = (
@@ -22,42 +28,70 @@ GITHUB_API_VERSION = (
 
 UPDATE_CHECK_TIMEOUT = 15.0
 
-UPDATE_DOWNLOAD_TIMEOUT = 60.0
+UPDATE_DOWNLOAD_TIMEOUT = 30.0
 
 
 # ============================================================
-# Windows Update
+# Remote Version
 # ============================================================
 
-WINDOWS_UPDATE_SUFFIX = ".zip"
-
-WINDOWS_UPDATE_KEYWORDS = (
-    "windows",
-    "win64",
-    "x86_64",
-    "amd64",
+REMOTE_VERSION_FILE = (
+    "app/version.py"
 )
 
 
 # ============================================================
-# Dateien, die bei einem Script-Update ersetzt werden
+# Dateien, die aktualisiert werden
 # ============================================================
 
-WINDOWS_REPLACE_ITEMS = (
+UPDATE_EXACT_FILES = {
     "main.py",
-    "app",
-    "assets",
+}
+
+UPDATE_PREFIXES = (
+    "app/",
+)
+
+UPDATE_SUFFIXES = (
+    ".py",
 )
 
 
 # ============================================================
-# Repository Config
+# Optional GitHub Token
+# ============================================================
+
+GITHUB_TOKEN_ENV = (
+    "GITHUB_TOKEN"
+)
+
+
+def github_token(
+) -> str | None:
+    value = (
+        os.environ
+        .get(
+            GITHUB_TOKEN_ENV,
+            "",
+        )
+        .strip()
+    )
+
+    if not value:
+        return None
+
+    return value
+
+
+# ============================================================
+# Repository Validierung
 # ============================================================
 
 _INVALID_OWNERS = {
     "",
     "dein_github_name",
     "your_github_name",
+    "github_owner",
 }
 
 
@@ -82,3 +116,52 @@ def github_repository_configured(
     return bool(
         repository
     )
+
+
+# ============================================================
+# Update Dateifilter
+# ============================================================
+
+def is_update_file(
+    path: str,
+) -> bool:
+    path = (
+        path
+        .replace(
+            "\\",
+            "/",
+        )
+        .lstrip(
+            "/"
+        )
+    )
+
+    if path in UPDATE_EXACT_FILES:
+        return True
+
+    if not path.endswith(
+        UPDATE_SUFFIXES
+    ):
+        return False
+
+    return any(
+        path.startswith(
+            prefix
+        )
+        for prefix
+        in UPDATE_PREFIXES
+    )
+
+
+__all__ = [
+    "GITHUB_API_VERSION",
+    "GITHUB_OWNER",
+    "GITHUB_REPOSITORY",
+    "REMOTE_VERSION_FILE",
+    "UPDATE_BRANCH",
+    "UPDATE_CHECK_TIMEOUT",
+    "UPDATE_DOWNLOAD_TIMEOUT",
+    "github_repository_configured",
+    "github_token",
+    "is_update_file",
+]

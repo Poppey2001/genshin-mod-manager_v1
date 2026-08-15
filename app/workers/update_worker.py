@@ -1,20 +1,9 @@
 from __future__ import annotations
 
-import hashlib
-import hmac
+import shutil
 import threading
 
 from pathlib import Path
-
-from urllib.error import (
-    HTTPError,
-    URLError,
-)
-
-from urllib.request import (
-    Request,
-    urlopen,
-)
 
 from PySide6.QtCore import (
     QObject,
@@ -28,23 +17,31 @@ from app.config import (
 )
 
 from app.services.update_service import (
-    ReleaseAsset,
+    StagedUpdate,
     UpdateChannel,
+    UpdateInfo,
     UpdateService,
-)
-
-from app.update_config import (
-    UPDATE_DOWNLOAD_TIMEOUT,
 )
 
 
 # ============================================================
-# Check
+# Update Check Signals
 # ============================================================
 
 class UpdateCheckSignals(
     QObject
 ):
+    """
+    Signale für die Versionsprüfung.
+
+    finished:
+        UpdateInfo
+        oder None
+
+    failed:
+        Fehlermeldung
+    """
+
     finished = Signal(
         object
     )
@@ -54,9 +51,19 @@ class UpdateCheckSignals(
     )
 
 
+# ============================================================
+# Update Check Worker
+# ============================================================
+
 class UpdateCheckWorker(
     QRunnable
 ):
+    """
+    Prüft GitHub auf eine neuere app/version.py.
+
+    Der Worker verändert keine lokalen Dateien.
+    """
+
     def __init__(
         self,
         *,
@@ -67,7 +74,9 @@ class UpdateCheckWorker(
     ) -> None:
         super().__init__()
 
-        self.owner = owner
+        self.owner = (
+            owner
+        )
 
         self.repository = (
             repository
@@ -77,7 +86,9 @@ class UpdateCheckWorker(
             current_version
         )
 
-        self.channel = channel
+        self.channel = (
+            channel
+        )
 
         self.signals = (
             UpdateCheckSignals()
@@ -87,6 +98,10 @@ class UpdateCheckWorker(
             True
         )
 
+    # ========================================================
+    # Run
+    # ========================================================
+
     @Slot()
     def run(
         self,
@@ -94,7 +109,9 @@ class UpdateCheckWorker(
         try:
             service = (
                 UpdateService(
-                    owner=self.owner,
+                    owner=(
+                        self.owner
+                    ),
                     repository=(
                         self.repository
                     ),
@@ -107,7 +124,7 @@ class UpdateCheckWorker(
                 )
             )
 
-            result = (
+            update = (
                 service
                 .check_for_update()
             )
@@ -123,20 +140,39 @@ class UpdateCheckWorker(
             return
 
         self.signals.finished.emit(
-            result
+            update
         )
 
 
 # ============================================================
-# Download
+# Update Download Signals
 # ============================================================
 
 class UpdateDownloadSignals(
     QObject
 ):
+    """
+    Signale für den Script-Download.
+
+    progress:
+        current
+        total
+        remote_path
+
+    finished:
+        StagedUpdate
+
+    failed:
+        Fehlermeldung
+
+    cancelled:
+        Benutzerabbruch
+    """
+
     progress = Signal(
         int,
         int,
+        str,
     )
 
     finished = Signal(
@@ -150,17 +186,46 @@ class UpdateDownloadSignals(
     cancelled = Signal()
 
 
+# ============================================================
+# Update Download Worker
+# ============================================================
+
 class UpdateDownloadWorker(
     QRunnable
 ):
+    """
+    Lädt alle Python-Dateien des Update-Commits
+    in den lokalen Update-Cache.
+
+    Beispiel:
+
+        CACHE_DIR/
+            updates/
+                script-abcdef123456/
+                    manifest.json
+                    payload/
+                        main.py
+                        app/
+                            version.py
+                            main_window.py
+                            ...
+
+    Der Worker installiert das Update NICHT.
+
+    Installation übernimmt später der
+    Windows-Update-Helper.
+    """
+
     def __init__(
         self,
         *,
-        asset: ReleaseAsset,
+        info: UpdateInfo,
     ) -> None:
         super().__init__()
 
-        self.asset = asset
+        self.info = (
+            info
+        )
 
         self.signals = (
             UpdateDownloadSignals()
@@ -173,6 +238,10 @@ class UpdateDownloadWorker(
         self.setAutoDelete(
             True
         )
+
+    # ========================================================
+    # Cancel
+    # ========================================================
 
     def cancel(
         self,
@@ -187,20 +256,120 @@ class UpdateDownloadWorker(
             .is_set()
         )
 
+    # ========================================================
+    # Cache
+    # ========================================================
+
+    def cache_root(
+        self,
+    ) -> Path:
+        """
+        Jeder Commit erhält seinen eigenen Cache.
+
+        Dadurch kollidieren zwei verschiedene
+        Update-Versionen nicht miteinander.
+        """
+
+        short_commit = (
+            self.info
+            .commit_sha[
+                :12
+            ]
+        )
+
+        return (
+            CACHE_DIR
+            / "updates"
+            / (
+                "script-"
+                f"{short_commit}"
+            )
+        )
+
+    # ========================================================
+    # Run
+    # ========================================================
+
     @Slot()
     def run(
         self,
     ) -> None:
-        try:
-            result = (
-                self._download()
-            )
+        cache_root = (
+            self.cache_root()
+        )
 
-        except Exception as error:
+        try:
+            # ================================================
+            # Schon vor Start abgebrochen
+            # ================================================
+
             if self.is_cancelled():
+                self._cleanup_cache(
+                    cache_root
+                )
+
                 self.signals.cancelled.emit()
 
                 return
+
+            # ================================================
+            # Alten Cache desselben Commits entfernen
+            # ================================================
+
+            self._cleanup_cache(
+                cache_root
+            )
+
+            # ================================================
+            # Service
+            # ================================================
+
+            service = (
+                UpdateService()
+            )
+
+            staged_update = (
+                service
+                .download_update(
+                    info=(
+                        self.info
+                    ),
+                    cache_root=(
+                        cache_root
+                    ),
+                    progress_callback=(
+                        self._on_progress
+                    ),
+                    cancel_callback=(
+                        self.is_cancelled
+                    ),
+                )
+            )
+
+        except Exception as error:
+            # ================================================
+            # Benutzerabbruch
+            # ================================================
+
+            if self.is_cancelled():
+                self._cleanup_cache(
+                    cache_root
+                )
+
+                self.signals.cancelled.emit()
+
+                return
+
+            # ================================================
+            # Fehler
+            #
+            # Ein unvollständiger Update-Cache darf nicht
+            # liegen bleiben.
+            # ================================================
+
+            self._cleanup_cache(
+                cache_root
+            )
 
             self.signals.failed.emit(
                 (
@@ -211,195 +380,147 @@ class UpdateDownloadWorker(
 
             return
 
+        # ====================================================
+        # Nach dem Download erneut Cancel prüfen
+        # ====================================================
+
         if self.is_cancelled():
-            result.unlink(
-                missing_ok=True
+            self._cleanup_cache(
+                cache_root
             )
 
             self.signals.cancelled.emit()
 
             return
 
-        self.signals.finished.emit(
-            result
-        )
+        # ====================================================
+        # Ergebnis prüfen
+        # ====================================================
 
-    def _download(
-        self,
-    ) -> Path:
-        expected_hash = (
-            self.asset.sha256
-        )
+        if not isinstance(
+            staged_update,
+            StagedUpdate,
+        ):
+            self._cleanup_cache(
+                cache_root
+            )
 
-        if not expected_hash:
-            raise RuntimeError(
+            self.signals.failed.emit(
                 (
-                    "Das GitHub Release "
-                    "besitzt keinen gültigen "
-                    "SHA-256-Digest."
+                    "UpdateService hat kein "
+                    "gültiges StagedUpdate "
+                    "zurückgegeben."
                 )
             )
 
-        update_directory = (
-            CACHE_DIR
-            / "updates"
-        )
+            return
 
-        update_directory.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        destination = (
-            update_directory
-            / self.asset.name
-        )
-
-        partial = (
-            destination.with_name(
-                destination.name
-                + ".part"
+        if not (
+            staged_update
+            .manifest_path
+            .is_file()
+        ):
+            self._cleanup_cache(
+                cache_root
             )
+
+            self.signals.failed.emit(
+                (
+                    "Der Update-Download wurde "
+                    "abgeschlossen, aber das "
+                    "Manifest fehlt."
+                )
+            )
+
+            return
+
+        if not (
+            staged_update
+            .payload_root
+            .is_dir()
+        ):
+            self._cleanup_cache(
+                cache_root
+            )
+
+            self.signals.failed.emit(
+                (
+                    "Der Update-Download wurde "
+                    "abgeschlossen, aber der "
+                    "Payload-Ordner fehlt."
+                )
+            )
+
+            return
+
+        # ====================================================
+        # Fertig
+        # ====================================================
+
+        self.signals.finished.emit(
+            staged_update
         )
 
-        partial.unlink(
-            missing_ok=True
+    # ========================================================
+    # Progress
+    # ========================================================
+
+    def _on_progress(
+        self,
+        current: int,
+        total: int,
+        remote_path: str,
+    ) -> None:
+        """
+        Wird vom UpdateService für jede Datei aufgerufen.
+        """
+
+        if self.is_cancelled():
+            return
+
+        self.signals.progress.emit(
+            int(
+                current
+            ),
+            int(
+                total
+            ),
+            str(
+                remote_path
+            ),
         )
 
-        request = Request(
-            self.asset.download_url,
-            headers={
-                "User-Agent": (
-                    "XXMI-Mod-Manager-Updater"
-                ),
-            },
-        )
+    # ========================================================
+    # Cleanup
+    # ========================================================
 
-        hasher = (
-            hashlib.sha256()
-        )
+    @staticmethod
+    def _cleanup_cache(
+        cache_root: Path,
+    ) -> None:
+        """
+        Löscht einen unvollständigen Update-Cache.
 
-        received = 0
+        Erfolgreich heruntergeladene Updates werden hier
+        NICHT gelöscht. Diese braucht anschließend der
+        Windows-Installer.
+        """
 
         try:
-            with urlopen(
-                request,
-                timeout=(
-                    UPDATE_DOWNLOAD_TIMEOUT
-                ),
-            ) as response:
-                content_length = (
-                    response.headers
-                    .get(
-                        "Content-Length"
-                    )
-                )
-
-                try:
-                    total = int(
-                        content_length
-                    )
-
-                except (
-                    TypeError,
-                    ValueError,
-                ):
-                    total = (
-                        self.asset.size
-                        if self.asset.size > 0
-                        else 0
-                    )
-
-                with partial.open(
-                    "wb"
-                ) as output:
-                    while True:
-                        if self.is_cancelled():
-                            raise RuntimeError(
-                                "Download abgebrochen."
-                            )
-
-                        chunk = response.read(
-                            1024
-                            * 1024
-                        )
-
-                        if not chunk:
-                            break
-
-                        output.write(
-                            chunk
-                        )
-
-                        hasher.update(
-                            chunk
-                        )
-
-                        received += len(
-                            chunk
-                        )
-
-                        self.signals.progress.emit(
-                            received,
-                            total,
-                        )
-
-        except (
-            HTTPError,
-            URLError,
-            TimeoutError,
-        ):
-            partial.unlink(
-                missing_ok=True
+            shutil.rmtree(
+                cache_root,
+                ignore_errors=True,
             )
 
-            raise
-
-        actual_hash = (
-            hasher
-            .hexdigest()
-            .casefold()
-        )
-
-        if not hmac.compare_digest(
-            actual_hash,
-            expected_hash,
-        ):
-            partial.unlink(
-                missing_ok=True
-            )
-
-            raise RuntimeError(
-                (
-                    "SHA-256-Prüfung "
-                    "des Updates ist "
-                    "fehlgeschlagen."
-                )
-            )
-
-        partial.replace(
-            destination
-        )
-
-        # ----------------------------------------------------
-        # Nur Linux/macOS brauchen +x.
-        # Windows-ZIP nicht.
-        # ----------------------------------------------------
-
-        if (
-            destination.suffix
-            .casefold()
-            == ".appimage"
-        ):
-            destination.chmod(
-                destination.stat().st_mode
-                | 0o111
-            )
-
-        return destination
+        except OSError:
+            # ignore_errors=True sollte das normalerweise
+            # bereits abfangen.
+            pass
 
 
 __all__ = [
+    "UpdateCheckSignals",
     "UpdateCheckWorker",
+    "UpdateDownloadSignals",
     "UpdateDownloadWorker",
 ]
