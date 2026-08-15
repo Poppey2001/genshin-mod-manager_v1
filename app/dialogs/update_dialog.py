@@ -3,7 +3,9 @@ from __future__ import annotations
 from PySide6.QtCore import (
     Signal,
 )
-
+from app.update_config import (
+    UPDATE_BRANCH,
+)
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -228,9 +230,7 @@ class UpdateDialog(
         self.source_label.setText(
             tr(
                 "updates.dialog.source",
-                tag=(
-                    self.update.tag
-                ),
+                branch=UPDATE_BRANCH,
             )
         )
 

@@ -46,8 +46,8 @@ from app.update_config import (
     UPDATE_BRANCH,
     UPDATE_CHECK_TIMEOUT,
     UPDATE_DOWNLOAD_TIMEOUT,
-    build_raw_file_url,
-    build_source_archive_url,
+    remote_version_url,
+    source_zip_url,
 )
 
 from app.version import (
@@ -118,8 +118,6 @@ class UpdateInfo:
 
     version_display: str
 
-    tag: str
-
     archive_url: str
 
     @property
@@ -130,37 +128,6 @@ class UpdateInfo:
             self.version
             .is_prerelease
         )
-
-    @property
-    def tag_name(
-        self,
-    ) -> str:
-        return self.tag
-
-    @property
-    def release_name(
-        self,
-    ) -> str:
-        return self.version_display
-
-    @property
-    def release_notes(
-        self,
-    ) -> str:
-        return ""
-
-    @property
-    def release_url(
-        self,
-    ) -> str:
-        return ""
-
-    @property
-    def published_at(
-        self,
-    ) -> None:
-        return None
-
 
 # ============================================================
 # Staged Update
@@ -228,91 +195,148 @@ class UpdateService:
     def check_for_update(
         self,
         *,
-        allow_prerelease: (
-            bool
-            | None
-        ) = None,
+        allow_prerelease: bool | None = None,
     ) -> UpdateInfo | None:
+        """
+        Vergleicht:
+
+            lokale app.version.APP_VERSION
+
+        mit:
+
+            GitHub/main/app/version.py
+
+        Es werden dafür keine GitHub Releases verwendet.
+        """
+
         if allow_prerelease is None:
             allow_prerelease = (
                 self.channel
                 == UpdateChannel.PRERELEASE
             )
 
-        # ----------------------------------------------------
-        # Nur die Remote version.py laden.
-        # Keine GitHub REST API.
-        # ----------------------------------------------------
+        # ====================================================
+        # Remote version.py laden
+        # ====================================================
 
-        version_url = (
-            build_raw_file_url(
-                ref=UPDATE_BRANCH,
-                path=(
-                    REMOTE_VERSION_PATH
+        url = remote_version_url()
+
+        request = Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "XXMI-Mod-Manager-Updater"
                 ),
-            )
+                "Cache-Control": (
+                    "no-cache"
+                ),
+            },
         )
 
-        data = (
-            self._download_bytes(
-                version_url,
+        try:
+            with urlopen(
+                request,
                 timeout=(
                     UPDATE_CHECK_TIMEOUT
                 ),
-            )
-        )
+            ) as response:
+                raw_version_file = (
+                    response.read()
+                )
+
+        except HTTPError as error:
+            raise UpdateServiceError(
+                (
+                    "Remote version.py konnte "
+                    "nicht geladen werden."
+                    "\n\n"
+                    f"HTTP {error.code}"
+                    "\n"
+                    f"{url}"
+                )
+            ) from error
+
+        except URLError as error:
+            raise UpdateServiceError(
+                (
+                    "GitHub konnte nicht "
+                    "erreicht werden."
+                    "\n\n"
+                    f"{error}"
+                )
+            ) from error
+
+        # ====================================================
+        # Remote APP_VERSION auslesen
+        # ====================================================
 
         (
             remote_version,
-            version_display,
-        ) = (
-            self._parse_version_file(
-                data
-            )
+            remote_display,
+        ) = self._parse_remote_version(
+            raw_version_file
         )
 
-        # ----------------------------------------------------
-        # Bereits aktuell
-        # ----------------------------------------------------
+        # ====================================================
+        # Debug-Ausgabe
+        # ====================================================
+
+        print(
+            "[UPDATER] Local version :",
+            self.current_version,
+        )
+
+        print(
+            "[UPDATER] Remote version:",
+            remote_version,
+        )
+
+        print(
+            "[UPDATER] Version URL   :",
+            url,
+        )
+
+        # ====================================================
+        # Version vergleichen
+        # ====================================================
 
         if (
             remote_version
             <= self.current_version
         ):
+            print(
+                "[UPDATER] No update available."
+            )
+
             return None
 
-        # ----------------------------------------------------
-        # Stable Channel
-        # ----------------------------------------------------
+        # ====================================================
+        # Stable / Prerelease
+        # ====================================================
 
         if (
-            not allow_prerelease
-            and remote_version
-            .is_prerelease
+            remote_version.is_prerelease
+            and not allow_prerelease
         ):
+            print(
+                (
+                    "[UPDATER] Update ignored "
+                    "because it is a prerelease."
+                )
+            )
+
             return None
 
-        # ----------------------------------------------------
-        # Der Git-Tag wird automatisch aus APP_VERSION
-        # gebildet.
-        #
-        # 0.4.5a2
-        # ↓
-        # v0.4.5a2
-        # ----------------------------------------------------
-
-        tag = (
-            "v"
-            + str(
-                remote_version
-            )
+        print(
+            "[UPDATER] Update available:",
+            self.current_version,
+            "->",
+            remote_version,
         )
 
-        archive_url = (
-            build_source_archive_url(
-                tag=tag
-            )
-        )
+        # ====================================================
+        # Update gefunden
+        # ====================================================
 
         return UpdateInfo(
             current_version=(
@@ -322,18 +346,190 @@ class UpdateService:
                 remote_version
             ),
             version_display=(
-                version_display
+                remote_display
             ),
-            tag=tag,
             archive_url=(
-                archive_url
+                source_zip_url()
             ),
         )
 
     # ========================================================
     # Update herunterladen + entpacken
     # ========================================================
+    @staticmethod
+    def _parse_remote_version(
+        data: bytes,
+    ) -> tuple[
+        Version,
+        str,
+    ]:
+        try:
+            source = data.decode(
+                "utf-8"
+            )
 
+        except UnicodeDecodeError as error:
+            raise UpdateServiceError(
+                (
+                    "Remote version.py ist "
+                    "nicht UTF-8."
+                )
+            ) from error
+
+        try:
+            module = ast.parse(
+                source
+            )
+
+        except SyntaxError as error:
+            raise UpdateServiceError(
+                (
+                    "Remote version.py enthält "
+                    "ungültigen Python-Code."
+                )
+            ) from error
+
+        values: dict[
+            str,
+            str,
+        ] = {}
+
+        for node in module.body:
+            name: str | None = None
+
+            value_node = None
+
+            # ================================================
+            # APP_VERSION = "..."
+            # ================================================
+
+            if isinstance(
+                node,
+                ast.Assign,
+            ):
+                if (
+                    len(
+                        node.targets
+                    )
+                    != 1
+                ):
+                    continue
+
+                target = (
+                    node.targets[
+                        0
+                    ]
+                )
+
+                if isinstance(
+                    target,
+                    ast.Name,
+                ):
+                    name = target.id
+
+                    value_node = (
+                        node.value
+                    )
+
+            # ================================================
+            # APP_VERSION: str = "..."
+            # ================================================
+
+            elif isinstance(
+                node,
+                ast.AnnAssign,
+            ):
+                if isinstance(
+                    node.target,
+                    ast.Name,
+                ):
+                    name = (
+                        node.target.id
+                    )
+
+                    value_node = (
+                        node.value
+                    )
+
+            if (
+                name
+                not in {
+                    "APP_VERSION",
+                    "APP_VERSION_DISPLAY",
+                }
+                or value_node is None
+            ):
+                continue
+
+            try:
+                value = ast.literal_eval(
+                    value_node
+                )
+
+            except (
+                ValueError,
+                TypeError,
+            ):
+                continue
+
+            if isinstance(
+                value,
+                str,
+            ):
+                values[
+                    name
+                ] = value.strip()
+
+        # ====================================================
+        # APP_VERSION
+        # ====================================================
+
+        version_text = (
+            values.get(
+                "APP_VERSION",
+                "",
+            )
+        )
+
+        if not version_text:
+            raise UpdateServiceError(
+                (
+                    "APP_VERSION wurde in der "
+                    "Remote-version.py nicht "
+                    "gefunden."
+                )
+            )
+
+        try:
+            version = Version(
+                version_text
+            )
+
+        except InvalidVersion as error:
+            raise UpdateServiceError(
+                (
+                    "Ungültige Remote-Version: "
+                    f"{version_text}"
+                )
+            ) from error
+
+        # ====================================================
+        # Display
+        # ====================================================
+
+        display = (
+            values.get(
+                "APP_VERSION_DISPLAY"
+            )
+            or str(
+                version
+            )
+        )
+
+        return (
+            version,
+            display,
+        )
     def download_update(
         self,
         *,

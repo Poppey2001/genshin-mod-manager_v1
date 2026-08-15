@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-from urllib.parse import (
-    quote,
-)
+from urllib.parse import quote
 
 
 # ============================================================
 # GitHub Repository
 # ============================================================
 
-# Hier deinen echten GitHub-Benutzernamen /
-# deine Organisation eintragen.
 GITHUB_OWNER = "Poppey2001"
 
 GITHUB_REPOSITORY = (
@@ -20,14 +16,22 @@ GITHUB_REPOSITORY = (
 
 # ============================================================
 # Update Branch
-#
-# Von hier wird nur app/version.py gelesen.
 # ============================================================
 
 UPDATE_BRANCH = "main"
 
+
+# ============================================================
+# Remote Version
+# ============================================================
+
 REMOTE_VERSION_PATH = (
     "app/version.py"
+)
+
+# Kompatibilität mit älteren Zwischenständen
+REMOTE_VERSION_FILE = (
+    REMOTE_VERSION_PATH
 )
 
 
@@ -41,7 +45,7 @@ UPDATE_DOWNLOAD_TIMEOUT = 120.0
 
 
 # ============================================================
-# ZIP Sicherheit
+# ZIP-Sicherheitslimits
 # ============================================================
 
 MAX_UPDATE_FILE_COUNT = 30_000
@@ -55,7 +59,7 @@ MAX_UPDATE_UNCOMPRESSED_SIZE = (
 
 
 # ============================================================
-# Dateien / Ordner, die der Updater ersetzt
+# Inhalte, die installiert werden
 # ============================================================
 
 UPDATE_REPLACE_ITEMS = (
@@ -66,10 +70,10 @@ UPDATE_REPLACE_ITEMS = (
 
 
 # ============================================================
-# Repository konfiguriert?
+# Repository prüfen
 # ============================================================
 
-_INVALID_OWNERS = {
+_INVALID_OWNER_VALUES = {
     "",
     "dein_github_name",
     "your_github_name",
@@ -91,17 +95,18 @@ def github_repository_configured(
 
     if (
         owner.casefold()
-        in _INVALID_OWNERS
+        in _INVALID_OWNER_VALUES
     ):
         return False
 
-    return bool(
-        repository
-    )
+    if not repository:
+        return False
+
+    return True
 
 
 # ============================================================
-# URLs
+# RAW-Datei URL
 # ============================================================
 
 def build_raw_file_url(
@@ -150,9 +155,28 @@ def build_raw_file_url(
     )
 
 
-def build_source_archive_url(
-    *,
-    tag: str,
+# ============================================================
+# Remote version.py
+# ============================================================
+
+def remote_version_url(
+) -> str:
+    return build_raw_file_url(
+        ref=UPDATE_BRANCH,
+        path=REMOTE_VERSION_PATH,
+    )
+
+
+# ============================================================
+# Source ZIP des Branches
+#
+# WICHTIG:
+# Wir benutzen KEIN Release und KEIN Tag.
+#
+# main.zip wird direkt von GitHub erzeugt.
+# ============================================================
+
+def source_zip_url(
 ) -> str:
     owner = quote(
         GITHUB_OWNER.strip(),
@@ -164,8 +188,8 @@ def build_source_archive_url(
         safe="",
     )
 
-    encoded_tag = quote(
-        tag.strip(),
+    branch = quote(
+        UPDATE_BRANCH.strip(),
         safe="",
     )
 
@@ -173,8 +197,54 @@ def build_source_archive_url(
         "https://github.com/"
         f"{owner}/"
         f"{repository}/"
-        "archive/refs/tags/"
-        f"{encoded_tag}.zip"
+        "archive/refs/heads/"
+        f"{branch}.zip"
+    )
+
+
+# ============================================================
+# Kompatibilität mit älteren Service-Versionen
+# ============================================================
+
+def build_source_archive_url(
+    *,
+    tag: str | None = None,
+    branch: str | None = None,
+) -> str:
+    """
+    Kompatibilitätsfunktion.
+
+    Unser neues System benutzt bewusst den Branch.
+    Ein übergebener Tag wird ignoriert, damit wir nicht
+    wieder vom Git-Tag abhängig werden.
+    """
+
+    selected_branch = (
+        branch
+        or UPDATE_BRANCH
+    )
+
+    owner = quote(
+        GITHUB_OWNER.strip(),
+        safe="",
+    )
+
+    repository = quote(
+        GITHUB_REPOSITORY.strip(),
+        safe="",
+    )
+
+    encoded_branch = quote(
+        selected_branch.strip(),
+        safe="",
+    )
+
+    return (
+        "https://github.com/"
+        f"{owner}/"
+        f"{repository}/"
+        "archive/refs/heads/"
+        f"{encoded_branch}.zip"
     )
 
 
@@ -183,6 +253,7 @@ __all__ = [
     "GITHUB_REPOSITORY",
     "MAX_UPDATE_FILE_COUNT",
     "MAX_UPDATE_UNCOMPRESSED_SIZE",
+    "REMOTE_VERSION_FILE",
     "REMOTE_VERSION_PATH",
     "UPDATE_BRANCH",
     "UPDATE_CHECK_TIMEOUT",
@@ -191,4 +262,6 @@ __all__ = [
     "build_raw_file_url",
     "build_source_archive_url",
     "github_repository_configured",
+    "remote_version_url",
+    "source_zip_url",
 ]
