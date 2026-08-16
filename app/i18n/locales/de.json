@@ -564,6 +564,30 @@
     "profiles.warning.name_exists": "Ein Profil mit dem Namen „{name}“ existiert bereits.",
     "profiles.warning.navigation_blocked": "Während ein Profil angewendet wird, kann die Seite nicht gewechselt, das Spiel nicht geändert und die Einstellungen nicht geöffnet werden.",
     "profiles.warning.no_mods": "Es sind momentan keine sicher verwaltbaren Mods vorhanden. Warte auf einen abgeschlossenen Library-Scan und prüfe mögliche Konflikte.",
-    "profiles.warning.title": "Profile"
+    "profiles.warning.title": "Profile",
+
+
+    "gamebanana.details.empty": "Wähle links einen Mod aus oder öffne einen GameBanana-Eintrag direkt.",
+    "gamebanana.result.id": "ID: {id}",
+    "gamebanana.result.author": "Autor: {author}",
+    "gamebanana.result.game": "Spiel: {game}",
+    "gamebanana.result.open": "Details öffnen",
+    "gamebanana.file.display": "{name} ({size} MB)",
+    "gamebanana.error.browse.message": "Die GameBanana-Modliste konnte nicht geladen werden.",
+    "gamebanana.error.browse.unsupported_game": "Für „{game}“ ist noch keine GameBanana-Browserzuordnung vorhanden.",
+    "gamebanana.error.lookup.message": "Die GameBanana-Mod konnte nicht geladen werden.",
+    "gamebanana.error.download.message": "Die Datei konnte nicht heruntergeladen werden.",
+    "gamebanana.preview.title": "Vorschaubilder",
+    "gamebanana.preview.empty": "Für diesen Mod sind keine Vorschaubilder verfügbar.",
+    "gamebanana.preview.loading": "Vorschaubild wird geladen …",
+    "gamebanana.preview.load_failed": "Dieses Vorschaubild konnte nicht geladen werden.",
+    "gamebanana.preview.previous": "Vorheriges Bild",
+    "gamebanana.preview.next": "Nächstes Bild",
+    "gamebanana.preview.counter": "{current} von {total}",
+    "gamebanana.preview.fullscreen": "Groß anzeigen",
+    "gamebanana.preview.open": "Bild im Browser öffnen",
+    "gamebanana.preview.lightbox_title": "GameBanana-Vorschau",
+    "gamebanana.preview.thumbnail_tooltip": "Vorschaubild {current} von {total}"
+
 
 }

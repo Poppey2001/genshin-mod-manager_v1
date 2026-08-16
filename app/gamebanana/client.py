@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from typing import Any
 
@@ -13,6 +14,7 @@ from urllib.error import (
 from urllib.parse import (
     urlencode,
     urljoin,
+    urlsplit,
 )
 
 from urllib.request import (
@@ -21,10 +23,8 @@ from urllib.request import (
 )
 
 from app.gamebanana.models import (
-    GameBananaBrowseResult,
     GameBananaFile,
     GameBananaMod,
-    GameBananaModSummary,
 )
 
 from app.gamebanana.url_parser import (
@@ -49,69 +49,23 @@ GAMEBANANA_SITE_ROOT = (
     "https://gamebanana.com"
 )
 
+GAMEBANANA_SCREENSHOT_ROOT = (
+    "https://images.gamebanana.com/img/ss/mods"
+)
 
-# ============================================================
-# Browser-Konfiguration
-# ============================================================
-
-RECENT_SEARCH_PAGES = 5
-
-EXPECTED_PAGE_SIZE = 20
-
-
-# ============================================================
-# Gewünschte Felder
-#
-# Die tatsächlich erlaubten Felder werden dynamisch über
-# Core/Item/Data/AllowedFields abgefragt.
-# ============================================================
 
 PREFERRED_MOD_FIELDS = (
     "name",
     "Owner().name",
     "Game().name",
-    "Category().name",
     "Files().aFiles()",
-
     "Preview().sStructuredDataFullsizeUrl()",
     "Preview().sSubFeedImageUrl()",
-
     "screenshots",
-
     "Url().sProfileUrl()",
     "description",
-    "downloads",
-    "likes",
-    "views",
-    "date",
-    "udate",
 )
 
-
-PREFERRED_SUMMARY_FIELDS = (
-    "name",
-    "Owner().name",
-    "Game().name",
-    "Category().name",
-
-    # Hochauflösende Preview bevorzugen
-    "Preview().sStructuredDataFullsizeUrl()",
-
-    # Nur als Fallback
-    "Preview().sSubFeedImageUrl()",
-
-    "Url().sProfileUrl()",
-    "downloads",
-    "likes",
-    "views",
-    "date",
-    "udate",
-)
-
-
-# ============================================================
-# Exceptions
-# ============================================================
 
 class GameBananaClientError(
     RuntimeError
@@ -131,10 +85,6 @@ class GameBananaGameMismatchError(
     """Die Mod gehört zu einem anderen Spiel."""
 
 
-# ============================================================
-# Client
-# ============================================================
-
 class GameBananaClient:
     def __init__(
         self,
@@ -149,7 +99,7 @@ class GameBananaClient:
         ) = None
 
     # ========================================================
-    # Einzelne Mod laden
+    # Öffentliche API
     # ========================================================
 
     def fetch_mod(
@@ -160,6 +110,7 @@ class GameBananaClient:
             GameDefinition
             | None
         ) = None,
+        include_screenshots: bool = True,
     ) -> GameBananaMod:
         parsed_reference = (
             parse_mod_reference(
@@ -168,17 +119,16 @@ class GameBananaClient:
         )
 
         fields = (
-            self._supported_fields(
-                PREFERRED_MOD_FIELDS
+            self._supported_mod_fields(
+                include_screenshots=(
+                    include_screenshots
+                )
             )
         )
 
         if "name" not in fields:
             raise GameBananaClientError(
-                (
-                    "GameBanana stellt das benötigte "
-                    "Mod-Namensfeld nicht bereit."
-                )
+                "GameBanana stellt das benötigte Mod-Namensfeld nicht bereit."
             )
 
         if (
@@ -186,10 +136,7 @@ class GameBananaClient:
             not in fields
         ):
             raise GameBananaClientError(
-                (
-                    "GameBanana stellt keine "
-                    "Dateiliste für Mods bereit."
-                )
+                "GameBanana stellt keine Dateiliste für Mods bereit."
             )
 
         parameters = {
@@ -204,13 +151,11 @@ class GameBananaClient:
             "format": "json_min",
         }
 
-        data = (
-            self._request_json(
-                (
-                    f"{GAMEBANANA_API_ROOT}"
-                    "/Core/Item/Data?"
-                    f"{urlencode(parameters)}"
-                )
+        data = self._request_json(
+            (
+                f"{GAMEBANANA_API_ROOT}"
+                "/Core/Item/Data?"
+                f"{urlencode(parameters)}"
             )
         )
 
@@ -239,599 +184,14 @@ class GameBananaClient:
         return mod
 
     # ========================================================
-    # Neueste Mods
+    # Allowed fields
     # ========================================================
 
-    def browse_latest(
+    def _supported_mod_fields(
         self,
         *,
-        game: GameDefinition,
-        page: int = 1,
-    ) -> GameBananaBrowseResult:
-        page = max(
-            1,
-            int(
-                page
-            ),
-        )
-
-        mod_ids = (
-            self._fetch_latest_ids(
-                game=game,
-                page=page,
-            )
-        )
-
-        summaries = (
-            self._fetch_summaries(
-                mod_ids
-            )
-        )
-
-        return (
-            GameBananaBrowseResult(
-                items=tuple(
-                    summaries
-                ),
-                page=page,
-                query=None,
-                has_previous=(
-                    page > 1
-                ),
-                has_next=(
-                    len(
-                        mod_ids
-                    )
-                    >= EXPECTED_PAGE_SIZE
-                ),
-                pages_scanned=1,
-            )
-        )
-
-    # ========================================================
-    # Recent Search
-    # ========================================================
-
-    def search_recent_mods(
-        self,
-        *,
-        game: GameDefinition,
-        query: str,
-        max_pages: int = (
-            RECENT_SEARCH_PAGES
-        ),
-    ) -> GameBananaBrowseResult:
-        query = (
-            query.strip()
-        )
-
-        normalized_query = (
-            query.casefold()
-        )
-
-        if len(
-            normalized_query
-        ) < 2:
-            raise GameBananaClientError(
-                (
-                    "Der Suchbegriff muss mindestens "
-                    "zwei Zeichen enthalten."
-                )
-            )
-
-        max_pages = max(
-            1,
-            min(
-                int(
-                    max_pages
-                ),
-                RECENT_SEARCH_PAGES,
-            ),
-        )
-
-        matches: list[
-            GameBananaModSummary
-        ] = []
-
-        seen_ids: set[
-            int
-        ] = set()
-
-        pages_scanned = 0
-
-        for page in range(
-            1,
-            max_pages + 1,
-        ):
-            mod_ids = (
-                self._fetch_latest_ids(
-                    game=game,
-                    page=page,
-                )
-            )
-
-            if not mod_ids:
-                break
-
-            pages_scanned += 1
-
-            summaries = (
-                self._fetch_summaries(
-                    mod_ids
-                )
-            )
-
-            for summary in summaries:
-                haystack = " ".join(
-                    (
-                        summary.name,
-                        summary.author
-                        or "",
-                        summary.category
-                        or "",
-                    )
-                ).casefold()
-
-                if (
-                    normalized_query
-                    not in haystack
-                ):
-                    continue
-
-                if (
-                    summary.id
-                    in seen_ids
-                ):
-                    continue
-
-                seen_ids.add(
-                    summary.id
-                )
-
-                matches.append(
-                    summary
-                )
-
-            if (
-                len(
-                    mod_ids
-                )
-                < EXPECTED_PAGE_SIZE
-            ):
-                break
-
-        return (
-            GameBananaBrowseResult(
-                items=tuple(
-                    matches
-                ),
-                page=1,
-                query=query,
-                has_previous=False,
-                has_next=False,
-                pages_scanned=(
-                    pages_scanned
-                ),
-            )
-        )
-
-    # ========================================================
-    # Core/List/New
-    # ========================================================
-
-    def _fetch_latest_ids(
-        self,
-        *,
-        game: GameDefinition,
-        page: int,
-    ) -> list[int]:
-        parameters = {
-            "page": max(
-                1,
-                int(
-                    page
-                ),
-            ),
-            "itemtype": "Mod",
-            "gameid": (
-                self._gamebanana_id(
-                    game
-                )
-            ),
-            "include_updated": "1",
-            "format": "json_min",
-        }
-
-        data = (
-            self._request_json(
-                (
-                    f"{GAMEBANANA_API_ROOT}"
-                    "/Core/List/New?"
-                    f"{urlencode(parameters)}"
-                )
-            )
-        )
-
-        if not isinstance(
-            data,
-            list,
-        ):
-            raise GameBananaClientError(
-                (
-                    "GameBanana hat keine gültige "
-                    "Modliste zurückgegeben."
-                )
-            )
-
-        mod_ids: list[int] = []
-
-        for item in data:
-            # ----------------------------------------------
-            # Dokumentiertes Format:
-            #
-            # ["Mod", 12345]
-            # ----------------------------------------------
-
-            if (
-                isinstance(
-                    item,
-                    list,
-                )
-                and len(
-                    item
-                ) >= 2
-            ):
-                item_type = (
-                    item[0]
-                )
-
-                item_id = (
-                    self._safe_int(
-                        item[1]
-                    )
-                )
-
-                if (
-                    isinstance(
-                        item_type,
-                        str,
-                    )
-                    and item_type.casefold()
-                    == "mod"
-                    and item_id
-                    is not None
-                ):
-                    mod_ids.append(
-                        item_id
-                    )
-
-                continue
-
-            # ----------------------------------------------
-            # Defensiver Fallback
-            # ----------------------------------------------
-
-            if isinstance(
-                item,
-                dict,
-            ):
-                item_type = (
-                    self._first_string(
-                        item,
-                        (
-                            "itemtype",
-                            "type",
-                            "_sItemType",
-                        ),
-                    )
-                )
-
-                item_id = (
-                    self._first_int(
-                        item,
-                        (
-                            "itemid",
-                            "id",
-                            "_idRow",
-                        ),
-                    )
-                )
-
-                if (
-                    item_id
-                    is not None
-                    and (
-                        item_type
-                        is None
-                        or item_type.casefold()
-                        == "mod"
-                    )
-                ):
-                    mod_ids.append(
-                        item_id
-                    )
-
-        # Reihenfolge behalten,
-        # doppelte IDs entfernen.
-        return list(
-            dict.fromkeys(
-                mod_ids
-            )
-        )
-
-    # ========================================================
-    # Summary-Daten laden
-    # ========================================================
-
-    def _fetch_summaries(
-        self,
-        mod_ids: list[int],
-    ) -> list[
-        GameBananaModSummary
-    ]:
-        if not mod_ids:
-            return []
-
-        fields = (
-            self._supported_fields(
-                PREFERRED_SUMMARY_FIELDS
-            )
-        )
-
-        if "name" not in fields:
-            raise GameBananaClientError(
-                (
-                    "GameBanana stellt das benötigte "
-                    "Mod-Namensfeld nicht bereit."
-                )
-            )
-
-        summaries: list[
-            GameBananaModSummary
-        ] = []
-
-        # --------------------------------------------------
-        # Kleine Batches halten die Request-URL kurz.
-        # --------------------------------------------------
-
-        for start in range(
-            0,
-            len(
-                mod_ids
-            ),
-            20,
-        ):
-            batch_ids = (
-                mod_ids[
-                    start:
-                    start + 20
-                ]
-            )
-
-            try:
-                batch = (
-                    self._fetch_summary_batch(
-                        mod_ids=batch_ids,
-                        fields=fields,
-                    )
-                )
-
-                summaries.extend(
-                    batch
-                )
-
-                continue
-
-            except GameBananaClientError:
-                logger.exception(
-                    (
-                        "GameBanana-Multicall "
-                        "fehlgeschlagen; verwende "
-                        "Einzelabfragen."
-                    )
-                )
-
-            # ------------------------------------------------
-            # Multicall-Fallback
-            # ------------------------------------------------
-
-            for mod_id in batch_ids:
-                try:
-                    summary = (
-                        self._fetch_single_summary(
-                            mod_id=mod_id,
-                            fields=fields,
-                        )
-                    )
-
-                except GameBananaClientError:
-                    logger.exception(
-                        (
-                            "Summary für GameBanana-Mod "
-                            "%s konnte nicht geladen werden."
-                        ),
-                        mod_id,
-                    )
-
-                    continue
-
-                summaries.append(
-                    summary
-                )
-
-        return summaries
-
-    # ========================================================
-    # Core/Item/Data Multicall
-    # ========================================================
-
-    def _fetch_summary_batch(
-        self,
-        *,
-        mod_ids: list[int],
-        fields: tuple[str, ...],
-    ) -> list[
-        GameBananaModSummary
-    ]:
-        parameters: list[
-            tuple[
-                str,
-                str | int,
-            ]
-        ] = []
-
-        field_string = ",".join(
-            fields
-        )
-
-        for (
-            index,
-            mod_id,
-        ) in enumerate(
-            mod_ids
-        ):
-            parameters.extend(
-                (
-                    (
-                        f"itemtype[{index}]",
-                        "Mod",
-                    ),
-                    (
-                        f"itemid[{index}]",
-                        mod_id,
-                    ),
-                    (
-                        f"fields[{index}]",
-                        field_string,
-                    ),
-                )
-            )
-
-        data = (
-            self._request_json(
-                (
-                    f"{GAMEBANANA_API_ROOT}"
-                    "/Core/Item/Data?"
-                    f"{urlencode(parameters)}"
-                )
-            )
-        )
-
-        if not isinstance(
-            data,
-            list,
-        ):
-            raise GameBananaClientError(
-                (
-                    "GameBanana hat keine gültige "
-                    "Multicall-Antwort geliefert."
-                )
-            )
-
-        summaries: list[
-            GameBananaModSummary
-        ] = []
-
-        for (
-            mod_id,
-            item_data,
-        ) in zip(
-            mod_ids,
-            data,
-            strict=False,
-        ):
-            if (
-                isinstance(
-                    item_data,
-                    dict,
-                )
-                and "error"
-                in item_data
-            ):
-                continue
-
-            normalized = (
-                self._normalize_item_response(
-                    data=item_data,
-                    fields=fields,
-                )
-            )
-
-            try:
-                summary = (
-                    self._build_summary(
-                        mod_id=mod_id,
-                        data=normalized,
-                    )
-                )
-
-            except GameBananaClientError:
-                continue
-
-            summaries.append(
-                summary
-            )
-
-        return summaries
-
-    # ========================================================
-    # Einzelnes Summary als Fallback
-    # ========================================================
-
-    def _fetch_single_summary(
-        self,
-        *,
-        mod_id: int,
-        fields: tuple[str, ...],
-    ) -> GameBananaModSummary:
-        parameters = {
-            "itemtype": "Mod",
-            "itemid": mod_id,
-            "fields": ",".join(
-                fields
-            ),
-            "return_keys": "1",
-            "format": "json_min",
-        }
-
-        data = (
-            self._request_json(
-                (
-                    f"{GAMEBANANA_API_ROOT}"
-                    "/Core/Item/Data?"
-                    f"{urlencode(parameters)}"
-                )
-            )
-        )
-
-        normalized = (
-            self._normalize_item_response(
-                data=data,
-                fields=fields,
-            )
-        )
-
-        return (
-            self._build_summary(
-                mod_id=mod_id,
-                data=normalized,
-            )
-        )
-
-    # ========================================================
-    # Allowed Fields
-    # ========================================================
-
-    def _supported_fields(
-        self,
-        preferred_fields: tuple[
-            str,
-            ...,
-        ],
-    ) -> tuple[
-        str,
-        ...,
-    ]:
+        include_screenshots: bool = True,
+    ) -> tuple[str, ...]:
         allowed_fields = (
             self._get_allowed_mod_fields()
         )
@@ -839,9 +199,16 @@ class GameBananaClient:
         return tuple(
             field_name
             for field_name
-            in preferred_fields
-            if field_name
-            in allowed_fields
+            in PREFERRED_MOD_FIELDS
+            if (
+                field_name
+                in allowed_fields
+                and (
+                    include_screenshots
+                    or field_name
+                    != "screenshots"
+                )
+            )
         )
 
     def _get_allowed_mod_fields(
@@ -860,13 +227,11 @@ class GameBananaClient:
             "format": "json_min",
         }
 
-        data = (
-            self._request_json(
-                (
-                    f"{GAMEBANANA_API_ROOT}"
-                    "/Core/Item/Data/AllowedFields?"
-                    f"{urlencode(parameters)}"
-                )
+        data = self._request_json(
+            (
+                f"{GAMEBANANA_API_ROOT}"
+                "/Core/Item/Data/AllowedFields?"
+                f"{urlencode(parameters)}"
             )
         )
 
@@ -875,25 +240,23 @@ class GameBananaClient:
             list,
         ):
             raise GameBananaClientError(
-                (
-                    "GameBanana hat keine gültige "
-                    "Feldliste zurückgegeben."
-                )
+                "GameBanana hat keine gültige Feldliste zurückgegeben."
             )
 
-        self._allowed_mod_fields = {
+        allowed_fields = {
             value
-            for value
-            in data
+            for value in data
             if isinstance(
                 value,
                 str,
             )
         }
 
-        return (
-            self._allowed_mod_fields
+        self._allowed_mod_fields = (
+            allowed_fields
         )
+
+        return allowed_fields
 
     # ========================================================
     # HTTP
@@ -934,10 +297,7 @@ class GameBananaClient:
             if error.code == 404:
                 raise (
                     GameBananaNotFoundError(
-                        (
-                            "Die GameBanana-Mod "
-                            "wurde nicht gefunden."
-                        )
+                        "Die GameBanana-Mod wurde nicht gefunden."
                     )
                 ) from error
 
@@ -952,18 +312,14 @@ class GameBananaClient:
             raise GameBananaClientError(
                 (
                     "GameBanana konnte nicht "
-                    "erreicht werden."
-                    "\n\n"
+                    "erreicht werden.\n\n"
                     f"{error}"
                 )
             ) from error
 
         except TimeoutError as error:
             raise GameBananaClientError(
-                (
-                    "Die GameBanana-Anfrage "
-                    "hat zu lange gedauert."
-                )
+                "Die GameBanana-Anfrage hat zu lange gedauert."
             ) from error
 
         try:
@@ -978,24 +334,18 @@ class GameBananaClient:
             json.JSONDecodeError,
         ) as error:
             raise GameBananaClientError(
-                (
-                    "GameBanana hat keine gültige "
-                    "JSON-Antwort geliefert."
-                )
+                "GameBanana hat keine gültige JSON-Antwort geliefert."
             ) from error
 
     # ========================================================
-    # Item Response normalisieren
+    # API Response
     # ========================================================
 
     @staticmethod
     def _normalize_item_response(
         *,
         data: Any,
-        fields: tuple[
-            str,
-            ...,
-        ],
+        fields: tuple[str, ...],
     ) -> dict[
         str,
         Any,
@@ -1006,6 +356,8 @@ class GameBananaClient:
         ):
             return data
 
+        # Fallback für APIs, die trotz return_keys
+        # eine positionsbasierte Liste liefern.
         if isinstance(
             data,
             list,
@@ -1024,130 +376,8 @@ class GameBananaClient:
             }
 
         raise GameBananaClientError(
-            (
-                "GameBanana hat ein unerwartetes "
-                "Datenformat geliefert."
-            )
+            "GameBanana hat ein unerwartetes Datenformat geliefert."
         )
-
-    # ========================================================
-    # Summary bauen
-    # ========================================================
-
-    def _build_summary(
-        self,
-        *,
-        mod_id: int,
-        data: dict[
-            str,
-            Any,
-        ],
-    ) -> GameBananaModSummary:
-        name = (
-            self._optional_string(
-                data.get(
-                    "name"
-                )
-            )
-        )
-
-        if not name:
-            raise GameBananaClientError(
-                (
-                    "Die GameBanana-Mod besitzt "
-                    "keinen gültigen Namen."
-                )
-            )
-
-        return (
-            GameBananaModSummary(
-                id=mod_id,
-                name=name,
-                author=(
-                    self._optional_string(
-                        data.get(
-                            "Owner().name"
-                        )
-                    )
-                ),
-                game_name=(
-                    self._optional_string(
-                        data.get(
-                            "Game().name"
-                        )
-                    )
-                ),
-                category=(
-                    self._optional_string(
-                        data.get(
-                            "Category().name"
-                        )
-                    )
-                ),
-                profile_url=(
-                    self._normalize_url(
-                        self._optional_string(
-                            data.get(
-                                "Url().sProfileUrl()"
-                            )
-                        )
-                    )
-                ),
-                preview_url=(
-                    self._normalize_url(
-                        self._optional_string(
-                            data.get(
-                                "Preview().sStructuredDataFullsizeUrl()"
-                            )
-                        )
-                        or self._optional_string(
-                            data.get(
-                                "Preview().sSubFeedImageUrl()"
-                            )
-                        )
-                    )
-                ),
-                downloads=(
-                    self._safe_int(
-                        data.get(
-                            "downloads"
-                        )
-                    )
-                ),
-                likes=(
-                    self._safe_int(
-                        data.get(
-                            "likes"
-                        )
-                    )
-                ),
-                views=(
-                    self._safe_int(
-                        data.get(
-                            "views"
-                        )
-                    )
-                ),
-                date_added=(
-                    self._safe_int(
-                        data.get(
-                            "date"
-                        )
-                    )
-                ),
-                date_updated=(
-                    self._safe_int(
-                        data.get(
-                            "udate"
-                        )
-                    )
-                ),
-            )
-        )
-
-    # ========================================================
-    # Vollständige Mod bauen
-    # ========================================================
 
     def _build_mod(
         self,
@@ -1158,238 +388,237 @@ class GameBananaClient:
             Any,
         ],
     ) -> GameBananaMod:
-        summary = (
-            self._build_summary(
-                mod_id=mod_id,
-                data=data,
+        name = self._optional_string(
+            data.get(
+                "name"
             )
         )
 
-        files = (
-            self._parse_files(
-                data.get(
-                    "Files().aFiles()"
-                )
+        if not name:
+            raise GameBananaClientError(
+                "Die GameBanana-Mod besitzt keinen gültigen Namen."
+            )
+
+        files = self._parse_files(
+            data.get(
+                "Files().aFiles()"
             )
         )
-        image_urls = (
-            self._parse_image_urls(
-                data
-            )
-        )
-        return (
-            GameBananaMod(
-                id=summary.id,
-                name=summary.name,
-                author=(
-                    summary.author
-                ),
-                game_name=(
-                    summary.game_name
-                ),
-                profile_url=(
-                    summary.profile_url
-                ),
-                preview_url=(
-                    summary.preview_url
-                ),
-                description=(
-                    self._optional_string(
-                        data.get(
-                            "description"
-                        )
+
+        preview_urls = (
+            self._parse_preview_urls(
+                fullsize_preview=(
+                    data.get(
+                        "Preview().sStructuredDataFullsizeUrl()"
                     )
                 ),
-                files=tuple(
-                    files
+                screenshots=(
+                    data.get(
+                        "screenshots"
+                    )
                 ),
-                image_urls=(
-                    image_urls
-                ),
-                category=(
-                    summary.category
-                ),
-                downloads=(
-                    summary.downloads
-                ),
-                likes=(
-                    summary.likes
-                ),
-                views=(
-                    summary.views
-                ),
-                date_added=(
-                    summary.date_added
-                ),
-                date_updated=(
-                    summary.date_updated
+                fallback_preview=(
+                    data.get(
+                        "Preview().sSubFeedImageUrl()"
+                    )
                 ),
             )
         )
 
+        return GameBananaMod(
+            id=mod_id,
+            name=name,
+            author=self._optional_string(
+                data.get(
+                    "Owner().name"
+                )
+            ),
+            game_name=self._optional_string(
+                data.get(
+                    "Game().name"
+                )
+            ),
+            profile_url=self._normalize_url(
+                self._optional_string(
+                    data.get(
+                        "Url().sProfileUrl()"
+                    )
+                )
+            ),
+            preview_url=(
+                preview_urls[0]
+                if preview_urls
+                else self._normalize_url(
+                    self._optional_string(
+                        data.get(
+                            "Preview().sSubFeedImageUrl()"
+                        )
+                    )
+                )
+            ),
+            description=(
+                self._optional_string(
+                    data.get(
+                        "description"
+                    )
+                )
+            ),
+            files=tuple(
+                files
+            ),
+            preview_urls=(
+                preview_urls
+            ),
+        )
+
     # ========================================================
-    # Dateien
-    # ========================================================
-    # ========================================================
-    # Bilder
+    # Previews / Screenshots
     # ========================================================
 
-    def _parse_image_urls(
+    def _parse_preview_urls(
         self,
-        data: dict[
-            str,
-            Any,
-        ],
+        *,
+        fullsize_preview: Any,
+        screenshots: Any,
+        fallback_preview: Any,
     ) -> tuple[
         str,
         ...,
     ]:
-        urls: list[str] = []
+        """
+        Sammelt alle Bild-URLs, die GameBanana für die Submission
+        liefert.
 
-        # ----------------------------------------------------
-        # Hochauflösende Hauptpreview zuerst
-        # ----------------------------------------------------
+        Reihenfolge:
+        1. Structured Fullsize Preview
+        2. alle Einträge aus `screenshots`
+        3. SubFeed Preview als Fallback
 
-        for field_name in (
-            (
-                "Preview()."
-                "sStructuredDataFullsizeUrl()"
-            ),
-            (
-                "Preview()."
-                "sSubFeedImageUrl()"
-            ),
-        ):
-            value = (
-                self._optional_string(
-                    data.get(
-                        field_name
-                    )
-                )
-            )
-
-            if value:
-                normalized = (
-                    self._normalize_url(
-                        value
-                    )
-                )
-
-                if normalized:
-                    urls.append(
-                        normalized
-                    )
-
-        # ----------------------------------------------------
-        # Screenshots
-        # ----------------------------------------------------
-
-        screenshots = (
-            data.get(
-                "screenshots"
-            )
-        )
-
-        self._collect_image_urls(
-            screenshots,
-            urls,
-        )
-
-        # ----------------------------------------------------
-        # Reihenfolge behalten,
-        # Duplikate entfernen.
-        # ----------------------------------------------------
+        `screenshots` hat sich historisch in mehreren Strukturen
+        gezeigt. Deshalb wird die Struktur defensiv rekursiv
+        ausgewertet.
+        """
 
         result: list[str] = []
-
         seen: set[str] = set()
 
-        for url in urls:
-            if url in seen:
-                continue
+        def add(
+            value: Any,
+        ) -> None:
+            if not isinstance(
+                value,
+                str,
+            ):
+                return
+
+            normalized = (
+                self._normalize_media_url(
+                    value
+                )
+            )
+
+            if (
+                not normalized
+                or normalized in seen
+            ):
+                return
 
             seen.add(
-                url
+                normalized
             )
 
             result.append(
-                url
+                normalized
             )
+
+        add(
+            fullsize_preview
+        )
+
+        self._collect_screenshot_urls(
+            screenshots,
+            add=add,
+            key_hint="screenshots",
+        )
+
+        add(
+            fallback_preview
+        )
 
         return tuple(
             result
         )
 
-    def _collect_image_urls(
+    def _collect_screenshot_urls(
         self,
         value: Any,
-        output: list[str],
+        *,
+        add,
+        key_hint: str = "",
     ) -> None:
+        """
+        Liest GameBananas Screenshot-Feld defensiv aus.
+
+        Wichtig:
+        Core/Item/Data kann `screenshots` als bereits geparste
+        Liste/Dictionary ODER als serialisierten String liefern.
+        Bei manchen Mods sieht dieser String beispielsweise so aus:
+
+            {"_sFile":"a.jpg",...},{"_sFile":"b.jpg",...}
+
+        also mehrere JSON-Objekte ohne äußere eckige Klammern.
+        Dieser String ist KEINE URL und darf niemals direkt an
+        urllib.Request übergeben werden.
+        """
+
         if value is None:
             return
 
-        # ----------------------------------------------------
-        # Direkte URL
-        # ----------------------------------------------------
+        if isinstance(value, str):
+            text = value.strip()
 
-        if isinstance(
-            value,
-            str,
-        ):
-            candidate = (
-                value.strip()
-            )
+            if not text:
+                return
 
-            if candidate.startswith(
-                (
-                    "http://",
-                    "https://",
-                    "//",
+            # 1) Echte absolute Bild-URL.
+            if self._looks_like_media_url(text):
+                add(text)
+                return
+
+            # 2) Serialisierte Screenshot-Struktur dekodieren.
+            decoded = self._decode_screenshot_payload(text)
+
+            if decoded is not None:
+                self._collect_screenshot_urls(
+                    decoded,
+                    add=add,
+                    key_hint="screenshots",
                 )
-            ):
-                normalized = (
-                    self._normalize_url(
-                        candidate
-                    )
+                return
+
+            # 3) Nur echte Fullsize-Dateinamen akzeptieren.
+            #    _sFile100/_sFile220/_sFile530 sind lediglich
+            #    Größenvarianten desselben Screenshots und werden
+            #    absichtlich NICHT als eigene Gallery-Bilder geladen.
+            normalized_hint = str(key_hint).casefold()
+
+            if normalized_hint in {
+                "_sfile",
+                "file",
+                "filename",
+            }:
+                built = self._build_screenshot_url(
+                    filename=text,
+                    base_url=None,
                 )
 
-                if normalized:
-                    output.append(
-                        normalized
-                    )
+                if built:
+                    add(built)
 
             return
 
-        # ----------------------------------------------------
-        # Liste
-        # ----------------------------------------------------
-
-        if isinstance(
-            value,
-            list,
-        ):
-            for item in value:
-                self._collect_image_urls(
-                    item,
-                    output,
-                )
-
-            return
-
-        # ----------------------------------------------------
-        # Dictionary
-        # ----------------------------------------------------
-
-        if not isinstance(
-            value,
-            dict,
-        ):
-            return
-
-        # Manche GameBanana-Strukturen liefern
-        # Base-URL + Dateinamen separat.
-        base_url = (
-            self._first_string(
+        if isinstance(value, dict):
+            base = self._first_string(
                 value,
                 (
                     "_sBaseUrl",
@@ -1397,10 +626,8 @@ class GameBananaClient:
                     "baseUrl",
                 ),
             )
-        )
 
-        filename = (
-            self._first_string(
+            filename = self._first_string(
                 value,
                 (
                     "_sFile",
@@ -1408,101 +635,317 @@ class GameBananaClient:
                     "file",
                 ),
             )
-        )
+
+            if filename:
+                built = self._build_screenshot_url(
+                    filename=filename,
+                    base_url=base,
+                )
+
+                if built:
+                    add(built)
+
+            # Nested API variants such as _aImages are supported,
+            # but scalar thumbnail fields are not promoted to
+            # independent screenshots.
+            for key, nested in value.items():
+                if key in {
+                    "_sBaseUrl",
+                    "base_url",
+                    "baseUrl",
+                    "_sFile",
+                    "filename",
+                    "file",
+                    "_sFile100",
+                    "_sFile220",
+                    "_sFile530",
+                }:
+                    continue
+
+                if isinstance(
+                    nested,
+                    (
+                        dict,
+                        list,
+                        tuple,
+                        set,
+                    ),
+                ):
+                    self._collect_screenshot_urls(
+                        nested,
+                        add=add,
+                        key_hint=str(key),
+                    )
+                    continue
+
+                if isinstance(nested, str):
+                    # Unterstützt echte URL-Felder oder erneut
+                    # serialisierte Nested-Strukturen.
+                    nested_hint = str(key).casefold()
+                    if (
+                        "url" in nested_hint
+                        or "image" in nested_hint
+                        or "preview" in nested_hint
+                        or "screen" in nested_hint
+                    ):
+                        self._collect_screenshot_urls(
+                            nested,
+                            add=add,
+                            key_hint=str(key),
+                        )
+
+            return
+
+        if isinstance(
+            value,
+            (
+                list,
+                tuple,
+                set,
+            ),
+        ):
+            for nested in value:
+                self._collect_screenshot_urls(
+                    nested,
+                    add=add,
+                    key_hint=key_hint,
+                )
+
+    @staticmethod
+    def _decode_screenshot_payload(
+        text: str,
+    ) -> Any | None:
+        """
+        Dekodiert sowohl normales JSON als auch GameBananas
+        komma-separierte Objektfolge ohne äußere [].
+        """
+
+        stripped = str(text).strip()
+
+        if not stripped:
+            return None
+
+        candidates = [
+            stripped,
+        ]
 
         if (
-            base_url
-            and filename
+            stripped.startswith("{")
+            and stripped.endswith("}")
+            and "},{" in stripped.replace(" ", "")
         ):
-            combined = (
-                base_url.rstrip(
-                    "/"
-                )
-                + "/"
-                + filename.lstrip(
-                    "/"
-                )
+            candidates.append(
+                "[" + stripped + "]"
             )
 
-            normalized = (
-                self._normalize_url(
-                    combined
-                )
-            )
-
-            if normalized:
-                output.append(
-                    normalized
-                )
-
-        # Typische direkte URL-Felder
-        for key in (
-            "_sFullSizeUrl",
-            "_sImageUrl",
-            "_sUrl",
-            "fullsize",
-            "full",
-            "image",
-            "image_url",
-            "url",
-            "src",
-        ):
-            raw_url = (
-                value.get(
-                    key
-                )
-            )
-
-            if not isinstance(
-                raw_url,
-                str,
+        for candidate in candidates:
+            try:
+                decoded = json.loads(candidate)
+            except (
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
             ):
                 continue
 
-            raw_url = (
-                raw_url.strip()
-            )
-
-            if not raw_url:
-                continue
-
-            if not raw_url.startswith(
-                (
-                    "http://",
-                    "https://",
-                    "//",
-                )
-            ):
-                continue
-
-            normalized = (
-                self._normalize_url(
-                    raw_url
-                )
-            )
-
-            if normalized:
-                output.append(
-                    normalized
-                )
-
-        # ----------------------------------------------------
-        # Unbekannte verschachtelte Strukturen
-        # defensiv ebenfalls durchsuchen.
-        # ----------------------------------------------------
-
-        for child in value.values():
             if isinstance(
-                child,
+                decoded,
                 (
-                    list,
                     dict,
+                    list,
+                    tuple,
                 ),
             ):
-                self._collect_image_urls(
-                    child,
-                    output,
-                )
+                return decoded
+
+        return None
+
+    def _build_screenshot_url(
+        self,
+        *,
+        filename: str,
+        base_url: str | None,
+    ) -> str | None:
+        filename = str(filename).strip()
+
+        if not filename:
+            return None
+
+        # Falls das API-Feld bereits eine echte URL enthält.
+        if self._looks_like_media_url(filename):
+            return self._normalize_media_url(filename)
+
+        # Nur einfache Mediendateinamen akzeptieren. Dadurch kann
+        # ein JSON-Blob oder anderer Fremdtext nicht versehentlich
+        # zum Hostnamen werden.
+        if (
+            "/" in filename
+            or "\\" in filename
+            or "{" in filename
+            or "}" in filename
+            or "[" in filename
+            or "]" in filename
+            or '"' in filename
+            or "'" in filename
+        ):
+            return None
+
+        if not self._looks_like_image_filename(filename):
+            return None
+
+        base = (
+            self._normalize_media_url(base_url)
+            if base_url
+            else GAMEBANANA_SCREENSHOT_ROOT
+        )
+
+        if not base:
+            base = GAMEBANANA_SCREENSHOT_ROOT
+
+        return (
+            base.rstrip("/")
+            + "/"
+            + filename.lstrip("/")
+        )
+
+    @staticmethod
+    def _looks_like_image_filename(
+        value: str,
+    ) -> bool:
+        text = str(value).strip().casefold()
+
+        return any(
+            text.endswith(extension)
+            for extension in (
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".webp",
+                ".gif",
+            )
+        )
+
+    @staticmethod
+    def _looks_like_media_url(
+        value: str,
+    ) -> bool:
+        text = str(value).strip()
+
+        if not text:
+            return False
+
+        if not text.startswith(
+            (
+                "http://",
+                "https://",
+                "//",
+            )
+        ):
+            return False
+
+        lowered = text.casefold()
+
+        return any(
+            token in lowered
+            for token in (
+                ".png",
+                ".jpg",
+                ".jpeg",
+                ".webp",
+                ".gif",
+                "/img/",
+                "/image/",
+                "/images/",
+            )
+        )
+
+    @staticmethod
+    def _normalize_media_url(
+        value: str | None,
+    ) -> str | None:
+        if not value:
+            return None
+
+        value = str(value).strip()
+
+        if not value:
+            return None
+
+        # Struktur-/JSON-Text ist niemals eine URL.
+        if value[0] in "{[\"'":
+            return None
+
+        if any(
+            character in value
+            for character in (
+                "\n",
+                "\r",
+                "\t",
+            )
+        ):
+            return None
+
+        if value.startswith("//"):
+            candidate = "https:" + value
+
+        elif value.startswith(
+            (
+                "http://",
+                "https://",
+            )
+        ):
+            candidate = value
+
+        elif value.startswith("/"):
+            candidate = urljoin(
+                GAMEBANANA_SITE_ROOT,
+                value,
+            )
+
+        else:
+            # Ein Host ohne Schema ist nur gültig, wenn sein
+            # erster Teil wirklich wie ein Hostname aussieht.
+            first_segment = value.split("/", 1)[0]
+
+            if not re.fullmatch(
+                r"[A-Za-z0-9.-]+(?::[0-9]+)?",
+                first_segment,
+            ):
+                return None
+
+            if "." not in first_segment:
+                return None
+
+            candidate = "https://" + value
+
+        try:
+            parsed = urlsplit(candidate)
+        except ValueError:
+            return None
+
+        if parsed.scheme not in {
+            "http",
+            "https",
+        }:
+            return None
+
+        if not parsed.netloc:
+            return None
+
+        try:
+            _ = parsed.hostname
+        except ValueError:
+            return None
+
+        if not parsed.hostname:
+            return None
+
+        return candidate
+
+    # ========================================================
+    # Dateien
+    # ========================================================
+
     def _parse_files(
         self,
         raw_files: Any,
@@ -1512,10 +955,7 @@ class GameBananaClient:
         records: list[
             tuple[
                 int | None,
-                dict[
-                    str,
-                    Any,
-                ],
+                dict[str, Any],
             ]
         ] = []
 
@@ -1539,6 +979,8 @@ class GameBananaClient:
             raw_files,
             dict,
         ):
+            # Manche API-Antworten verwenden
+            # die File-ID als Dictionary-Key.
             for (
                 outer_key,
                 record,
@@ -1549,11 +991,15 @@ class GameBananaClient:
                 ):
                     continue
 
+                fallback_id = (
+                    self._safe_int(
+                        outer_key
+                    )
+                )
+
                 records.append(
                     (
-                        self._safe_int(
-                            outer_key
-                        ),
+                        fallback_id,
                         record,
                     )
                 )
@@ -1579,17 +1025,15 @@ class GameBananaClient:
                 or fallback_id
             )
 
-            name = (
-                self._first_string(
-                    record,
-                    (
-                        "_sFile",
-                        "filename",
-                        "file",
-                        "name",
-                        "_sName",
-                    ),
-                )
+            name = self._first_string(
+                record,
+                (
+                    "_sFile",
+                    "filename",
+                    "file",
+                    "name",
+                    "_sName",
+                ),
             )
 
             download_url = (
@@ -1611,8 +1055,8 @@ class GameBananaClient:
 
             if not name:
                 name = (
-                    "gamebanana-file-"
-                    f"{file_id or len(parsed_files) + 1}"
+                    "gamebanana-file"
+                    f"-{file_id or len(parsed_files) + 1}"
                 )
 
             parsed_files.append(
@@ -1622,16 +1066,14 @@ class GameBananaClient:
                     download_url=(
                         download_url
                     ),
-                    size=(
-                        self._first_int(
-                            record,
-                            (
-                                "_nFilesize",
-                                "_nFileSize",
-                                "filesize",
-                                "size",
-                            ),
-                        )
+                    size=self._first_int(
+                        record,
+                        (
+                            "_nFilesize",
+                            "_nFileSize",
+                            "filesize",
+                            "size",
+                        ),
                     ),
                     description=(
                         self._first_string(
@@ -1683,25 +1125,21 @@ class GameBananaClient:
                 )
             )
 
-            if not isinstance(
+            if isinstance(
                 value,
                 str,
             ):
-                continue
-
-            normalized = (
-                self._normalize_url(
-                    value
+                normalized = (
+                    self._normalize_url(
+                        value
+                    )
                 )
-            )
 
-            if normalized:
-                return normalized
+                if normalized:
+                    return normalized
 
-        # --------------------------------------------------
-        # Fallback bei leicht geänderten API-Feldnamen
-        # --------------------------------------------------
-
+        # Fallback bei leicht geänderten
+        # GameBanana-Feldnamen.
         for (
             key,
             value,
@@ -1713,9 +1151,7 @@ class GameBananaClient:
                 continue
 
             normalized_key = (
-                str(
-                    key
-                )
+                str(key)
                 .casefold()
             )
 
@@ -1745,7 +1181,7 @@ class GameBananaClient:
         return None
 
     # ========================================================
-    # Spiel validieren
+    # Spielprüfung
     # ========================================================
 
     def _validate_game(
@@ -1802,63 +1238,7 @@ class GameBananaClient:
         )
 
     # ========================================================
-    # GameBanana Game ID
-    # ========================================================
-
-    @staticmethod
-    def _gamebanana_id(
-        game: GameDefinition,
-    ) -> int:
-        # Neue Property
-        value = getattr(
-            game,
-            "gamebanana_id",
-            None,
-        )
-
-        if callable(
-            value
-        ):
-            value = value()
-
-        # Dataclass-Feld
-        if value is None:
-            value = getattr(
-                game,
-                "gamebanana_game_id",
-                None,
-            )
-
-        try:
-            game_id = int(
-                value
-            )
-
-        except (
-            TypeError,
-            ValueError,
-        ) as error:
-            raise GameBananaClientError(
-                (
-                    f"Für „{game.name}“ ist keine "
-                    "gültige GameBanana-Spiel-ID "
-                    "konfiguriert."
-                )
-            ) from error
-
-        if game_id <= 0:
-            raise GameBananaClientError(
-                (
-                    f"Für „{game.name}“ ist keine "
-                    "gültige GameBanana-Spiel-ID "
-                    "konfiguriert."
-                )
-            )
-
-        return game_id
-
-    # ========================================================
-    # Helpers
+    # Hilfsfunktionen
     # ========================================================
 
     @staticmethod
@@ -1871,9 +1251,7 @@ class GameBananaClient:
         ):
             return None
 
-        value = (
-            value.strip()
-        )
+        value = value.strip()
 
         return (
             value
@@ -1919,11 +1297,9 @@ class GameBananaClient:
         ],
     ) -> int | None:
         for key in keys:
-            value = (
-                cls._safe_int(
-                    record.get(
-                        key
-                    )
+            value = cls._safe_int(
+                record.get(
+                    key
                 )
             )
 
@@ -1950,23 +1326,12 @@ class GameBananaClient:
 
         if isinstance(
             value,
-            float,
-        ):
-            return int(
-                value
-            )
-
-        if isinstance(
-            value,
             str,
         ):
             try:
                 return int(
-                    float(
-                        value.strip()
-                    )
+                    value.strip()
                 )
-
             except ValueError:
                 return None
 
@@ -1983,12 +1348,3 @@ class GameBananaClient:
             GAMEBANANA_SITE_ROOT,
             value,
         )
-
-
-__all__ = [
-    "GameBananaClient",
-    "GameBananaClientError",
-    "GameBananaNotFoundError",
-    "GameBananaGameMismatchError",
-    "RECENT_SEARCH_PAGES",
-]

@@ -564,6 +564,29 @@
     "profiles.warning.name_exists": "A profile named “{name}” already exists.",
     "profiles.warning.navigation_blocked": "While a profile is being applied, you cannot leave the page, switch games, or open Settings.",
     "profiles.warning.no_mods": "There are currently no safely managed mods available. Wait for the library scan to finish and review any conflicts.",
-    "profiles.warning.title": "Profiles"
+    "profiles.warning.title": "Profiles",
+
+
+    "gamebanana.details.empty": "Select a mod on the left or open a GameBanana entry directly.",
+    "gamebanana.result.id": "ID: {id}",
+    "gamebanana.result.author": "Author: {author}",
+    "gamebanana.result.game": "Game: {game}",
+    "gamebanana.result.open": "Open details",
+    "gamebanana.file.display": "{name} ({size} MB)",
+    "gamebanana.error.browse.message": "The GameBanana mod list could not be loaded.",
+    "gamebanana.error.browse.unsupported_game": "No GameBanana browser mapping is configured for “{game}” yet.",
+    "gamebanana.error.lookup.message": "The GameBanana mod could not be loaded.",
+    "gamebanana.error.download.message": "The file could not be downloaded.",
+    "gamebanana.preview.title": "Preview images",
+    "gamebanana.preview.empty": "No preview images are available for this mod.",
+    "gamebanana.preview.loading": "Loading preview image …",
+    "gamebanana.preview.load_failed": "This preview image could not be loaded.",
+    "gamebanana.preview.previous": "Previous image",
+    "gamebanana.preview.next": "Next image",
+    "gamebanana.preview.counter": "{current} of {total}",
+    "gamebanana.preview.fullscreen": "View larger",
+    "gamebanana.preview.open": "Open image in browser",
+    "gamebanana.preview.lightbox_title": "GameBanana preview",
+    "gamebanana.preview.thumbnail_tooltip": "Preview image {current} of {total}"
 
 }

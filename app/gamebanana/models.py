@@ -17,7 +17,7 @@ from typing import Any
 class GameBananaFile:
     """
     Eine herunterladbare Datei einer
-    GameBanana-Mod.
+    GameBanana-Mod-Submission.
     """
 
     id: int | None
@@ -46,9 +46,7 @@ class GameBananaFile:
         self,
     ) -> str:
         return (
-            Path(
-                self.name
-            )
+            Path(self.name)
             .suffix
             .casefold()
         )
@@ -71,69 +69,28 @@ class GameBananaFile:
     frozen=True,
     slots=True,
 )
-class GameBananaModSummary:
-    """
-    Kompakte Daten für die
-    Browser-Ergebnisliste.
-    """
-
-    id: int
-
-    name: str
-
-    author: str | None = None
-
-    game_name: str | None = None
-
-    category: str | None = None
-
-    profile_url: str | None = None
-
-    preview_url: str | None = None
-
-    downloads: int | None = None
-
-    likes: int | None = None
-
-    views: int | None = None
-
-    date_added: int | None = None
-
-    date_updated: int | None = None
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
 class GameBananaBrowseResult:
     """
-    Ergebnis eines Latest- oder
-    Search-Aufrufs.
+    Gemeinsames Ergebnis einer GameBanana-Browse-/Suchanfrage.
+
+    Controller, Browser-Service, Worker und UI verwenden damit
+    denselben Datentyp.
     """
 
-    items: tuple[
-        GameBananaModSummary,
+    game_id: str
+
+    page: int
+
+    query: str
+
+    mods: tuple[
+        "GameBananaMod",
         ...,
     ]
 
-    page: int = 1
+    has_previous: bool
 
-    query: str | None = None
-
-    has_previous: bool = False
-
-    has_next: bool = False
-
-    pages_scanned: int = 1
-
-    @property
-    def is_search(
-        self,
-    ) -> bool:
-        return bool(
-            self.query
-        )
+    has_next: bool
 
 
 @dataclass(
@@ -142,8 +99,8 @@ class GameBananaBrowseResult:
 )
 class GameBananaMod:
     """
-    Vollständige Mod-Daten für
-    Detailansicht und Download.
+    Repräsentiert die für den Mod Manager
+    relevanten GameBanana-Daten.
     """
 
     id: int
@@ -164,23 +121,71 @@ class GameBananaMod:
         GameBananaFile,
         ...,
     ]
-    
-    image_urls: tuple[
+
+    # Vollständige Preview-/Screenshot-Liste.
+    #
+    # Das Feld liegt absichtlich am Ende und besitzt einen Default,
+    # damit bestehender Code, der GameBananaMod bisher ohne
+    # preview_urls erzeugt, weiterhin funktioniert.
+    preview_urls: tuple[
         str,
         ...,
     ] = ()
 
-    category: str | None = None
+    @property
+    def has_previews(
+        self,
+    ) -> bool:
+        return bool(
+            self.preview_urls
+            or self.preview_url
+        )
 
-    downloads: int | None = None
+    @property
+    def all_preview_urls(
+        self,
+    ) -> tuple[
+        str,
+        ...,
+    ]:
+        """
+        Liefert alle Preview-URLs dedupliziert.
 
-    likes: int | None = None
+        preview_urls ist die neue vollständige Liste.
+        preview_url bleibt als Legacy-/Fallback-Feld erhalten.
+        """
 
-    views: int | None = None
+        result: list[str] = []
+        seen: set[str] = set()
 
-    date_added: int | None = None
+        for value in (
+            *self.preview_urls,
+            self.preview_url,
+        ):
+            if not value:
+                continue
 
-    date_updated: int | None = None
+            normalized = str(
+                value
+            ).strip()
+
+            if (
+                not normalized
+                or normalized in seen
+            ):
+                continue
+
+            seen.add(
+                normalized
+            )
+
+            result.append(
+                normalized
+            )
+
+        return tuple(
+            result
+        )
 
     @property
     def has_files(
@@ -208,11 +213,3 @@ class GameBananaMod:
                 file.id or 0,
             ),
         )
-
-
-__all__ = [
-    "GameBananaFile",
-    "GameBananaMod",
-    "GameBananaModSummary",
-    "GameBananaBrowseResult",
-]
