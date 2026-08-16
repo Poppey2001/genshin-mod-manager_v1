@@ -293,6 +293,12 @@ class LibraryPage(QWidget):
             "sectionLabel"
         )
 
+        self.view_count_label = QLabel()
+
+        self.view_count_label.setObjectName(
+            "libraryViewCount"
+        )
+
         self.list_view_button = QPushButton()
 
         self.gallery_view_button = (
@@ -535,14 +541,18 @@ class LibraryPage(QWidget):
 
         layout.setContentsMargins(
             14,
-            10,
+            8,
             14,
-            10,
+            8,
         )
 
         layout.setSpacing(
-            8
+            10
         )
+
+        # ========================================================
+        # LEFT SIDE
+        # ========================================================
 
         self.view_title_label.setObjectName(
             "libraryViewTitle"
@@ -552,9 +562,18 @@ class LibraryPage(QWidget):
             self.view_title_label
         )
 
+        # Ergebniszahl direkt daneben
+        layout.addWidget(
+            self.view_count_label
+        )
+
         layout.addStretch(
             1
         )
+
+        # ========================================================
+        # VIEW SWITCHER
+        # ========================================================
 
         mode_frame = QFrame(
             frame
@@ -580,11 +599,11 @@ class LibraryPage(QWidget):
         )
 
         self.list_view_button.setMinimumWidth(
-            112
+            104
         )
 
         self.gallery_view_button.setMinimumWidth(
-            112
+            104
         )
 
         mode_layout.addWidget(
@@ -2016,6 +2035,14 @@ class LibraryPage(QWidget):
                 is self.gallery_widget
             )
             else list_visible
+        )
+
+        self.view_count_label.setText(
+            tr(
+                "library.status.filter_result",
+                visible=visible_mods,
+                total=total_mods,
+            )
         )
 
         self.operation_status.set_status(

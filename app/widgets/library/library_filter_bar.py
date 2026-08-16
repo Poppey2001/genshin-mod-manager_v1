@@ -107,14 +107,14 @@ class LibraryFilterBar(QFrame):
             True
         )
         self.search_input.setMinimumWidth(
-            240
+            280
         )
 
         self.character_filter.setObjectName(
             "filterCombo"
         )
         self.character_filter.setMinimumWidth(
-            150
+            135
         )
         self.character_filter.addItem(
             tr("library.filter.all_characters"),
@@ -129,7 +129,7 @@ class LibraryFilterBar(QFrame):
             "filterCombo"
         )
         self.mod_type_filter.setMinimumWidth(
-            145
+            135
         )
         self.mod_type_filter.addItem(
             tr("library.filter.all_mod_types"),
@@ -141,7 +141,7 @@ class LibraryFilterBar(QFrame):
         )
 
         self.status_filter.setMinimumWidth(
-            140
+            125
         )
 
         self.status_filter.addItem(
@@ -300,57 +300,99 @@ class LibraryFilterBar(QFrame):
 
         del blocker
 
-    def _build_ui(self) -> None:
-        root_layout = QVBoxLayout(self)
-        root_layout.setContentsMargins(
-            16,
-            14,
-            16,
-            14,
-        )
-        root_layout.setSpacing(
-            12
+    def _build_ui(
+        self,
+    ) -> None:
+        root_layout = QVBoxLayout(
+            self
         )
 
+        root_layout.setContentsMargins(
+            12,
+            10,
+            12,
+            10,
+        )
+
+        root_layout.setSpacing(
+            8
+        )
+
+        # ========================================================
+        # LIBRARY LOCATION
+        # ========================================================
+
         location_layout = QHBoxLayout()
+
+        location_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+
         location_layout.setSpacing(
-            10
+            8
         )
 
         self.folder_caption = QLabel()
+
         self.folder_caption.setObjectName(
             "fieldCaption"
+        )
+
+        self.folder_caption.setMinimumWidth(
+            52
         )
 
         location_layout.addWidget(
             self.folder_caption
         )
+
         location_layout.addWidget(
             self.path_label,
             stretch=1,
         )
+
         location_layout.addWidget(
             self.location_label
         )
 
+        # ========================================================
+        # FILTER TOOLBAR
+        # ========================================================
+
         filter_layout = QHBoxLayout()
-        filter_layout.setSpacing(
-            10
+
+        filter_layout.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
         )
 
+        filter_layout.setSpacing(
+            8
+        )
+
+        # Suche bekommt den meisten Platz
         filter_layout.addWidget(
             self.search_input,
             stretch=1,
         )
+
         filter_layout.addWidget(
             self.character_filter
         )
+
         filter_layout.addWidget(
             self.mod_type_filter
         )
+
         filter_layout.addWidget(
             self.status_filter
         )
+
         filter_layout.addWidget(
             self.reset_button
         )
@@ -358,6 +400,7 @@ class LibraryFilterBar(QFrame):
         root_layout.addLayout(
             location_layout
         )
+
         root_layout.addLayout(
             filter_layout
         )

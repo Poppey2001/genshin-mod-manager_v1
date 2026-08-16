@@ -168,7 +168,7 @@ class LibraryStatsWidget(QWidget):
         )
 
         card.setMinimumHeight(
-            94
+            76
         )
 
         card_layout = QVBoxLayout(
@@ -176,10 +176,10 @@ class LibraryStatsWidget(QWidget):
         )
 
         card_layout.setContentsMargins(
-            16,
-            13,
-            16,
-            13,
+            14,
+            9,
+            14,
+            9,
         )
 
         card_layout.setSpacing(
