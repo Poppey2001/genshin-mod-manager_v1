@@ -1477,3 +1477,296 @@ QLabel#conflictHash {
 QLabel#conflictDuplicate {
     color: #6fd69a;
 }
+/* ============================================================
+   LIBRARY LIST / DETAILS V2
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   Selection toolbar
+   ------------------------------------------------------------ */
+
+QFrame#selectionToolbar {
+    min-height: 58px;
+
+    background-color: #181d24;
+
+    border: none;
+    border-bottom: 1px solid #292f39;
+
+    border-radius: 0px;
+}
+
+
+/* ------------------------------------------------------------
+   Modern table
+   ------------------------------------------------------------ */
+
+QTableWidget#modTable {
+    background-color: #14181f;
+    alternate-background-color: #171c23;
+
+    color: #e6e9ef;
+
+    border: none;
+    border-radius: 0px;
+
+    outline: none;
+
+    selection-background-color: #292344;
+    selection-color: #ffffff;
+}
+
+QTableWidget#modTable::item {
+    min-height: 40px;
+
+    padding: 6px 10px;
+
+    border: none;
+    border-bottom: 1px solid #242a32;
+}
+
+QTableWidget#modTable::item:hover {
+    background-color: #1e242c;
+}
+
+QTableWidget#modTable::item:selected {
+    background-color: #292344;
+
+    color: #ffffff;
+
+    border-bottom-color: #3d3560;
+}
+
+QHeaderView::section {
+    min-height: 34px;
+
+    background-color: #181d24;
+
+    color: #949dab;
+
+    border: none;
+    border-bottom: 1px solid #2b323b;
+
+    padding: 7px 10px;
+
+    font-size: 11px;
+    font-weight: 800;
+}
+
+
+/* ------------------------------------------------------------
+   Mod name
+   ------------------------------------------------------------ */
+
+QWidget#modNameContainer {
+    background-color: transparent;
+}
+
+QLabel#modNameLabel {
+    background-color: transparent;
+
+    color: #f1f3f6;
+
+    font-size: 12px;
+    font-weight: 650;
+}
+
+
+/* ------------------------------------------------------------
+   Status cell
+   ------------------------------------------------------------ */
+
+QWidget#modStateContainer {
+    background-color: transparent;
+
+    border: none;
+}
+
+QLabel#modStateBadge {
+    min-height: 23px;
+
+    padding-left: 8px;
+    padding-right: 8px;
+
+    background-color: #272d36;
+
+    color: #b8c0cc;
+
+    border: 1px solid #343c47;
+    border-radius: 7px;
+
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QLabel#modStateBadge[modState="enabled"] {
+    background-color: #163728;
+
+    color: #74dfa8;
+
+    border-color: #285b41;
+}
+
+QLabel#modStateBadge[modState="disabled"] {
+    background-color: #252b34;
+
+    color: #aeb7c4;
+
+    border-color: #353d48;
+}
+
+QLabel#modStateBadge[modState="conflict"] {
+    background-color: #453014;
+
+    color: #ffc76d;
+
+    border-color: #6a4a1d;
+}
+
+QLabel#modStateBadge[modState="broken"] {
+    background-color: #432128;
+
+    color: #ff939f;
+
+    border-color: #6c323d;
+}
+
+QLabel#modStateBadge[modState="not_configured"] {
+    background-color: #302640;
+
+    color: #d4b7ff;
+
+    border-color: #50406a;
+}
+
+
+/* ============================================================
+   DETAILS V2
+   ============================================================ */
+
+QScrollArea#detailsScroll {
+    background-color: #12161c;
+
+    border: none;
+}
+
+QScrollArea#detailsScroll > QWidget,
+QScrollArea#detailsScroll > QWidget > QWidget {
+    background-color: #12161c;
+}
+
+QFrame#detailsPanel {
+    background-color: #12161c;
+
+    border: none;
+    border-radius: 0px;
+}
+
+
+/* ------------------------------------------------------------
+   Detail cards
+   ------------------------------------------------------------ */
+
+QFrame#detailHeaderCard,
+QFrame#detailPreviewCard,
+QFrame#detailInfoCard,
+QFrame#detailActionCard {
+    background-color: #191e25;
+
+    border: 1px solid #2b323c;
+    border-radius: 11px;
+}
+
+QFrame#detailHeaderCard {
+    background-color: #1b2028;
+}
+
+
+/* ------------------------------------------------------------
+   Detail title
+   ------------------------------------------------------------ */
+
+QLabel#detailEyebrow {
+    color: #8f7cff;
+
+    font-size: 10px;
+    font-weight: 900;
+}
+
+QLabel#detailTitle {
+    color: #f7f8fa;
+
+    font-size: 19px;
+    font-weight: 800;
+}
+
+QLabel#detailSubtitle {
+    color: #8d96a4;
+
+    font-size: 11px;
+}
+
+
+/* ------------------------------------------------------------
+   Detail fields
+   ------------------------------------------------------------ */
+
+QFrame#detailField {
+    background-color: #14181e;
+
+    border: 1px solid #272e37;
+    border-radius: 8px;
+}
+
+QFrame#detailField:hover {
+    background-color: #171c23;
+
+    border-color: #333b47;
+}
+
+QLabel#detailCaption {
+    background-color: transparent;
+
+    color: #747e8c;
+
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QLabel#detailValue {
+    background-color: transparent;
+
+    color: #e1e4e9;
+
+    font-size: 11px;
+    font-weight: 600;
+}
+
+
+/* ------------------------------------------------------------
+   Sections
+   ------------------------------------------------------------ */
+
+QLabel#detailSectionTitle {
+    color: #dfe3e9;
+
+    font-size: 11px;
+    font-weight: 900;
+
+    padding: 0px;
+}
+
+
+/* ------------------------------------------------------------
+   Detail actions
+   ------------------------------------------------------------ */
+
+QFrame#detailActionCard QPushButton {
+    min-height: 34px;
+
+    border-radius: 7px;
+
+    font-size: 11px;
+    font-weight: 750;
+}

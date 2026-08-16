@@ -9,14 +9,10 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from shiboken6 import (
-    isValid,
-)
 from PySide6.QtGui import (
     QPixmap,
     QResizeEvent,
 )
-
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -30,23 +26,22 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import (
+    isValid,
+)
 
 from app.i18n import (
     tr,
 )
-
 from app.models.mod import (
     ModInfo,
 )
-
 from app.services.mod_manager import (
     ModState,
 )
-
 from app.widgets.gamebanana.preview_image import (
     GameBananaPreviewImage,
 )
-
 from app.workers.library_preview_worker import (
     LibraryPreviewWorker,
 )
@@ -58,31 +53,44 @@ StateProvider = Callable[
 ]
 
 
-CARD_TARGET_WIDTH = 390
-CARD_MINIMUM_WIDTH = 320
-CARD_MAXIMUM_WIDTH = 460
+# ============================================================
+# Gallery layout
+# ============================================================
+#
+# Ziel:
+# - kompakter als die alte 390px / 330px Gallery
+# - mehr Karten gleichzeitig auf 1080p und 1440p
+# - Preview bleibt groß genug, um Mods visuell zu erkennen
+# - keine Änderungen an LibraryPage/Controllern erforderlich
+# ============================================================
 
-CARD_HEIGHT = 330
-PREVIEW_HEIGHT = 220
+CARD_TARGET_WIDTH = 320
+CARD_MINIMUM_WIDTH = 275
+CARD_MAXIMUM_WIDTH = 350
+
+CARD_HEIGHT = 300
+
+PREVIEW_MINIMUM_HEIGHT = 165
+PREVIEW_MAXIMUM_HEIGHT = 185
 
 
 # ============================================================
-# Preview innerhalb einer Library-Card
+# Preview
 # ============================================================
 
 class LibraryCardPreview(
     QFrame
 ):
     """
-    Preview für eine Library-Card.
+    Preview innerhalb einer Gallery-Card.
 
     Reihenfolge:
     1. lokale Preview
     2. GameBanana Preview
     3. Platzhalter
 
-    Worker laufen asynchron. Beim Löschen der Card
-    werden ihre Signale zuerst getrennt.
+    Die Preview-Worker laufen asynchron. Ergebnisse von alten
+    Requests werden über einen Token ignoriert.
     """
 
     def __init__(
@@ -98,12 +106,7 @@ class LibraryCardPreview(
             "libraryCardPreview"
         )
 
-        # ====================================================
-        # Lifecycle
-        # ====================================================
-
         self._disposed = False
-
         self._request_token = 0
 
         self._workers: set[
@@ -115,18 +118,12 @@ class LibraryCardPreview(
             | None
         ) = None
 
-        # ====================================================
+        # ----------------------------------------------------
         # Widgets
-        #
-        # WICHTIG:
-        # ALLE Widgets werden erstellt, BEVOR
-        # _build_ui() oder clear_preview() aufgerufen wird.
-        # ====================================================
+        # ----------------------------------------------------
 
-        self.stack = (
-            QStackedWidget(
-                self
-            )
+        self.stack = QStackedWidget(
+            self
         )
 
         self.empty_label = QLabel(
@@ -140,17 +137,13 @@ class LibraryCardPreview(
         self.remote_label = (
             GameBananaPreviewImage(
                 parent=self,
-                minimum_height=210,
+                minimum_height=(
+                    PREVIEW_MINIMUM_HEIGHT
+                ),
             )
         )
 
-        # ====================================================
-        # UI
-        # ====================================================
-
         self._build_ui()
-
-        # Erst JETZT darf clear_preview() laufen.
         self.clear_preview()
 
     # ========================================================
@@ -161,11 +154,16 @@ class LibraryCardPreview(
         self,
     ) -> None:
         self.setMinimumHeight(
-            210
+            PREVIEW_MINIMUM_HEIGHT
         )
 
         self.setMaximumHeight(
-            240
+            PREVIEW_MAXIMUM_HEIGHT
+        )
+
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
         )
 
         layout = QVBoxLayout(
@@ -184,7 +182,7 @@ class LibraryCardPreview(
         )
 
         # ----------------------------------------------------
-        # Empty
+        # Empty / loading
         # ----------------------------------------------------
 
         self.empty_label.setObjectName(
@@ -200,7 +198,7 @@ class LibraryCardPreview(
         )
 
         # ----------------------------------------------------
-        # Lokal
+        # Local preview
         # ----------------------------------------------------
 
         self.local_label.setObjectName(
@@ -211,8 +209,13 @@ class LibraryCardPreview(
             Qt.AlignmentFlag.AlignCenter
         )
 
+        self.local_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+
         # ----------------------------------------------------
-        # Remote / GameBanana
+        # Remote preview
         # ----------------------------------------------------
 
         self.remote_label.setObjectName(
@@ -255,16 +258,8 @@ class LibraryCardPreview(
         ):
             return
 
-        # Alten Request ungültig machen.
         self._request_token += 1
-
-        token = (
-            self._request_token
-        )
-
-        # ----------------------------------------------------
-        # Anzeige zurücksetzen, ohne Lifecycle zu zerstören
-        # ----------------------------------------------------
+        token = self._request_token
 
         self._local_pixmap = None
 
@@ -289,10 +284,6 @@ class LibraryCardPreview(
         self.stack.setCurrentWidget(
             self.empty_label
         )
-
-        # ----------------------------------------------------
-        # Preview Worker
-        # ----------------------------------------------------
 
         worker = (
             LibraryPreviewWorker(
@@ -332,7 +323,7 @@ class LibraryCardPreview(
         )
 
     # ========================================================
-    # Worker fertig
+    # Worker
     # ========================================================
 
     def _on_loaded(
@@ -361,7 +352,7 @@ class LibraryCardPreview(
             return
 
         # ----------------------------------------------------
-        # 1. Lokale Preview bevorzugen
+        # 1. lokale Preview
         # ----------------------------------------------------
 
         if result.local_images:
@@ -390,11 +381,10 @@ class LibraryCardPreview(
                     )
 
                     self._refresh_local_pixmap()
-
                     return
 
         # ----------------------------------------------------
-        # 2. GameBanana-Fallback
+        # 2. GameBanana Preview
         # ----------------------------------------------------
 
         if result.remote_images:
@@ -414,14 +404,10 @@ class LibraryCardPreview(
                 return
 
         # ----------------------------------------------------
-        # 3. Keine Preview
+        # 3. keine Preview
         # ----------------------------------------------------
 
         self._show_empty()
-
-    # ========================================================
-    # Worker Fehler
-    # ========================================================
 
     def _on_failed(
         self,
@@ -491,19 +477,13 @@ class LibraryCardPreview(
                 self.empty_label
             )
 
-    # ========================================================
-    # Public Reset
-    # ========================================================
-
     def clear_preview(
         self,
     ) -> None:
         if self._disposed:
             return
 
-        # Alle früheren Worker-Ergebnisse ungültig.
         self._request_token += 1
-
         self._local_pixmap = None
 
         if isValid(
@@ -532,7 +512,7 @@ class LibraryCardPreview(
             )
 
     # ========================================================
-    # Resize
+    # Local image scaling
     # ========================================================
 
     def resizeEvent(
@@ -548,16 +528,20 @@ class LibraryCardPreview(
     def _refresh_local_pixmap(
         self,
     ) -> None:
+        """
+        Die lokale Preview wird wie ein modernes Cover-Bild behandelt:
+        Sie füllt den verfügbaren Bereich aus und wird mittig beschnitten,
+        statt große leere Balken zu erzeugen.
+        """
+
         if (
             self._disposed
             or not isValid(
                 self
             )
-        ):
-            return
-
-        if not isValid(
-            self.local_label
+            or not isValid(
+                self.local_label
+            )
         ):
             return
 
@@ -585,12 +569,43 @@ class LibraryCardPreview(
 
         scaled = pixmap.scaled(
             target,
-            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
             Qt.TransformationMode.SmoothTransformation,
         )
 
+        x = max(
+            0,
+            (
+                scaled.width()
+                - target.width()
+            )
+            // 2,
+        )
+
+        y = max(
+            0,
+            (
+                scaled.height()
+                - target.height()
+            )
+            // 2,
+        )
+
+        cropped = scaled.copy(
+            x,
+            y,
+            min(
+                target.width(),
+                scaled.width(),
+            ),
+            min(
+                target.height(),
+                scaled.height(),
+            ),
+        )
+
         self.local_label.setPixmap(
-            scaled
+            cropped
         )
 
     # ========================================================
@@ -600,21 +615,14 @@ class LibraryCardPreview(
     def dispose(
         self,
     ) -> None:
-        """
-        Wird von LibraryModCard.dispose() aufgerufen,
-        BEVOR die Card mit deleteLater() gelöscht wird.
-        """
-
         if self._disposed:
             return
 
         self._disposed = True
-
-        # Alle alten Antworten ungültig.
         self._request_token += 1
 
         # ----------------------------------------------------
-        # Library Preview Worker abkoppeln
+        # Preview Worker trennen
         # ----------------------------------------------------
 
         for worker in tuple(
@@ -641,7 +649,7 @@ class LibraryCardPreview(
         self._workers.clear()
 
         # ----------------------------------------------------
-        # GameBanana Preview Worker abkoppeln
+        # Remote Preview trennen
         # ----------------------------------------------------
 
         if hasattr(
@@ -667,8 +675,10 @@ class LibraryCardPreview(
                     dispose_remote()
 
         self._local_pixmap = None
+
+
 # ============================================================
-# Einzelne Mod Card
+# Mod Card
 # ============================================================
 
 class LibraryModCard(
@@ -690,7 +700,6 @@ class LibraryModCard(
         )
 
         self.mod = mod
-
         self.state = state
 
         self._operation_running = (
@@ -700,13 +709,6 @@ class LibraryModCard(
         self.setObjectName(
             "libraryModCard"
         )
-
-        # ----------------------------------------------------
-        # DAS ist eine der entscheidenden Korrekturen.
-        #
-        # Die alte Card konnte im Grid auf wenige Pixel
-        # zusammenschrumpfen.
-        # ----------------------------------------------------
 
         self.setMinimumWidth(
             CARD_MINIMUM_WIDTH
@@ -736,7 +738,7 @@ class LibraryModCard(
         )
 
         # ----------------------------------------------------
-        # Labels
+        # Text
         # ----------------------------------------------------
 
         self.name_label = QLabel(
@@ -748,7 +750,11 @@ class LibraryModCard(
         )
 
         self.name_label.setWordWrap(
-            True
+            False
+        )
+
+        self.name_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.NoTextInteraction
         )
 
         self.meta_label = QLabel(
@@ -760,7 +766,7 @@ class LibraryModCard(
         )
 
         self.meta_label.setWordWrap(
-            True
+            False
         )
 
         self.status_label = QLabel(
@@ -772,13 +778,11 @@ class LibraryModCard(
         )
 
         # ----------------------------------------------------
-        # Aktivieren / Deaktivieren
+        # Action
         # ----------------------------------------------------
 
-        self.toggle_button = (
-            QPushButton(
-                self
-            )
+        self.toggle_button = QPushButton(
+            self
         )
 
         self.toggle_button.setObjectName(
@@ -786,15 +790,14 @@ class LibraryModCard(
         )
 
         self.toggle_button.setMinimumWidth(
-            120
+            100
         )
 
         self.toggle_button.setMaximumWidth(
-            150
+            122
         )
 
         self._build_ui()
-
         self._refresh_mod_text()
 
         self.set_state(
@@ -804,36 +807,7 @@ class LibraryModCard(
         self.preview.load_mod(
             self.mod
         )
-    # ========================================================
-    # Lifecycle
-    # ========================================================
 
-
-    def dispose(
-        self,
-    ) -> None:
-        dispose_preview = getattr(
-            self.preview,
-            "dispose",
-            None,
-        )
-
-
-        if callable(
-            dispose_preview
-        ):
-            dispose_preview()
-
-
-        try:
-            self.toggle_button.clicked.disconnect()
-
-
-        except (
-            RuntimeError,
-            TypeError,
-        ):
-            pass
     # ========================================================
     # UI
     # ========================================================
@@ -846,14 +820,14 @@ class LibraryModCard(
         )
 
         layout.setContentsMargins(
+            9,
+            9,
+            9,
             10,
-            10,
-            10,
-            12,
         )
 
         layout.setSpacing(
-            9
+            7
         )
 
         layout.addWidget(
@@ -861,24 +835,16 @@ class LibraryModCard(
         )
 
         # ----------------------------------------------------
-        # Unterer Card-Bereich
+        # Name + Meta
         # ----------------------------------------------------
 
-        footer = QHBoxLayout()
+        info_layout = QVBoxLayout()
 
-        footer.setContentsMargins(
-            4,
-            1,
-            4,
-            1,
-        )
-
-        footer.setSpacing(
-            12
-        )
-
-        info_layout = (
-            QVBoxLayout()
+        info_layout.setContentsMargins(
+            3,
+            0,
+            3,
+            0,
         )
 
         info_layout.setSpacing(
@@ -893,13 +859,34 @@ class LibraryModCard(
             self.meta_label
         )
 
-        info_layout.addWidget(
-            self.status_label
+        layout.addLayout(
+            info_layout
         )
 
-        footer.addLayout(
-            info_layout,
+        # ----------------------------------------------------
+        # State + Action in one compact row
+        # ----------------------------------------------------
+
+        footer = QHBoxLayout()
+
+        footer.setContentsMargins(
+            3,
+            0,
+            3,
+            0,
+        )
+
+        footer.setSpacing(
+            8
+        )
+
+        footer.addWidget(
+            self.status_label,
             stretch=1,
+            alignment=(
+                Qt.AlignmentFlag.AlignLeft
+                | Qt.AlignmentFlag.AlignVCenter
+            ),
         )
 
         footer.addWidget(
@@ -929,6 +916,10 @@ class LibraryModCard(
             self.mod.name
         )
 
+        self.name_label.setToolTip(
+            self.mod.name
+        )
+
         parts: list[
             str
         ] = []
@@ -945,16 +936,22 @@ class LibraryModCard(
                 self.mod.mod_type
             )
 
-        self.meta_label.setText(
-            (
-                " • ".join(
-                    parts
-                )
-                if parts
-                else tr(
-                    "common.unknown"
-                )
+        meta_text = (
+            " • ".join(
+                parts
             )
+            if parts
+            else tr(
+                "common.unknown"
+            )
+        )
+
+        self.meta_label.setText(
+            meta_text
+        )
+
+        self.meta_label.setToolTip(
+            meta_text
         )
 
     # ========================================================
@@ -966,10 +963,6 @@ class LibraryModCard(
         state: ModState,
     ) -> None:
         self.state = state
-
-        # ----------------------------------------------------
-        # State Text
-        # ----------------------------------------------------
 
         state_key = {
             ModState.ENABLED: (
@@ -992,16 +985,22 @@ class LibraryModCard(
         )
 
         if state_key:
-            self.status_label.setText(
-                tr(
-                    state_key
-                )
+            state_text = tr(
+                state_key
             )
-
         else:
-            self.status_label.setText(
+            state_text = (
                 state.value
             )
+
+        self.status_label.setText(
+            state_text
+        )
+
+        self.status_label.setProperty(
+            "modState",
+            state.value,
+        )
 
         # ----------------------------------------------------
         # Button
@@ -1028,10 +1027,7 @@ class LibraryModCard(
         elif state == ModState.BROKEN:
             self.toggle_button.setText(
                 tr(
-                    (
-                        "library.details.action."
-                        "remove_broken"
-                    )
+                    "library.details.action.remove_broken"
                 )
             )
 
@@ -1052,10 +1048,7 @@ class LibraryModCard(
         ):
             self.toggle_button.setText(
                 tr(
-                    (
-                        "library.details.action."
-                        "not_configured"
-                    )
+                    "library.details.action.not_configured"
                 )
             )
 
@@ -1064,10 +1057,7 @@ class LibraryModCard(
         else:
             self.toggle_button.setText(
                 tr(
-                    (
-                        "library.details.action."
-                        "unavailable"
-                    )
+                    "library.details.action.unavailable"
                 )
             )
 
@@ -1079,7 +1069,7 @@ class LibraryModCard(
         )
 
         # ----------------------------------------------------
-        # QSS State Property
+        # Card state for QSS
         # ----------------------------------------------------
 
         self.setProperty(
@@ -1095,14 +1085,20 @@ class LibraryModCard(
             self
         )
 
+        self.status_label.style().unpolish(
+            self.status_label
+        )
+
+        self.status_label.style().polish(
+            self.status_label
+        )
+
     def set_operation_running(
         self,
         running: bool,
     ) -> None:
-        self._operation_running = (
-            bool(
-                running
-            )
+        self._operation_running = bool(
+            running
         )
 
         self.set_state(
@@ -1120,9 +1116,36 @@ class LibraryModCard(
             self.mod
         )
 
+    # ========================================================
+    # Lifecycle
+    # ========================================================
+
+    def dispose(
+        self,
+    ) -> None:
+        dispose_preview = getattr(
+            self.preview,
+            "dispose",
+            None,
+        )
+
+        if callable(
+            dispose_preview
+        ):
+            dispose_preview()
+
+        try:
+            self.toggle_button.clicked.disconnect()
+
+        except (
+            RuntimeError,
+            TypeError,
+        ):
+            pass
+
 
 # ============================================================
-# Library Gallery
+# Gallery
 # ============================================================
 
 class LibraryGalleryWidget(
@@ -1146,7 +1169,7 @@ class LibraryGalleryWidget(
         )
 
         # ----------------------------------------------------
-        # Daten
+        # Data
         # ----------------------------------------------------
 
         self._cards: list[
@@ -1159,11 +1182,8 @@ class LibraryGalleryWidget(
         ] = {}
 
         self._search_term = ""
-
         self._character = None
-
         self._mod_type = None
-
         self._status = None
 
         self._operation_running = (
@@ -1173,13 +1193,11 @@ class LibraryGalleryWidget(
         self._current_columns = 0
 
         # ----------------------------------------------------
-        # Scroll Area
+        # Scroll
         # ----------------------------------------------------
 
-        self.scroll_area = (
-            QScrollArea(
-                self
-            )
+        self.scroll_area = QScrollArea(
+            self
         )
 
         self.scroll_area.setObjectName(
@@ -1203,7 +1221,7 @@ class LibraryGalleryWidget(
         )
 
         # ----------------------------------------------------
-        # Scroll Content
+        # Content
         # ----------------------------------------------------
 
         self.content = QWidget()
@@ -1221,17 +1239,15 @@ class LibraryGalleryWidget(
         # Grid
         # ----------------------------------------------------
 
-        self.grid = (
-            QGridLayout(
-                self.content
-            )
+        self.grid = QGridLayout(
+            self.content
         )
 
         self.grid.setContentsMargins(
-            8,
-            8,
-            14,
-            20,
+            16,
+            16,
+            16,
+            18,
         )
 
         self.grid.setHorizontalSpacing(
@@ -1241,14 +1257,6 @@ class LibraryGalleryWidget(
         self.grid.setVerticalSpacing(
             14
         )
-
-        # ----------------------------------------------------
-        # SEHR WICHTIG:
-        #
-        # Das Layout bestimmt die Mindesthöhe des
-        # Scroll-Contents. Ohne das können die Cards
-        # in QScrollArea kollabieren.
-        # ----------------------------------------------------
 
         self.grid.setSizeConstraint(
             QLayout.SizeConstraint.SetMinAndMaxSize
@@ -1276,6 +1284,10 @@ class LibraryGalleryWidget(
 
         self.empty_label.setAlignment(
             Qt.AlignmentFlag.AlignCenter
+        )
+
+        self.empty_label.setWordWrap(
+            True
         )
 
         self.empty_label.hide()
@@ -1315,36 +1327,34 @@ class LibraryGalleryWidget(
         )
 
     # ========================================================
-    # Mods setzen
+    # Mods
     # ========================================================
 
     def set_mods(
         self,
         *,
-        mods: list[
-            ModInfo
-        ]
-        | tuple[
-            ModInfo,
-            ...,
-        ],
+        mods: (
+            list[
+                ModInfo
+            ]
+            | tuple[
+                ModInfo,
+                ...,
+            ]
+        ),
         state_provider: StateProvider,
     ) -> None:
         self.clear()
 
         for mod in mods:
-            state = (
-                state_provider(
-                    mod.path
-                )
+            state = state_provider(
+                mod.path
             )
 
-            card = (
-                LibraryModCard(
-                    mod=mod,
-                    state=state,
-                    parent=self.content,
-                )
+            card = LibraryModCard(
+                mod=mod,
+                state=state,
+                parent=self.content,
             )
 
             card.set_operation_running(
@@ -1367,6 +1377,13 @@ class LibraryGalleryWidget(
 
         self._apply_current_filters()
 
+        # QScrollArea kennt seine endgültige Breite häufig erst
+        # einen Event-Loop später.
+        QTimer.singleShot(
+            0,
+            self._reflow_visible_cards,
+        )
+
     # ========================================================
     # Clear
     # ========================================================
@@ -1374,49 +1391,32 @@ class LibraryGalleryWidget(
     def clear(
         self,
     ) -> None:
-        """
-        Entfernt alle Gallery-Cards sicher.
-
-
-        Wichtig:
-        Preview-Worker werden zuerst von ihren Widgets
-        getrennt und erst danach werden die Qt-Widgets
-        gelöscht.
-        """
-
-
         cards = tuple(
             self._cards
         )
 
-
         self._cards.clear()
-
-
         self._card_by_path.clear()
-
 
         for card in cards:
             self.grid.removeWidget(
                 card
             )
 
-
-            # -----------------------------------------------
-            # Erst asynchrone Callbacks abkoppeln.
-            # -----------------------------------------------
-
+            try:
+                card.toggle_requested.disconnect(
+                    self.toggle_requested
+                )
+            except (
+                RuntimeError,
+                TypeError,
+            ):
+                pass
 
             card.dispose()
-
-
-            # -----------------------------------------------
-            # Erst danach Qt-Objekt löschen.
-            # -----------------------------------------------
-
-
             card.deleteLater()
 
+        self._current_columns = 0
 
         self.empty_label.setText(
             tr(
@@ -1424,10 +1424,7 @@ class LibraryGalleryWidget(
             )
         )
 
-
         self.empty_label.show()
-
-
         self.scroll_area.hide()
 
     # ========================================================
@@ -1442,14 +1439,6 @@ class LibraryGalleryWidget(
         mod_type=None,
         status=None,
     ) -> int:
-        """
-        Speichert die aktuellen Filter und
-        aktualisiert anschließend alle Cards.
-
-        Rückgabe:
-            Anzahl sichtbarer Cards.
-        """
-
         self._search_term = (
             search_term
             .strip()
@@ -1468,10 +1457,7 @@ class LibraryGalleryWidget(
             status
         )
 
-        return (
-            self._apply_current_filters()
-        )
-        
+        return self._apply_current_filters()
 
     def _apply_current_filters(
         self,
@@ -1481,9 +1467,7 @@ class LibraryGalleryWidget(
         ] = []
 
         for card in self._cards:
-            mod = (
-                card.mod
-            )
+            mod = card.mod
 
             # ------------------------------------------------
             # Character
@@ -1511,7 +1495,7 @@ class LibraryGalleryWidget(
                 )
 
             # ------------------------------------------------
-            # Mod Type
+            # Mod type
             # ------------------------------------------------
 
             type_matches = (
@@ -1536,7 +1520,7 @@ class LibraryGalleryWidget(
             )
 
             # ------------------------------------------------
-            # Suche
+            # Search
             # ------------------------------------------------
 
             searchable = " ".join(
@@ -1606,7 +1590,7 @@ class LibraryGalleryWidget(
         )
 
     # ========================================================
-    # Card Status aktualisieren
+    # State
     # ========================================================
 
     def update_mod_state(
@@ -1615,11 +1599,9 @@ class LibraryGalleryWidget(
         mod: ModInfo,
         state: ModState,
     ) -> None:
-        card = (
-            self._card_by_path.get(
-                self._path_key(
-                    mod.path
-                )
+        card = self._card_by_path.get(
+            self._path_key(
+                mod.path
             )
         )
 
@@ -1640,10 +1622,8 @@ class LibraryGalleryWidget(
         self,
         running: bool,
     ) -> None:
-        self._operation_running = (
-            bool(
-                running
-            )
+        self._operation_running = bool(
+            running
         )
 
         for card in self._cards:
@@ -1652,7 +1632,7 @@ class LibraryGalleryWidget(
             )
 
     # ========================================================
-    # Responsive Layout
+    # Responsive layout
     # ========================================================
 
     def resizeEvent(
@@ -1663,6 +1643,11 @@ class LibraryGalleryWidget(
             event
         )
 
+        self._reflow_visible_cards()
+
+    def _reflow_visible_cards(
+        self,
+    ) -> None:
         visible_cards = [
             card
             for card
@@ -1682,7 +1667,17 @@ class LibraryGalleryWidget(
         *,
         force: bool = False,
     ) -> None:
+        # Alte Positionen zuerst entfernen, damit auch ein Filter,
+        # der 0 Treffer liefert, keine unsichtbaren Layout-Reste
+        # zurücklässt.
+        for card in self._cards:
+            self.grid.removeWidget(
+                card
+            )
+
         if not cards:
+            self._current_columns = 0
+            self.content.adjustSize()
             return
 
         available_width = max(
@@ -1691,7 +1686,7 @@ class LibraryGalleryWidget(
                 self.scroll_area
                 .viewport()
                 .width()
-                - 24
+                - 32
             ),
         )
 
@@ -1701,29 +1696,30 @@ class LibraryGalleryWidget(
             // CARD_TARGET_WIDTH,
         )
 
+        # Durch MaxWidth niemals so viele Spalten anlegen, dass
+        # die Cards schmaler als CARD_MINIMUM_WIDTH würden.
+        while (
+            columns > 1
+            and (
+                available_width
+                // columns
+            )
+            < CARD_MINIMUM_WIDTH
+        ):
+            columns -= 1
+
         if (
             not force
             and columns
             == self._current_columns
         ):
-            return
+            # Karten müssen nach removeWidget trotzdem wieder
+            # eingesetzt werden.
+            pass
 
         self._current_columns = (
             columns
         )
-
-        # ----------------------------------------------------
-        # Alte Positionen entfernen
-        # ----------------------------------------------------
-
-        for card in self._cards:
-            self.grid.removeWidget(
-                card
-            )
-
-        # ----------------------------------------------------
-        # Neu anordnen
-        # ----------------------------------------------------
 
         for (
             index,
@@ -1747,6 +1743,7 @@ class LibraryGalleryWidget(
                 column,
                 alignment=(
                     Qt.AlignmentFlag.AlignTop
+                    | Qt.AlignmentFlag.AlignHCenter
                 ),
             )
 
@@ -1758,7 +1755,6 @@ class LibraryGalleryWidget(
                 1,
             )
 
-        # Der Content muss sein Layout neu berechnen.
         self.content.adjustSize()
 
     # ========================================================

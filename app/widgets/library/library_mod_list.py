@@ -209,7 +209,9 @@ class LibraryModListWidget(QFrame):
             False
         )
 
-    def _configure_table(self) -> None:
+    def _configure_table(
+        self,
+    ) -> None:
         self.table.setObjectName(
             "modTable"
         )
@@ -220,6 +222,14 @@ class LibraryModListWidget(QFrame):
 
         self.table.setShowGrid(
             False
+        )
+
+        self.table.setWordWrap(
+            False
+        )
+
+        self.table.setTextElideMode(
+            Qt.TextElideMode.ElideRight
         )
 
         self.table.setSelectionBehavior(
@@ -234,8 +244,9 @@ class LibraryModListWidget(QFrame):
             False
         )
 
+        # Kompaktere Zeilen
         self.table.verticalHeader().setDefaultSectionSize(
-            44
+            42
         )
 
         self.table.setColumnCount(
@@ -259,7 +270,9 @@ class LibraryModListWidget(QFrame):
             headers
         )
 
-        header = self.table.horizontalHeader()
+        header = (
+            self.table.horizontalHeader()
+        )
 
         header.setHighlightSections(
             False
@@ -269,30 +282,54 @@ class LibraryModListWidget(QFrame):
             False
         )
 
+        # --------------------------------------------------------
+        # Hauptspalten
+        # --------------------------------------------------------
+
         header.setSectionResizeMode(
             0,
             QHeaderView.ResizeMode.Stretch,
         )
 
-        for column in (
+        header.setSectionResizeMode(
             1,
-            2,
-            3,
-            7,
-            8,
-        ):
-            header.setSectionResizeMode(
-                column,
-                QHeaderView.ResizeMode.ResizeToContents,
-            )
+            QHeaderView.ResizeMode.ResizeToContents,
+        )
 
-        # Diese technischen Spalten bleiben in der Tabelle,
-        # werden aber hauptsächlich im Detailpanel angezeigt.
+        header.setSectionResizeMode(
+            2,
+            QHeaderView.ResizeMode.ResizeToContents,
+        )
+
+        # Status bekommt eine stabile Breite
+        header.setSectionResizeMode(
+            3,
+            QHeaderView.ResizeMode.Fixed,
+        )
+
+        self.table.setColumnWidth(
+            3,
+            118,
+        )
+
+        header.setSectionResizeMode(
+            7,
+            QHeaderView.ResizeMode.ResizeToContents,
+        )
+
+        # --------------------------------------------------------
+        # Technische Informationen liegen im Detailpanel.
+        #
+        # Sichtbar bleiben:
+        # Mod | Character | Type | Status | Size
+        # --------------------------------------------------------
+
         for column in (
-            4,
-            5,
-            6,
-            9,
+            4,  # Location
+            5,  # Files
+            6,  # INI files
+            8,  # Modified
+            9,  # Path
         ):
             self.table.setColumnHidden(
                 column,
@@ -485,15 +522,22 @@ class LibraryModListWidget(QFrame):
         )
 
         state_item = QTableWidgetItem(
+            ""
+        )
+
+        # Der eigentliche Status bleibt unsichtbar im Item gespeichert.
+        # Filter und interne Logik können ihn weiterhin benutzen.
+        state_item.setData(
+            Qt.ItemDataRole.UserRole,
+            state.value,
+        )
+
+        state_item.setToolTip(
             tr(
                 MOD_STATE_TRANSLATION_KEYS[
                     state.value
                 ]
             )
-        )
-        state_item.setData(
-            Qt.ItemDataRole.UserRole,
-            state.value,
         )
 
         location_parts = [
@@ -569,6 +613,11 @@ class LibraryModListWidget(QFrame):
             mod=mod,
         )
 
+        self._set_mod_state_widget(
+            row=row,
+            state=state,
+        )
+        
     def _set_mod_name_widget(
         self,
         *,
@@ -579,6 +628,7 @@ class LibraryModListWidget(QFrame):
         Erstellt die sichtbare Namenszelle
         einschließlich Info-Button.
         """
+
         container = QWidget()
 
         container.setObjectName(
@@ -604,6 +654,10 @@ class LibraryModListWidget(QFrame):
             6
         )
 
+        # ----------------------------------------------------
+        # Mod Name
+        # ----------------------------------------------------
+
         name_label = QLabel(
             mod.name
         )
@@ -613,7 +667,9 @@ class LibraryModListWidget(QFrame):
         )
 
         name_label.setToolTip(
-            str(mod.path)
+            str(
+                mod.path
+            )
         )
 
         name_label.setSizePolicy(
@@ -625,10 +681,15 @@ class LibraryModListWidget(QFrame):
             0
         )
 
+        # Klicks sollen weiterhin bei der Tabellenzeile landen.
         name_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents,
             True,
         )
+
+        # ----------------------------------------------------
+        # Info Button
+        # ----------------------------------------------------
 
         info_button = QToolButton()
 
@@ -646,15 +707,22 @@ class LibraryModListWidget(QFrame):
         )
 
         info_button.setToolTip(
-            tr("library.list.info_tooltip")
+            tr(
+                "library.list.info_tooltip"
+            )
         )
 
         info_button.clicked.connect(
-            lambda _checked=False, current_mod=mod:
-            self.info_requested.emit(
-                current_mod
+            lambda _checked=False, current_mod=mod: (
+                self.info_requested.emit(
+                    current_mod
+                )
             )
         )
+
+        # ----------------------------------------------------
+        # Layout
+        # ----------------------------------------------------
 
         layout.addWidget(
             name_label,
@@ -669,8 +737,112 @@ class LibraryModListWidget(QFrame):
             row,
             0,
             container,
+        )        
+
+    def _set_mod_state_widget(
+        self,
+        *,
+        row: int,
+        state: ModState,
+    ) -> None:
+        """
+        Erstellt die sichtbare Status-Badge.
+        """
+
+        container = QWidget()
+
+        container.setObjectName(
+            "modStateContainer"
         )
 
+        container.setAutoFillBackground(
+            False
+        )
+
+        layout = QHBoxLayout(
+            container
+        )
+
+        layout.setContentsMargins(
+            8,
+            0,
+            8,
+            0,
+        )
+
+        layout.setSpacing(
+            0
+        )
+
+        # ----------------------------------------------------
+        # Status Text
+        # ----------------------------------------------------
+
+        translation_key = (
+            MOD_STATE_TRANSLATION_KEYS.get(
+                state.value
+            )
+        )
+
+        if translation_key:
+            state_text = tr(
+                translation_key
+            )
+        else:
+            state_text = (
+                state.value
+            )
+
+        # ----------------------------------------------------
+        # Badge
+        # ----------------------------------------------------
+
+        badge = QLabel(
+            state_text
+        )
+
+        badge.setObjectName(
+            "modStateBadge"
+        )
+
+        badge.setProperty(
+            "modState",
+            state.value,
+        )
+
+        badge.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        badge.setMinimumWidth(
+            82
+        )
+
+        badge.setMinimumHeight(
+            23
+        )
+
+        badge.setToolTip(
+            state_text
+        )
+
+        layout.addWidget(
+            badge,
+            alignment=(
+                Qt.AlignmentFlag.AlignLeft
+                | Qt.AlignmentFlag.AlignVCenter
+            ),
+        )
+
+        layout.addStretch(
+            1
+        )
+
+        self.table.setCellWidget(
+            row,
+            3,
+            container,
+        )
     def selected_mod(
         self,
     ) -> ModInfo | None:
@@ -756,8 +928,9 @@ class LibraryModListWidget(QFrame):
         state: ModState,
     ) -> None:
         """
-        Aktualisiert nur den Status eines vorhandenen Mods.
+        Aktualisiert Statusdaten und sichtbare Status-Badge.
         """
+
         self.table.setSortingEnabled(
             False
         )
@@ -793,25 +966,42 @@ class LibraryModListWidget(QFrame):
                 )
 
                 if state_item is None:
-                    state_item = QTableWidgetItem()
+                    state_item = (
+                        QTableWidgetItem()
+                    )
 
                     self.table.setItem(
                         row,
                         3,
                         state_item,
                     )
+                # Kein sichtbarer Text mehr im normalen Item.
+                state_item.setText(
+                    ""
+                )
 
-                    state_item.setText(
-                        tr(
-                            MOD_STATE_TRANSLATION_KEYS[
-                                state.value
-                            ]
-                        )
+                # Interner Status bleibt erhalten.
+                state_item.setData(
+                    Qt.ItemDataRole.UserRole,
+                    state.value,
+                )
+
+                state_item.setToolTip(
+                    tr(
+                        MOD_STATE_TRANSLATION_KEYS[
+                            state.value
+                        ]
                     )
+                )
 
                 state_item.setData(
                     Qt.ItemDataRole.UserRole,
                     state.value,
+                )
+
+                self._set_mod_state_widget(
+                    row=row,
+                    state=state,
                 )
 
                 break
@@ -819,7 +1009,7 @@ class LibraryModListWidget(QFrame):
         finally:
             self.table.setSortingEnabled(
                 True
-            )    
+            )
 
     def row_count(
         self,

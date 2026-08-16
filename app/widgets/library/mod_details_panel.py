@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
@@ -103,11 +104,11 @@ class ModDetailsPanel(
         # Etwas breiter als bisher,
         # weil wir jetzt Bilder anzeigen.
         self.setMinimumWidth(
-            350
+            330
         )
 
         self.setMaximumWidth(
-            520
+            470
         )
 
         # ====================================================
@@ -355,176 +356,397 @@ class ModDetailsPanel(
         )
 
         layout.setContentsMargins(
-            20,
-            20,
-            20,
-            20,
+            12,
+            12,
+            12,
+            16,
         )
 
         layout.setSpacing(
-            14
-        )
-
-        # ----------------------------------------------------
-        # Details Grid
-        # ----------------------------------------------------
-
-        grid = QGridLayout()
-
-        grid.setContentsMargins(
-            0,
-            0,
-            0,
-            0,
-        )
-
-        grid.setHorizontalSpacing(
             12
         )
 
-        grid.setVerticalSpacing(
-            11
+        # ========================================================
+        # HEADER
+        # ========================================================
+
+        header_card = QFrame()
+
+        header_card.setObjectName(
+            "detailHeaderCard"
         )
 
-        grid.setColumnStretch(
-            1,
-            1,
+        header_layout = QVBoxLayout(
+            header_card
         )
 
-        rows = (
-            (
-                self.character_caption,
-                self.character_value,
-            ),
-            (
-                self.type_caption,
-                self.type_value,
-            ),
-            (
-                self.gamebanana_id_caption,
-                self.gamebanana_id_value,
-            ),
-            (
-                self.location_caption,
-                self.location_value,
-            ),
-            (
-                self.files_caption,
-                self.files_value,
-            ),
-            (
-                self.ini_caption,
-                self.ini_value,
-            ),
-            (
-                self.size_caption,
-                self.size_value,
-            ),
-            (
-                self.modified_caption,
-                self.modified_value,
-            ),
-            (
-                self.path_caption,
-                self.path_value,
+        header_layout.setContentsMargins(
+            14,
+            14,
+            14,
+            14,
+        )
+
+        header_layout.setSpacing(
+            7
+        )
+
+        top_row = QHBoxLayout()
+
+        top_row.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+
+        top_row.setSpacing(
+            8
+        )
+
+        top_row.addWidget(
+            self.eyebrow_label,
+            stretch=1,
+        )
+
+        top_row.addWidget(
+            self.status_label,
+            alignment=(
+                Qt.AlignmentFlag.AlignRight
+                | Qt.AlignmentFlag.AlignVCenter
             ),
         )
 
-        for (
-            row,
-            (
-                caption,
-                value,
-            ),
-        ) in enumerate(
-            rows
-        ):
-            grid.addWidget(
-                caption,
-                row,
-                0,
-            )
-
-            grid.addWidget(
-                value,
-                row,
-                1,
-            )
-
-        # ----------------------------------------------------
-        # Gesamtlayout
-        # ----------------------------------------------------
-
-        layout.addWidget(
-            self.eyebrow_label
+        header_layout.addLayout(
+            top_row
         )
 
-        layout.addWidget(
+        header_layout.addWidget(
             self.title_label
         )
 
-        layout.addWidget(
+        header_layout.addWidget(
             self.subtitle_label
         )
 
         layout.addWidget(
-            self.status_label,
-            alignment=(
-                Qt.AlignmentFlag.AlignLeft
-            ),
+            header_card
         )
 
-        layout.addWidget(
-            self._divider()
+        # ========================================================
+        # PREVIEW
+        # ========================================================
+
+        preview_card = QFrame()
+
+        preview_card.setObjectName(
+            "detailPreviewCard"
         )
 
-        layout.addWidget(
+        preview_layout = QVBoxLayout(
+            preview_card
+        )
+
+        preview_layout.setContentsMargins(
+            10,
+            10,
+            10,
+            10,
+        )
+
+        preview_layout.setSpacing(
+            8
+        )
+
+        preview_layout.addWidget(
             self.preview_title_label
         )
 
-        layout.addWidget(
+        preview_layout.addWidget(
             self.preview_gallery
         )
 
         layout.addWidget(
-            self._divider()
+            preview_card
         )
 
-        layout.addLayout(
-            grid
+        # ========================================================
+        # INFO
+        # ========================================================
+
+        info_card = QFrame()
+
+        info_card.setObjectName(
+            "detailInfoCard"
+        )
+
+        info_layout = QVBoxLayout(
+            info_card
+        )
+
+        info_layout.setContentsMargins(
+            12,
+            12,
+            12,
+            12,
+        )
+
+        info_layout.setSpacing(
+            10
+        )
+
+        info_grid = QGridLayout()
+
+        info_grid.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+
+        info_grid.setHorizontalSpacing(
+            8
+        )
+
+        info_grid.setVerticalSpacing(
+            8
+        )
+
+        info_grid.setColumnStretch(
+            0,
+            1,
+        )
+
+        info_grid.setColumnStretch(
+            1,
+            1,
+        )
+
+        # --------------------------------------------------------
+        # Kleine lokale Hilfsfunktion:
+        # Caption + Value werden als eigenes Feld dargestellt.
+        # --------------------------------------------------------
+
+        def create_field(
+            caption: QLabel,
+            value: QLabel,
+        ) -> QFrame:
+            field = QFrame()
+
+            field.setObjectName(
+                "detailField"
+            )
+
+            field_layout = QVBoxLayout(
+                field
+            )
+
+            field_layout.setContentsMargins(
+                10,
+                8,
+                10,
+                8,
+            )
+
+            field_layout.setSpacing(
+                3
+            )
+
+            field_layout.addWidget(
+                caption
+            )
+
+            field_layout.addWidget(
+                value
+            )
+
+            return field
+
+        # --------------------------------------------------------
+        # Zwei Spalten für kurze Informationen
+        # --------------------------------------------------------
+
+        info_grid.addWidget(
+            create_field(
+                self.character_caption,
+                self.character_value,
+            ),
+            0,
+            0,
+        )
+
+        info_grid.addWidget(
+            create_field(
+                self.type_caption,
+                self.type_value,
+            ),
+            0,
+            1,
+        )
+
+        info_grid.addWidget(
+            create_field(
+                self.location_caption,
+                self.location_value,
+            ),
+            1,
+            0,
+        )
+
+        info_grid.addWidget(
+            create_field(
+                self.size_caption,
+                self.size_value,
+            ),
+            1,
+            1,
+        )
+
+        info_grid.addWidget(
+            create_field(
+                self.files_caption,
+                self.files_value,
+            ),
+            2,
+            0,
+        )
+
+        info_grid.addWidget(
+            create_field(
+                self.ini_caption,
+                self.ini_value,
+            ),
+            2,
+            1,
+        )
+
+        # --------------------------------------------------------
+        # Breite Informationen über beide Spalten
+        # --------------------------------------------------------
+
+        info_grid.addWidget(
+            create_field(
+                self.modified_caption,
+                self.modified_value,
+            ),
+            3,
+            0,
+            1,
+            2,
+        )
+
+        info_grid.addWidget(
+            create_field(
+                self.gamebanana_id_caption,
+                self.gamebanana_id_value,
+            ),
+            4,
+            0,
+            1,
+            2,
+        )
+
+        info_grid.addWidget(
+            create_field(
+                self.path_caption,
+                self.path_value,
+            ),
+            5,
+            0,
+            1,
+            2,
+        )
+
+        info_layout.addLayout(
+            info_grid
+        )
+
+        info_layout.addWidget(
+            self.gamebanana_id_button
         )
 
         layout.addWidget(
-            self.gamebanana_id_button
+            info_card
+        )
+
+        # ========================================================
+        # ACTIONS
+        # ========================================================
+
+        action_card = QFrame()
+
+        action_card.setObjectName(
+            "detailActionCard"
+        )
+
+        action_layout = QVBoxLayout(
+            action_card
+        )
+
+        action_layout.setContentsMargins(
+            12,
+            12,
+            12,
+            12,
+        )
+
+        action_layout.setSpacing(
+            8
+        )
+
+        action_layout.addWidget(
+            self.action_title_label
+        )
+
+        # Hauptaktion bleibt deutlich sichtbar
+        action_layout.addWidget(
+            self.toggle_button
+        )
+
+        secondary_actions = (
+            QHBoxLayout()
+        )
+
+        secondary_actions.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
+        )
+
+        secondary_actions.setSpacing(
+            8
+        )
+
+        secondary_actions.addWidget(
+            self.adopt_button,
+            stretch=1,
+        )
+
+        secondary_actions.addWidget(
+            self.info_button,
+            stretch=1,
+        )
+
+        action_layout.addLayout(
+            secondary_actions
+        )
+
+        layout.addWidget(
+            action_card
         )
 
         layout.addStretch(
             1
         )
 
-        layout.addWidget(
-            self.action_title_label
-        )
-
-        layout.addWidget(
-            self.toggle_button
-        )
-
-        layout.addWidget(
-            self.adopt_button
-        )
-
-        layout.addWidget(
-            self.info_button
-        )
-
         self.setWidget(
             panel
         )
 
-    # ========================================================
-    # Signale
-    # ========================================================
+        # ========================================================
+        # Signale
+        # ========================================================
 
     def _connect_signals(
         self,
