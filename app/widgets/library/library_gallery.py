@@ -7,9 +7,12 @@ from PySide6.QtCore import (
     Qt,
     QThreadPool,
     QTimer,
+    QUrl,
     Signal,
 )
 from PySide6.QtGui import (
+    QDesktopServices,
+    QMouseEvent,
     QPixmap,
     QResizeEvent,
 )
@@ -19,10 +22,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -38,6 +43,9 @@ from app.models.mod import (
 )
 from app.services.mod_manager import (
     ModState,
+)
+from app.services.mod_metadata import (
+    load_mod_metadata,
 )
 from app.widgets.gamebanana.preview_image import (
     GameBananaPreviewImage,
@@ -61,7 +69,8 @@ StateProvider = Callable[
 # - kompakter als die alte 390px / 330px Gallery
 # - mehr Karten gleichzeitig auf 1080p und 1440p
 # - Preview bleibt groß genug, um Mods visuell zu erkennen
-# - keine Änderungen an LibraryPage/Controllern erforderlich
+# - Open Folder und GameBanana funktionieren direkt in der Gallery
+# - Mod-Info wird über info_requested an LibraryPage weitergereicht
 # ============================================================
 
 CARD_TARGET_WIDTH = 320
@@ -688,6 +697,14 @@ class LibraryModCard(
         object
     )
 
+    info_requested = Signal(
+        object
+    )
+
+    selected_requested = Signal(
+        object
+    )
+
     def __init__(
         self,
         *,
@@ -701,6 +718,14 @@ class LibraryModCard(
 
         self.mod = mod
         self.state = state
+
+        metadata = load_mod_metadata(
+            self.mod.path
+        )
+
+        self._gamebanana_mod_id = (
+            metadata.gamebanana_mod_id
+        )
 
         self._operation_running = (
             False
@@ -778,6 +803,74 @@ class LibraryModCard(
         )
 
         # ----------------------------------------------------
+        # More menu
+        # ----------------------------------------------------
+
+        self.more_button = QToolButton(
+            self
+        )
+
+        self.more_button.setObjectName(
+            "libraryCardMoreButton"
+        )
+
+        self.more_button.setText(
+            "⋯"
+        )
+
+        self.more_button.setFixedSize(
+            30,
+            30,
+        )
+
+        self.more_button.setPopupMode(
+            QToolButton.ToolButtonPopupMode.InstantPopup
+        )
+
+        self.more_menu = QMenu(
+            self.more_button
+        )
+
+        self.more_menu.setObjectName(
+            "libraryCardMenu"
+        )
+
+        self.open_folder_action = (
+            self.more_menu.addAction(
+                tr(
+                    "conflicts.action.open"
+                )
+            )
+        )
+
+        self.info_action = (
+            self.more_menu.addAction(
+                tr(
+                    "library.details.action.info"
+                )
+            )
+        )
+
+        self.more_menu.addSeparator()
+
+        self.gamebanana_action = (
+            self.more_menu.addAction(
+                tr(
+                    "gamebanana.open_page"
+                )
+            )
+        )
+
+        self.gamebanana_action.setVisible(
+            self._gamebanana_mod_id
+            is not None
+        )
+
+        self.more_button.setMenu(
+            self.more_menu
+        )
+
+        # ----------------------------------------------------
         # Action
         # ----------------------------------------------------
 
@@ -830,42 +923,77 @@ class LibraryModCard(
             7
         )
 
+        # ====================================================
+        # Preview
+        # ====================================================
+
         layout.addWidget(
             self.preview
         )
 
-        # ----------------------------------------------------
-        # Name + Meta
-        # ----------------------------------------------------
+        # ====================================================
+        # Title row
+        # ====================================================
 
-        info_layout = QVBoxLayout()
+        title_row = QHBoxLayout()
 
-        info_layout.setContentsMargins(
+        title_row.setContentsMargins(
             3,
             0,
-            3,
+            0,
             0,
         )
 
-        info_layout.setSpacing(
-            2
+        title_row.setSpacing(
+            6
         )
 
-        info_layout.addWidget(
-            self.name_label
+        title_row.addWidget(
+            self.name_label,
+            stretch=1,
         )
 
-        info_layout.addWidget(
-            self.meta_label
+        title_row.addWidget(
+            self.more_button,
+            alignment=(
+                Qt.AlignmentFlag.AlignRight
+                | Qt.AlignmentFlag.AlignVCenter
+            ),
         )
 
         layout.addLayout(
-            info_layout
+            title_row
         )
 
-        # ----------------------------------------------------
-        # State + Action in one compact row
-        # ----------------------------------------------------
+        # ====================================================
+        # Meta
+        # ====================================================
+
+        meta_layout = QHBoxLayout()
+
+        meta_layout.setContentsMargins(
+            3,
+            0,
+            3,
+            0,
+        )
+
+        meta_layout.setSpacing(
+            0
+        )
+
+        meta_layout.addWidget(
+            self.meta_label,
+            stretch=1,
+        )
+
+        layout.addLayout(
+            meta_layout
+        )
+
+        # ====================================================
+        # Footer
+        # ====================================================
 
         footer = QHBoxLayout()
 
@@ -901,8 +1029,24 @@ class LibraryModCard(
             footer
         )
 
+        # ====================================================
+        # Signals
+        # ====================================================
+
         self.toggle_button.clicked.connect(
             self._emit_toggle
+        )
+
+        self.open_folder_action.triggered.connect(
+            self._open_mod_folder
+        )
+
+        self.info_action.triggered.connect(
+            self._emit_info
+        )
+
+        self.gamebanana_action.triggered.connect(
+            self._open_gamebanana
         )
 
     # ========================================================
@@ -1106,7 +1250,46 @@ class LibraryModCard(
         )
 
     # ========================================================
-    # Signal
+    # Selection
+    # ========================================================
+
+    def set_selected(
+        self,
+        selected: bool,
+    ) -> None:
+        self.setProperty(
+            "selected",
+            bool(
+                selected
+            ),
+        )
+
+        self.style().unpolish(
+            self
+        )
+
+        self.style().polish(
+            self
+        )
+
+    def mousePressEvent(
+        self,
+        event: QMouseEvent,
+    ) -> None:
+        if (
+            event.button()
+            == Qt.MouseButton.LeftButton
+        ):
+            self.selected_requested.emit(
+                self.mod
+            )
+
+        super().mousePressEvent(
+            event
+        )
+
+    # ========================================================
+    # Actions
     # ========================================================
 
     def _emit_toggle(
@@ -1114,6 +1297,54 @@ class LibraryModCard(
     ) -> None:
         self.toggle_requested.emit(
             self.mod
+        )
+
+    def _emit_info(
+        self,
+    ) -> None:
+        self.info_requested.emit(
+            self.mod
+        )
+
+    def _open_mod_folder(
+        self,
+    ) -> None:
+        path = (
+            Path(
+                self.mod.path
+            )
+            .expanduser()
+            .absolute()
+        )
+
+        if not path.is_dir():
+            return
+
+        QDesktopServices.openUrl(
+            QUrl.fromLocalFile(
+                str(
+                    path
+                )
+            )
+        )
+
+    def _open_gamebanana(
+        self,
+    ) -> None:
+        mod_id = (
+            self._gamebanana_mod_id
+        )
+
+        if mod_id is None:
+            return
+
+        QDesktopServices.openUrl(
+            QUrl(
+                (
+                    "https://gamebanana.com/mods/"
+                    f"{mod_id}"
+                )
+            )
         )
 
     # ========================================================
@@ -1143,6 +1374,20 @@ class LibraryModCard(
         ):
             pass
 
+        for action in (
+            self.open_folder_action,
+            self.info_action,
+            self.gamebanana_action,
+        ):
+            try:
+                action.triggered.disconnect()
+
+            except (
+                RuntimeError,
+                TypeError,
+            ):
+                pass
+
 
 # ============================================================
 # Gallery
@@ -1152,6 +1397,10 @@ class LibraryGalleryWidget(
     QWidget
 ):
     toggle_requested = Signal(
+        object
+    )
+
+    info_requested = Signal(
         object
     )
 
@@ -1191,6 +1440,11 @@ class LibraryGalleryWidget(
         )
 
         self._current_columns = 0
+
+        self._selected_card: (
+            LibraryModCard
+            | None
+        ) = None
 
         # ----------------------------------------------------
         # Scroll
@@ -1365,6 +1619,14 @@ class LibraryGalleryWidget(
                 self.toggle_requested
             )
 
+            card.info_requested.connect(
+                self.info_requested
+            )
+
+            card.selected_requested.connect(
+                self._select_mod
+            )
+
             self._cards.append(
                 card
             )
@@ -1397,6 +1659,7 @@ class LibraryGalleryWidget(
 
         self._cards.clear()
         self._card_by_path.clear()
+        self._selected_card = None
 
         for card in cards:
             self.grid.removeWidget(
@@ -1406,6 +1669,26 @@ class LibraryGalleryWidget(
             try:
                 card.toggle_requested.disconnect(
                     self.toggle_requested
+                )
+            except (
+                RuntimeError,
+                TypeError,
+            ):
+                pass
+
+            try:
+                card.info_requested.disconnect(
+                    self.info_requested
+                )
+            except (
+                RuntimeError,
+                TypeError,
+            ):
+                pass
+
+            try:
+                card.selected_requested.disconnect(
+                    self._select_mod
                 )
             except (
                 RuntimeError,
@@ -1587,6 +1870,41 @@ class LibraryGalleryWidget(
 
         return len(
             visible_cards
+        )
+
+    # ========================================================
+    # Selection
+    # ========================================================
+
+    def _select_mod(
+        self,
+        mod: ModInfo,
+    ) -> None:
+        card = self._card_by_path.get(
+            self._path_key(
+                mod.path
+            )
+        )
+
+        if card is None:
+            return
+
+        previous = (
+            self._selected_card
+        )
+
+        if (
+            previous is not None
+            and previous is not card
+        ):
+            previous.set_selected(
+                False
+            )
+
+        self._selected_card = card
+
+        card.set_selected(
+            True
         )
 
     # ========================================================

@@ -9,9 +9,12 @@ from pathlib import Path
 from PySide6.QtCore import (
     Qt,
     QTimer,
+    QUrl,
     Signal,
 )
-
+from PySide6.QtGui import (
+    QDesktopServices,
+)
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -767,6 +770,10 @@ class LibraryPage(QWidget):
             self._toggle_gallery_mod
         )
 
+        self.gallery_widget.info_requested.connect(
+            self.mod_info_controller.show_mod
+        )
+
         self.list_view_button.clicked.connect(
             lambda _checked=False:
             self._set_library_view(0)
@@ -932,6 +939,48 @@ class LibraryPage(QWidget):
         self,
     ) -> ConflictReport:
         return self._conflict_report
+
+    def _open_gallery_mod_folder(
+        self,
+        mod: ModInfo,
+    ) -> None:
+        path = (
+            Path(
+                mod.path
+            )
+            .expanduser()
+            .absolute()
+        )
+
+        if not path.is_dir():
+            return
+
+        QDesktopServices.openUrl(
+            QUrl.fromLocalFile(
+                str(
+                    path
+                )
+            )
+        )
+
+    def _open_gallery_gamebanana(
+        self,
+        mod: ModInfo,
+        mod_id: int,
+    ) -> None:
+        if mod_id <= 0:
+            return
+
+        url = QUrl(
+            (
+                "https://gamebanana.com/mods/"
+                f"{mod_id}"
+            )
+        )
+
+        QDesktopServices.openUrl(
+            url
+        )
 
     # ========================================================
     # Adopt conflict

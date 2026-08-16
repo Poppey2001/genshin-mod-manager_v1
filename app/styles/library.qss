@@ -2175,3 +2175,271 @@ QPushButton#libraryCancelImportButton:disabled {
 
     border-color: #39252a;
 }
+/* ============================================================
+   LIBRARY STATS V2
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   Base card
+   ------------------------------------------------------------ */
+
+QFrame[statCard="true"] {
+    min-height: 74px;
+
+    background-color: #181d24;
+
+    border: 1px solid #292f39;
+    border-radius: 11px;
+}
+
+QFrame[statCard="true"]:hover {
+    background-color: #1d222a;
+
+    border-color: #353d48;
+}
+
+
+/* ------------------------------------------------------------
+   Total
+   ------------------------------------------------------------ */
+
+QFrame#totalStatCard {
+    border-left: 3px solid #8067ff;
+}
+
+
+/* ------------------------------------------------------------
+   Active
+   ------------------------------------------------------------ */
+
+QFrame#activeStatCard {
+    border-left: 3px solid #36c982;
+}
+
+
+/* ------------------------------------------------------------
+   Character
+   ------------------------------------------------------------ */
+
+QFrame#characterStatCard {
+    border-left: 3px solid #589cf5;
+}
+
+
+/* ------------------------------------------------------------
+   Conflict - normal state
+   ------------------------------------------------------------ */
+
+QFrame#conflictStatCard {
+    border-left: 3px solid #59616d;
+}
+
+
+/* ------------------------------------------------------------
+   Conflict - requires attention
+   ------------------------------------------------------------ */
+
+QFrame#conflictStatCard[attention="true"] {
+    background-color: #241e14;
+
+    border: 1px solid #5c431f;
+    border-left: 3px solid #e8a93c;
+}
+
+QFrame#conflictStatCard[attention="true"]:hover {
+    background-color: #2b2317;
+
+    border-color: #765526;
+    border-left-color: #f0b34a;
+}
+
+
+/* ============================================================
+   STAT TEXT
+   ============================================================ */
+
+QLabel#statTitle {
+    background-color: transparent;
+
+    color: #9ba4b2;
+
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QLabel#statSubtitle {
+    background-color: transparent;
+
+    color: #626c79;
+
+    font-size: 10px;
+    font-weight: 600;
+}
+
+QLabel#statValue {
+    background-color: transparent;
+
+    color: #f2f4f7;
+
+    font-size: 25px;
+    font-weight: 850;
+}
+
+
+/* ------------------------------------------------------------
+   Conflict value
+   ------------------------------------------------------------ */
+
+QLabel#statValue[attention="true"] {
+    color: #ffc866;
+}
+/* ============================================================
+   GALLERY CARD ACTIONS V2
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   Selected card
+   ------------------------------------------------------------ */
+
+QFrame#libraryModCard[selected="true"] {
+    background-color: #1f1c2b;
+
+    border: 1px solid #8067ff;
+}
+
+QFrame#libraryModCard[selected="true"]:hover {
+    border-color: #9a87ff;
+}
+
+
+/* ------------------------------------------------------------
+   More button
+   ------------------------------------------------------------ */
+
+QToolButton#libraryCardMoreButton {
+    background-color: transparent;
+
+    color: #8f98a6;
+
+    border: 1px solid transparent;
+    border-radius: 7px;
+
+    font-size: 18px;
+    font-weight: 800;
+}
+
+QToolButton#libraryCardMoreButton:hover {
+    background-color: #272d36;
+
+    color: #ffffff;
+
+    border-color: #373f4a;
+}
+
+QToolButton#libraryCardMoreButton:pressed {
+    background-color: #1d2229;
+}
+
+
+/* ============================================================
+   CARD MENU
+   ============================================================ */
+
+QMenu#libraryCardMenu {
+    min-width: 205px;
+
+    padding: 6px;
+
+    background-color: #191e25;
+
+    color: #e1e5ea;
+
+    border: 1px solid #333a45;
+    border-radius: 9px;
+}
+
+QMenu#libraryCardMenu::item {
+    min-height: 28px;
+
+    padding: 5px 12px;
+
+    background-color: transparent;
+
+    border-radius: 6px;
+}
+
+QMenu#libraryCardMenu::item:selected {
+    background-color: #2b313c;
+
+    color: #ffffff;
+}
+
+QMenu#libraryCardMenu::separator {
+    height: 1px;
+
+    margin: 5px 8px;
+
+    background-color: #303741;
+}
+
+
+/* ------------------------------------------------------------
+   Card title
+   ------------------------------------------------------------ */
+
+QLabel#libraryCardTitle {
+    background-color: transparent;
+
+    color: #f2f4f7;
+
+    font-size: 12px;
+    font-weight: 800;
+}
+
+
+/* ------------------------------------------------------------
+   Status
+   ------------------------------------------------------------ */
+
+QLabel#libraryCardState {
+    min-height: 22px;
+
+    padding-left: 8px;
+    padding-right: 8px;
+
+    background-color: #252b34;
+
+    color: #aeb6c2;
+
+    border: 1px solid #343c47;
+    border-radius: 7px;
+
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QLabel#libraryCardState[modState="enabled"] {
+    background-color: #163728;
+
+    color: #74dfa8;
+
+    border-color: #285b41;
+}
+
+QLabel#libraryCardState[modState="conflict"] {
+    background-color: #453014;
+
+    color: #ffc76d;
+
+    border-color: #6a4a1d;
+}
+
+QLabel#libraryCardState[modState="broken"] {
+    background-color: #432128;
+
+    color: #ff939f;
+
+    border-color: #6c323d;
+}
