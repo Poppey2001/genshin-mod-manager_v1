@@ -185,125 +185,119 @@ class SettingsPage(QWidget):
     def _build_ui(
         self,
     ) -> None:
-        self.setObjectName(
-            "settingsPage"
-        )
+        # ==================================================
+        # Äußeres Layout
+        #
+        # Der eigentliche Inhalt wird scrollbar.
+        # Die Speichern-/Zurücksetzen-Leiste bleibt immer
+        # unten sichtbar.
+        # ==================================================
 
         root_layout = QVBoxLayout(
             self
         )
 
         root_layout.setContentsMargins(
-            22,
-            20,
-            22,
-            16,
+            0,
+            0,
+            0,
+            0,
         )
 
         root_layout.setSpacing(
-            14
+            0
         )
 
-        # ========================================================
-        # Header
-        # ========================================================
+        # ==================================================
+        # Scrollbereich
+        # ==================================================
 
-        header = QVBoxLayout()
-
-        header.setContentsMargins(
-            2,
-            2,
-            2,
-            2,
-        )
-
-        header.setSpacing(
-            3
-        )
-
-        title_label = QLabel(
-            "Einstellungen"
-        )
-
-        title_label.setObjectName(
-            "pageTitle"
-        )
-
-        description_label = QLabel(
-            (
-                "Konfiguriere den Mod Manager, "
-                "deine Bibliothek und deine Spielumgebung."
-            )
-        )
-
-        description_label.setObjectName(
-            "pageDescription"
-        )
-
-        description_label.setWordWrap(
-            True
-        )
-
-        header.addWidget(
-            title_label
-        )
-
-        header.addWidget(
-            description_label
-        )
-
-        root_layout.addLayout(
-            header
-        )
-
-        # ========================================================
-        # Scroll Area
-        # ========================================================
-
-        scroll_area = QScrollArea(
+        self.scroll_area = QScrollArea(
             self
         )
 
-        scroll_area.setObjectName(
-            "settingsScrollArea"
-        )
-
-        scroll_area.setWidgetResizable(
+        self.scroll_area.setWidgetResizable(
             True
         )
 
-        scroll_area.setFrameShape(
+        self.scroll_area.setFrameShape(
             QFrame.Shape.NoFrame
         )
 
-        scroll_content = QWidget()
+        self.scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
 
-        scroll_content.setObjectName(
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+
+        self.scroll_area.setObjectName(
+            "settingsScrollArea"
+        )
+
+        # ==================================================
+        # Scrollbarer Inhalt
+        # ==================================================
+
+        content_widget = QWidget(
+            self.scroll_area
+        )
+
+        content_widget.setObjectName(
             "settingsScrollContent"
         )
 
         content_layout = QVBoxLayout(
-            scroll_content
+            content_widget
         )
 
         content_layout.setContentsMargins(
-            0,
-            4,
-            8,
-            8,
+            40,
+            36,
+            40,
+            24,
         )
 
         content_layout.setSpacing(
-            12
+            22
         )
 
-        # ========================================================
-        # Sections
-        # ========================================================
+        # --------------------------------------------------
+        # Titel
+        # --------------------------------------------------
+
+        self.title_label = QLabel(
+            content_widget
+        )
+
+        self.title_label.setObjectName(
+            "pageTitle"
+        )
+
+        self.description_label = QLabel(
+            content_widget
+        )
+
+        self.description_label.setObjectName(
+            "pageDescription"
+        )
+
+        self.description_label.setWordWrap(
+            True
+        )
 
         content_layout.addWidget(
-            self._create_options_group()
+            self.title_label
         )
+
+        content_layout.addWidget(
+            self.description_label
+        )
+
+        # --------------------------------------------------
+        # Settings-Gruppen
+        # --------------------------------------------------
 
         content_layout.addWidget(
             self._create_library_group()
@@ -313,44 +307,55 @@ class SettingsPage(QWidget):
             self._create_paths_group()
         )
 
+        content_layout.addWidget(
+            self._create_options_group()
+        )
+
+        # Auto-Updater
+        content_layout.addWidget(
+            self.update_settings_group
+        )
+
+        # Wichtig:
+        # Stretch erst NACH allen Gruppen.
         content_layout.addStretch(
             1
         )
 
-        scroll_area.setWidget(
-            scroll_content
+        self.scroll_area.setWidget(
+            content_widget
         )
 
         root_layout.addWidget(
-            scroll_area,
+            self.scroll_area,
             stretch=1,
         )
 
-        # ========================================================
-        # Footer
-        # ========================================================
+        # ==================================================
+        # Untere feste Leiste
+        # ==================================================
 
-        footer = QFrame(
+        bottom_container = QWidget(
             self
         )
 
-        footer.setObjectName(
-            "settingsFooter"
+        bottom_container.setObjectName(
+            "settingsBottomBar"
         )
 
-        footer_layout = QHBoxLayout(
-            footer
+        bottom_layout = QHBoxLayout(
+            bottom_container
         )
 
-        footer_layout.setContentsMargins(
-            12,
-            9,
-            12,
-            9,
+        bottom_layout.setContentsMargins(
+            40,
+            14,
+            40,
+            22,
         )
 
-        footer_layout.setSpacing(
-            8
+        bottom_layout.setSpacing(
+            12
         )
 
         self.status_label.setObjectName(
@@ -362,58 +367,46 @@ class SettingsPage(QWidget):
             QSizePolicy.Policy.Fixed,
         )
 
-        footer_layout.addWidget(
+        self.reset_button = QPushButton(
+            bottom_container
+        )
+
+        self.reset_button.setObjectName(
+            "secondaryButton"
+        )
+
+        self.reset_button.clicked.connect(
+            self._reset_form
+        )
+
+        self.save_button = QPushButton(
+            bottom_container
+        )
+
+        self.save_button.setObjectName(
+            "primaryButton"
+        )
+
+        self.save_button.clicked.connect(
+            self._save_settings
+        )
+
+        bottom_layout.addWidget(
             self.status_label,
             stretch=1,
         )
 
-        reset_button = QPushButton(
-            "Zurücksetzen"
+        bottom_layout.addWidget(
+            self.reset_button
         )
 
-        reset_button.setObjectName(
-            "settingsResetButton"
-        )
-
-        reset_button.setMinimumHeight(
-            38
-        )
-
-        reset_button.clicked.connect(
-            self._reset_form
-        )
-
-        footer_layout.addWidget(
-            reset_button
-        )
-
-        save_button = QPushButton(
-            "Einstellungen speichern"
-        )
-
-        save_button.setObjectName(
-            "settingsSaveButton"
-        )
-
-        save_button.setMinimumHeight(
-            38
-        )
-
-        save_button.clicked.connect(
-            self._save_settings
-        )
-
-        footer_layout.addWidget(
-            save_button
+        bottom_layout.addWidget(
+            self.save_button
         )
 
         root_layout.addWidget(
-            footer
+            bottom_container
         )
-
-        # ========================================================
-        # Style
-        # ========================================================
 
         self._apply_local_stylesheet()
 
@@ -1250,6 +1243,25 @@ class SettingsPage(QWidget):
 
         del language_blocker
 
+        # --------------------------------------------------
+        # Eingebettete Update-Einstellungen
+        # --------------------------------------------------
+        #
+        # UpdateSettingsGroup verwaltet seine Übersetzungen
+        # normalerweise selbst. Falls eine retranslate_ui()
+        # vorhanden ist, aktualisieren wir sie zusätzlich
+        # explizit zusammen mit der SettingsPage.
+        update_retranslate = getattr(
+            self.update_settings_group,
+            "retranslate_ui",
+            None,
+        )
+
+        if callable(update_retranslate):
+            update_retranslate(
+                _language
+            )
+
     # ==================================================
     # Config laden
     # ==================================================
@@ -1612,179 +1624,107 @@ class SettingsPage(QWidget):
     ) -> None:
         self.setStyleSheet(
             """
+
             QWidget#settingsPage {
-                background-color: #101319;
+                background-color: #16191f;
                 color: #e7e9ef;
             }
 
-            QWidget#settingsPage QLabel#pageTitle {
+            QWidget#settingsPage QLabel {
+                color: #e7e9ef;
                 background-color: transparent;
-                color: #f5f6f8;
-                font-size: 27px;
-                font-weight: 850;
             }
 
-            QWidget#settingsPage QLabel#pageDescription {
+            QWidget#settingsPage QRadioButton {
+                color: #e7e9ef;
                 background-color: transparent;
-                color: #838d9b;
-                font-size: 12px;
             }
 
-            QScrollArea#settingsScrollArea {
-                background-color: transparent;
-                border: none;
+            QLabel#pageTitle {
+                color: #ffffff;
+                font-size: 26px;
+                font-weight: 800;
             }
 
-            QScrollArea#settingsScrollArea > QWidget,
-            QScrollArea#settingsScrollArea > QWidget > QWidget,
-            QWidget#settingsScrollContent {
-                background-color: #101319;
+            QLabel#pageDescription {
+                color: #8f96a3;
+                font-size: 13px;
             }
-
-
-            /* ====================================================
-            Section Cards
-            ==================================================== */
 
             QGroupBox {
-                background-color: #171c22;
-
-                border: 1px solid #2b323b;
-                border-radius: 11px;
-
-                margin-top: 16px;
-
-                padding-top: 12px;
-
-                color: #f1f3f6;
-
-                font-size: 12px;
-                font-weight: 850;
+                background-color: #20232a;
+                border: 1px solid #30343d;
+                border-radius: 9px;
+                margin-top: 12px;
+                padding-top: 10px;
+                font-weight: bold;
             }
 
             QGroupBox::title {
                 subcontrol-origin: margin;
-
                 left: 14px;
-
-                padding-left: 6px;
-                padding-right: 6px;
-
-                color: #aeb6c2;
+                padding: 0 6px;
+                color: #ffffff;
             }
 
-
-            /* ====================================================
-            Labels
-            ==================================================== */
-
             QLabel#settingsLabel {
-                background-color: transparent;
-
-                color: #edf0f4;
-
-                font-size: 11px;
-                font-weight: 800;
+                color: #f1f1f1;
+                font-weight: bold;
             }
 
             QLabel#settingsDescription {
-                background-color: transparent;
-
-                color: #7f8997;
-
-                font-size: 10px;
+                color: #969ca8;
+                font-size: 13px;
             }
 
             QLabel#settingsStatus {
-                background-color: transparent;
-
-                color: #72dca3;
-
-                font-size: 10px;
-                font-weight: 700;
+                color: #8fd694;
+                font-size: 13px;
             }
-
-
-            /* ====================================================
-            Input
-            ==================================================== */
 
             QLineEdit {
                 min-height: 36px;
-
-                padding-left: 10px;
-                padding-right: 10px;
-
-                background-color: #11151a;
-
-                color: #e5e8ed;
-
-                border: 1px solid #303742;
-                border-radius: 7px;
-
-                selection-background-color: #7157e8;
-            }
-
-            QLineEdit:hover {
-                border-color: #3d4652;
+                padding: 0 10px;
+                background-color: #16181d;
+                border: 1px solid #3a3f49;
+                border-radius: 6px;
+                color: #f1f1f1;
             }
 
             QLineEdit:focus {
-                border-color: #8067ff;
+                border-color: #7c5cff;
             }
 
-
-            /* ====================================================
-            Combo
-            ==================================================== */
-
-            QComboBox {
-                min-width: 170px;
+            QPushButton {
                 min-height: 36px;
-
-                padding-left: 10px;
-                padding-right: 10px;
-
-                background-color: #11151a;
-
-                color: #e5e8ed;
-
-                border: 1px solid #303742;
-                border-radius: 7px;
+                padding: 0 14px;
+                background-color: #30343d;
+                border: 1px solid #414651;
+                border-radius: 6px;
+                color: #f1f1f1;
             }
 
-            QComboBox:hover {
-                border-color: #3d4652;
+            QPushButton:hover {
+                background-color: #3a3f49;
             }
 
-            QComboBox:focus {
-                border-color: #8067ff;
+            QPushButton#primaryButton {
+                background-color: #7c5cff;
+                border-color: #7c5cff;
+                font-weight: bold;
             }
 
-            QComboBox QAbstractItemView {
-                background-color: #191e25;
-
-                color: #e1e5ea;
-
-                border: 1px solid #333a45;
-
-                selection-background-color: #2e2948;
+            QPushButton#primaryButton:hover {
+                background-color: #8b70ff;
             }
 
-
-            /* ====================================================
-            CheckBox
-            ==================================================== */
+            QPushButton#secondaryButton {
+                background-color: transparent;
+            }
 
             QCheckBox {
-                background-color: transparent;
-
-                color: #e2e6eb;
-
                 spacing: 10px;
-
-                font-size: 11px;
-                font-weight: 700;
+                color: #f1f1f1;
             }
 
             QCheckBox::indicator {
@@ -1792,91 +1732,71 @@ class SettingsPage(QWidget):
                 height: 18px;
             }
 
-
-            /* ====================================================
-            Normal Buttons
-            ==================================================== */
-
-            QWidget#settingsPage QPushButton {
-                min-height: 34px;
-
-                padding-left: 13px;
-                padding-right: 13px;
-
-                background-color: #20262e;
-
-                color: #ccd2da;
-
-                border: 1px solid #303843;
-                border-radius: 7px;
-
-                font-size: 10px;
-                font-weight: 750;
-            }
-
-            QWidget#settingsPage QPushButton:hover {
-                background-color: #29313a;
-
-                color: #ffffff;
-
-                border-color: #424c59;
-            }
-
-
-            /* ====================================================
-            Footer
-            ==================================================== */
-
-            QFrame#settingsFooter {
-                background-color: #15191f;
-
-                border: 1px solid #292f38;
-                border-radius: 11px;
-            }
-
-
-            /* Reset */
-
-            QPushButton#settingsResetButton {
-                background-color: #20262e;
-
-                color: #c8ced7;
-
-                border-color: #303843;
-            }
-
-
-            /* Save */
-
-            QPushButton#settingsSaveButton {
+            QComboBox {
                 min-width: 170px;
-
-                background-color: #6651d7;
-
-                color: #ffffff;
-
-                border: 1px solid #7b66eb;
-
-                font-weight: 850;
+                min-height: 36px;
+                padding: 0 10px;
+                background-color: #16181d;
+                border: 1px solid #3a3f49;
+                border-radius: 6px;
+                color: #f1f1f1;
             }
 
-            QPushButton#settingsSaveButton:hover {
-                background-color: #7560ea;
-
-                border-color: #9180f5;
+            QComboBox QAbstractItemView {
+                background-color: #20232a;
+                color: #f1f1f1;
+                selection-background-color: #7c5cff;
             }
-
-
-            /* ====================================================
-            Separator
-            ==================================================== */
 
             QFrame#settingsSeparator {
-                background-color: #2a313a;
-
+                background-color: #30343d;
                 border: none;
-
                 max-height: 1px;
+            }
+            
+            QScrollArea#settingsScrollArea {
+                background-color: #16181d;
+                border: none;
+            }
+
+            QScrollArea#settingsScrollArea > QWidget,
+            QScrollArea#settingsScrollArea > QWidget > QWidget {
+                background-color: #16181d;
+            }
+
+            QWidget#settingsScrollContent {
+                background-color: #16181d;
+            }
+
+            QWidget#settingsBottomBar {
+                background-color: #16181d;
+                border-top: 1px solid #30343d;
+            }
+
+            QScrollBar:vertical {
+                background-color: #16181d;
+                width: 12px;
+                margin: 0;
+            }
+
+            QScrollBar::handle:vertical {
+                background-color: #3a3f49;
+                border-radius: 5px;
+                min-height: 30px;
+            }
+
+            QScrollBar::handle:vertical:hover {
+                background-color: #4b515e;
+            }
+
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: transparent;
             }
             """
         )

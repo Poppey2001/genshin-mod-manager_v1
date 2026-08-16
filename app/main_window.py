@@ -5,9 +5,6 @@ from app.controllers.update_controller import (
     UpdateController,
 )
 
-from app.widgets.settings.update_settings_group import (
-    UpdateSettingsGroup,
-)
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -21,11 +18,8 @@ from PySide6.QtGui import (
 )
 
 from PySide6.QtWidgets import (
-    QLabel,
     QMainWindow,
     QMessageBox,
-    QVBoxLayout,
-    QWidget,
 )
 
 from app.config import (
@@ -51,6 +45,14 @@ from app.pages.gamebanana_page import (
 
 from app.pages.library_page import (
     LibraryPage,
+)
+
+from app.pages.profiles_page import (
+    ProfilesPage,
+)
+
+from app.services.profile_service import (
+    ProfileService,
 )
 
 from app.platform_support import (
@@ -170,8 +172,41 @@ class MainWindow(
             )
         )
 
+        self.profile_service = (
+            ProfileService()
+        )
+
         self.profiles_page = (
-            self._create_profiles_page()
+            ProfilesPage(
+                config=self.config,
+                profile_service=(
+                    self.profile_service
+                ),
+                game_id_provider=(
+                    self.library_page
+                    .current_game_id
+                ),
+                mods_provider=(
+                    self.library_page
+                    .profile_mods
+                ),
+                state_provider=(
+                    self.library_page
+                    .profile_mod_state
+                ),
+                mod_manager_provider=(
+                    self.library_page
+                    .profile_mod_manager
+                ),
+                operation_busy_provider=(
+                    self._profile_operation_blocked
+                ),
+                scan_callback=(
+                    self.library_page
+                    .scan_mods
+                ),
+                parent=self,
+            )
         )
 
         self.conflicts_page = (
@@ -279,6 +314,14 @@ class MainWindow(
         )
 
         # ----------------------------------------------------
+        # Profiles
+        # ----------------------------------------------------
+
+        self.profiles_page.profile_activated.connect(
+            self._on_profile_activated
+        )
+
+        # ----------------------------------------------------
         # Library -> Conflict Badge
         # ----------------------------------------------------
 
@@ -372,6 +415,17 @@ class MainWindow(
         """
 
         if (
+            self.profiles_page.is_applying()
+            and page_id
+            != self.ui.PAGE_PROFILES
+        ):
+            self._show_profile_operation_blocked()
+            self.ui.set_active_page(
+                self.ui.PAGE_PROFILES
+            )
+            return
+
+        if (
             page_id
             == self.ui.PAGE_LIBRARY
         ):
@@ -444,6 +498,8 @@ class MainWindow(
         self,
         *_args,
     ) -> None:
+        self.profiles_page.refresh()
+
         self.workspace_stack.setCurrentWidget(
             self.profiles_page
         )
@@ -519,6 +575,17 @@ class MainWindow(
                 old_game_id
             )
 
+            return
+
+        # ----------------------------------------------------
+        # Profilwechsel läuft?
+        # ----------------------------------------------------
+
+        if not self.profiles_page.can_change_game():
+            self._show_profile_operation_blocked()
+            self.ui.set_active_game(
+                old_game_id
+            )
             return
 
         # ----------------------------------------------------
@@ -930,6 +997,10 @@ class MainWindow(
         self,
         *_args,
     ) -> None:
+        if self.profiles_page.is_applying():
+            self._show_profile_operation_blocked()
+            return
+
         # ====================================================
         # Bereits offen
         # ====================================================
@@ -1126,6 +1197,17 @@ class MainWindow(
             )
 
         # ----------------------------------------------------
+        # Profiles aktualisieren
+        # ----------------------------------------------------
+
+        try:
+            self.profiles_page.refresh()
+        except Exception:
+            logger.exception(
+                "Profile konnten nach dem Speichern nicht aktualisiert werden."
+            )
+
+        # ----------------------------------------------------
         # Konflikte neu prüfen
         # ----------------------------------------------------
 
@@ -1155,64 +1237,57 @@ class MainWindow(
         self._settings_dialog = None
 
     # ========================================================
-    # Profiles Placeholder
+    # Profiles
     # ========================================================
 
-    def _create_profiles_page(
+    def _profile_operation_blocked(
         self,
-    ) -> QWidget:
-        page = QWidget(
-            self
+    ) -> bool:
+        """
+        Profile dürfen nur gestartet werden, wenn weder Library
+        noch GameBanana einen konkurrierenden Dateivorgang ausführen.
+        """
+        if self.library_page.profile_operations_running():
+            return True
+
+        can_change_game = getattr(
+            self.gamebanana_page,
+            "can_change_game",
+            None,
         )
 
-        layout = QVBoxLayout(
-            page
+        if (
+            callable(can_change_game)
+            and not can_change_game()
+        ):
+            return True
+
+        return False
+
+    def _show_profile_operation_blocked(
+        self,
+    ) -> None:
+        QMessageBox.information(
+            self,
+            tr(
+                "profiles.warning.title"
+            ),
+            tr(
+                "profiles.warning.navigation_blocked"
+            ),
         )
 
-        layout.setContentsMargins(
-            32,
-            28,
-            32,
-            28,
+    def _on_profile_activated(
+        self,
+        profile_name: str,
+    ) -> None:
+        self.statusBar().showMessage(
+            tr(
+                "profiles.status.activated",
+                name=profile_name,
+            ),
+            5000,
         )
-
-        layout.setSpacing(
-            10
-        )
-
-        self.profiles_title_label = (
-            QLabel()
-        )
-
-        self.profiles_title_label.setObjectName(
-            "pageTitle"
-        )
-
-        self.profiles_description_label = (
-            QLabel()
-        )
-
-        self.profiles_description_label.setObjectName(
-            "pageDescription"
-        )
-
-        self.profiles_description_label.setWordWrap(
-            True
-        )
-
-        layout.addWidget(
-            self.profiles_title_label
-        )
-
-        layout.addWidget(
-            self.profiles_description_label
-        )
-
-        layout.addStretch(
-            1
-        )
-
-        return page
 
     # ========================================================
     # Launcher
@@ -1282,21 +1357,11 @@ class MainWindow(
         self.ui.retranslate_ui()
 
         # ----------------------------------------------------
-        # Profile Placeholder
+        # Profiles
         # ----------------------------------------------------
 
-        self.profiles_title_label.setText(
-            tr(
-                "navigation.profiles"
-            )
-        )
-
-        # Noch Placeholder bis Profile implementiert wird.
-        self.profiles_description_label.setText(
-            (
-                "Profile für das aktuell ausgewählte "
-                "Spiel werden hier verwaltet."
-            )
+        self.profiles_page.retranslate_ui(
+            _language
         )
 
     # ========================================================
@@ -1336,6 +1401,17 @@ class MainWindow(
                     "Bulk-Aktion konnte beim Beenden "
                     "nicht abgebrochen werden."
                 )
+            )
+
+        # ----------------------------------------------------
+        # Profile Apply
+        # ----------------------------------------------------
+
+        try:
+            self.profiles_page.cancel_apply()
+        except Exception:
+            logger.exception(
+                "Profilwechsel konnte beim Beenden nicht abgebrochen werden."
             )
 
         # ----------------------------------------------------

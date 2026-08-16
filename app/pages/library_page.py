@@ -8,9 +8,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from app.widgets.library.library_empty_state import (
-    LibraryEmptyState,
-)
+
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -423,17 +421,6 @@ class LibraryPage(
             | None
         ) = None
 
-        self.list_empty_state = (
-            LibraryEmptyState(
-                parent=self
-            )
-        )
-
-        self.gallery_empty_state = (
-            LibraryEmptyState(
-                parent=self
-            )
-        )
         # ====================================================
         # View Switcher
         # ====================================================
@@ -843,7 +830,7 @@ class LibraryPage(
         )
 
         splitter.addWidget(
-            self._create_list_content()
+            self.mod_list_widget
         )
 
         splitter.addWidget(
@@ -891,7 +878,7 @@ class LibraryPage(
         )
 
         splitter.addWidget(
-            self._create_gallery_content()
+            self.gallery_widget
         )
 
         splitter.addWidget(
@@ -1050,21 +1037,7 @@ class LibraryPage(
         self.filter_bar.filters_changed.connect(
             self._apply_mod_filters
         )
-        for empty_state in (
-            self.list_empty_state,
-            self.gallery_empty_state,
-        ):
-            empty_state.import_requested.connect(
-                self._choose_import_archives
-            )
 
-            empty_state.scan_requested.connect(
-                self.scan_mods
-            )
-
-            empty_state.reset_filters_requested.connect(
-                self._reset_library_filters
-            )
     # ========================================================
     # View
     # ========================================================
@@ -2330,53 +2303,7 @@ class LibraryPage(
             self.mod_list_widget
             .row_count()
         )
-        # ========================================================
-        # Empty States
-        # ========================================================
 
-        library_is_empty = (
-            total_mods == 0
-        )
-
-        # --------------------------------------------------------
-        # List
-        # --------------------------------------------------------
-
-        if list_visible > 0:
-            self.list_content_stack.setCurrentWidget(
-                self.mod_list_widget
-            )
-
-        else:
-            if library_is_empty:
-                self.list_empty_state.show_library_empty()
-
-            else:
-                self.list_empty_state.show_no_results()
-
-            self.list_content_stack.setCurrentWidget(
-                self.list_empty_state
-            )
-
-        # --------------------------------------------------------
-        # Gallery
-        # --------------------------------------------------------
-
-        if gallery_visible > 0:
-            self.gallery_content_stack.setCurrentWidget(
-                self.gallery_widget
-            )
-
-        else:
-            if library_is_empty:
-                self.gallery_empty_state.show_library_empty()
-
-            else:
-                self.gallery_empty_state.show_no_results()
-
-            self.gallery_content_stack.setCurrentWidget(
-                self.gallery_empty_state
-            )
         visible_mods = (
             gallery_visible
             if (
@@ -3227,56 +3154,43 @@ class LibraryPage(
             .active_mods_directory
         )
 
-    def _create_list_content(
+
+    # ========================================================
+    # Public Profile API
+    # ========================================================
+
+    def profile_mods(
         self,
-    ) -> QStackedWidget:
-        stack = QStackedWidget(
-            self
+    ) -> tuple[
+        ModInfo,
+        ...,
+    ]:
+        """Liefert den letzten vollständigen Library-Scan für Profile."""
+        return tuple(
+            self._last_scanned_mods
         )
 
-        stack.setObjectName(
-            "libraryListContentStack"
-        )
-
-        stack.addWidget(
-            self.mod_list_widget
-        )
-
-        stack.addWidget(
-            self.list_empty_state
-        )
-
-        self.list_content_stack = stack
-
-        return stack
-
-
-    def _create_gallery_content(
+    def profile_mod_state(
         self,
-    ) -> QStackedWidget:
-        stack = QStackedWidget(
-            self
+        path: Path,
+    ) -> ModState:
+        """Liefert den aktuellen verwalteten Zustand eines Library-Mods."""
+        return self.mod_manager.get_state(
+            path
         )
 
-        stack.setObjectName(
-            "libraryGalleryContentStack"
-        )
-
-        stack.addWidget(
-            self.gallery_widget
-        )
-
-        stack.addWidget(
-            self.gallery_empty_state
-        )
-
-        self.gallery_content_stack = stack
-
-        return stack
-    def _reset_library_filters(
+    def profile_mod_manager(
         self,
-    ) -> None:
-        self.filter_bar.reset_filters()
+    ) -> ModManager:
+        """Gemeinsamer ModManager für sichere Profilwechsel."""
+        return self.mod_manager
+
+    def profile_operations_running(
+        self,
+    ) -> bool:
+        """Verhindert Profilwechsel während Scan/Import/Bulk."""
+        return self.operation_state.is_running()
+
 __all__ = [
     "LibraryPage",
 ]
