@@ -428,8 +428,21 @@ class LibraryPage(QWidget):
 
         self._retranslate_view_buttons()
 
+        # ========================================================
+        # Gespeicherte Library-Ansicht wiederherstellen
+        # ========================================================
+
+        initial_view_index = (
+            1
+            if (
+                self.config.library_view_mode
+                == "gallery"
+            )
+            else 0
+        )
+
         self._set_library_view(
-            0,
+            initial_view_index,
             reapply_filters=False,
         )
 
@@ -798,15 +811,36 @@ class LibraryPage(QWidget):
         *,
         reapply_filters: bool = True,
     ) -> None:
+        """
+        Wechselt zwischen List View und Gallery View
+        und merkt sich die Auswahl in der AppConfig.
+
+        Index:
+            0 = List View
+            1 = Gallery View
+        """
+
+        # ========================================================
+        # Index normalisieren
+        # ========================================================
+
         index = (
             1
             if index == 1
             else 0
         )
 
+        # ========================================================
+        # Content wechseln
+        # ========================================================
+
         self.content_stack.setCurrentIndex(
             index
         )
+
+        # ========================================================
+        # Buttons synchronisieren
+        # ========================================================
 
         self.list_view_button.setChecked(
             index == 0
@@ -816,7 +850,25 @@ class LibraryPage(QWidget):
             index == 1
         )
 
+        # ========================================================
+        # Benutzerpräferenz speichern
+        # ========================================================
+
+        self.config.library_view_mode = (
+            "gallery"
+            if index == 1
+            else "list"
+        )
+
+        # ========================================================
+        # UI Texte aktualisieren
+        # ========================================================
+
         self._retranslate_view_buttons()
+
+        # ========================================================
+        # Filter neu anwenden
+        # ========================================================
 
         if reapply_filters:
             self._apply_mod_filters()

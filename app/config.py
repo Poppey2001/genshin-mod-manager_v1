@@ -100,6 +100,13 @@ class AppConfig:
 
     theme: str = "dark"
     language: str = "de"
+
+    # ------------------------------------------------------------
+    # Library UI
+    # ------------------------------------------------------------
+
+    library_view_mode: str = "list"
+
     auto_check_updates: bool = True
 
     update_channel: str = "prerelease"
@@ -372,6 +379,31 @@ class AppConfig:
                     game_id
                 ] = GameConfig()
 
+        # --------------------------------------------------
+        # Library View
+        # --------------------------------------------------
+
+        valid_library_view_modes = {
+            "list",
+            "gallery",
+        }
+
+        if (
+            self.library_view_mode
+            not in valid_library_view_modes
+        ):
+            logger.warning(
+                (
+                    "Ungültiger Library View Mode "
+                    "'%s'. Verwende 'list'."
+                ),
+                self.library_view_mode,
+            )
+
+            self.library_view_mode = (
+                "list"
+            )
+
     def to_dict(
         self,
     ) -> dict[str, Any]:
@@ -412,6 +444,10 @@ class AppConfig:
 
             "language": (
                 self.language
+            ),
+
+            "library_view_mode": (
+                self.library_view_mode
             ),
 
             "auto_check_updates": (
@@ -596,6 +632,7 @@ class AppConfig:
             "selected_profile",
             "theme",
             "language",
+            "library_view_mode",
             "update_channel",
         )
 
