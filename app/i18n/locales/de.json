@@ -462,7 +462,7 @@
     "library.empty.description": "Importiere deinen ersten Mod oder scanne das Bibliotheksverzeichnis erneut.",
     "library.empty.no_results_title": "Keine passenden Mods gefunden",
     "library.empty.no_results_description": "Ändere deine Suche oder Filter, um wieder Mods anzuzeigen.",
-    
+
     "conflicts.title": "Konflikte",
     "conflicts.description": "Prüfe Library-Konflikte, manuell hinzugefügte XXMI-Mods und mögliche Duplikate.",
     "conflicts.refresh": "Neu prüfen",
@@ -507,7 +507,11 @@
 
     "conflicts.manual.title": "Manuell hinzugefügter Mod",
     "conflicts.manual.message": "Dieser Mod besitzt keine eindeutige Library-Quelle und kann deshalb nicht automatisch übernommen werden. Du kannst ihn stattdessen über „In Bibliothek kopieren“ importieren.",
-
+    "conflicts.summary.attention_title": "Konflikte erfordern Aufmerksamkeit",
+    "conflicts.summary.attention_description": "{count} Einträge sollten überprüft werden, bevor du weitere Mods aktivierst.",
+    "conflicts.summary.clean_title": "Keine Konflikte erkannt",
+    "conflicts.summary.clean_description": "Die aktuell geprüfte Mod-Konfiguration sieht sauber aus.",
+    "conflicts.empty.description": "Es wurden keine problematischen oder nicht verwalteten Mods gefunden.",
     "updates.dialog.install_unavailable": "Für diese Plattform wurde kein automatisch installierbares Update-Paket gefunden.",
     "updates.error.unsupported_platform": "Die automatische Installation wird derzeit nur unter Windows unterstützt.",
 

@@ -462,7 +462,7 @@
     "library.empty.description": "Import your first mod or scan the library directory again.",
     "library.empty.no_results_title": "No matching mods found",
     "library.empty.no_results_description": "Change your search or filters to show mods again.",
-    
+
     "conflicts.title": "Conflicts",
     "conflicts.description": "Check library conflicts, manually added XXMI mods and possible duplicates.",
     "conflicts.refresh": "Check again",
@@ -507,7 +507,11 @@
 
     "conflicts.manual.title": "Manually added mod",
     "conflicts.manual.message": "This mod has no unambiguous library source and therefore cannot be adopted automatically. You can import it using “Copy to library” instead.",
-
+    "conflicts.summary.attention_title": "Conflicts require attention",
+    "conflicts.summary.attention_description": "{count} entries should be reviewed before enabling additional mods.",
+    "conflicts.summary.clean_title": "No conflicts detected",
+    "conflicts.summary.clean_description": "The currently checked mod configuration looks clean.",
+    "conflicts.empty.description": "No problematic or unmanaged mods were found.",
     "updates.dialog.install_unavailable": "No automatically installable update package was found for this platform.",
     "updates.error.unsupported_platform": "Automatic installation is currently supported on Windows only.",
 
