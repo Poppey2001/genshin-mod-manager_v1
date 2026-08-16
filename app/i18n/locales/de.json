@@ -458,7 +458,11 @@
 
     "library.gamebanana_metadata.error.title": "GameBanana-Metadaten",
     "library.gamebanana_metadata.error.message": "Der Mod wurde importiert, aber die GameBanana-Verknüpfung konnte nicht vollständig gespeichert werden.\n\n{errors}",
-
+    "library.empty.title": "Deine Mod-Bibliothek ist leer",
+    "library.empty.description": "Importiere deinen ersten Mod oder scanne das Bibliotheksverzeichnis erneut.",
+    "library.empty.no_results_title": "Keine passenden Mods gefunden",
+    "library.empty.no_results_description": "Ändere deine Suche oder Filter, um wieder Mods anzuzeigen.",
+    
     "conflicts.title": "Konflikte",
     "conflicts.description": "Prüfe Library-Konflikte, manuell hinzugefügte XXMI-Mods und mögliche Duplikate.",
     "conflicts.refresh": "Neu prüfen",

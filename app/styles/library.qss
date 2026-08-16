@@ -2443,3 +2443,103 @@ QLabel#libraryCardState[modState="broken"] {
 
     border-color: #6c323d;
 }
+/* ============================================================
+   LIBRARY EMPTY STATES
+   ============================================================ */
+
+QFrame#libraryEmptyState {
+    background-color: #14181e;
+
+    border: 1px solid #282e37;
+    border-radius: 11px;
+}
+
+
+/* Icon */
+
+QLabel#libraryEmptyIcon {
+    background-color: transparent;
+
+    color: #7060d9;
+
+    font-size: 38px;
+    font-weight: 700;
+}
+
+
+/* Title */
+
+QLabel#libraryEmptyTitle {
+    background-color: transparent;
+
+    color: #f1f3f6;
+
+    font-size: 17px;
+    font-weight: 850;
+}
+
+
+/* Description */
+
+QLabel#libraryEmptyDescription {
+    background-color: transparent;
+
+    color: #7f8997;
+
+    font-size: 11px;
+    font-weight: 600;
+}
+
+
+/* Primary */
+
+QPushButton#libraryEmptyPrimaryButton {
+    min-height: 36px;
+
+    padding-left: 16px;
+    padding-right: 16px;
+
+    background-color: #7157e8;
+
+    color: #ffffff;
+
+    border: 1px solid #846cff;
+    border-radius: 7px;
+
+    font-size: 11px;
+    font-weight: 800;
+}
+
+QPushButton#libraryEmptyPrimaryButton:hover {
+    background-color: #8067ff;
+
+    border-color: #9c8aff;
+}
+
+
+/* Secondary */
+
+QPushButton#libraryEmptySecondaryButton {
+    min-height: 36px;
+
+    padding-left: 16px;
+    padding-right: 16px;
+
+    background-color: #20252d;
+
+    color: #d8dce3;
+
+    border: 1px solid #303742;
+    border-radius: 7px;
+
+    font-size: 11px;
+    font-weight: 750;
+}
+
+QPushButton#libraryEmptySecondaryButton:hover {
+    background-color: #292f39;
+
+    color: #ffffff;
+
+    border-color: #434c59;
+}

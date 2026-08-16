@@ -1404,6 +1404,12 @@ class LibraryGalleryWidget(
         object
     )
 
+    # Wird ausgelöst, wenn der Benutzer
+    # eine Gallery-Card auswählt.
+    selection_changed = Signal(
+        object
+    )
+
     def __init__(
         self,
         *,
@@ -1657,9 +1663,20 @@ class LibraryGalleryWidget(
             self._cards
         )
 
+        had_selection = (
+            self._selected_card
+            is not None
+        )
+
         self._cards.clear()
         self._card_by_path.clear()
+
         self._selected_card = None
+
+        if had_selection:
+            self.selection_changed.emit(
+                None
+            )
 
         for card in cards:
             self.grid.removeWidget(
@@ -1907,6 +1924,28 @@ class LibraryGalleryWidget(
             True
         )
 
+        # Auswahl an LibraryPage melden.
+        self.selection_changed.emit(
+            mod
+        )
+        
+    def selected_mod(
+        self,
+    ) -> ModInfo | None:
+        """
+        Liefert den aktuell in der Gallery
+        ausgewählten Mod.
+        """
+
+        card = (
+            self._selected_card
+        )
+
+        if card is None:
+            return None
+
+        return card.mod
+        
     # ========================================================
     # State
     # ========================================================

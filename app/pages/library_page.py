@@ -1,19 +1,15 @@
 from __future__ import annotations
 
-import shutil
-import uuid
-
 from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import (
     Qt,
     QTimer,
-    QUrl,
     Signal,
 )
-from PySide6.QtGui import (
-    QDesktopServices,
+from app.widgets.library.library_empty_state import (
+    LibraryEmptyState,
 )
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -29,10 +25,22 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import AppConfig
-from app.games import GameScope
-from app.i18n import tr, translation_manager
-from app.models.mod import ModInfo
+from app.config import (
+    AppConfig,
+)
+
+from app.games import (
+    GameScope,
+)
+
+from app.i18n import (
+    tr,
+    translation_manager,
+)
+
+from app.models.mod import (
+    ModInfo,
+)
 
 from app.controllers.library_bulk_controller import (
     LibraryBulkController,
@@ -166,47 +174,108 @@ from app.workers.bulk_mod_worker import (
 )
 
 
-class LibraryPage(QWidget):
+class LibraryPage(
+    QWidget
+):
     """
     Library des aktuell ausgewählten XXMI-Spiels.
+
+    Enthält:
+    - Tabellenansicht
+    - Galerieansicht
+    - Preview-Fallback
+    - Mod-Aktivierung
+    - Import
+    - Bulk-Aktionen
+    - GameBanana-Metadaten
+    - Konflikterkennung
     """
 
-    conflict_count_changed = Signal(int)
-    conflict_report_changed = Signal(object)
+    conflict_count_changed = Signal(
+        int
+    )
+
+    conflict_report_changed = Signal(
+        object
+    )
 
     def __init__(
         self,
         config: AppConfig,
         parent: QWidget | None = None,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(
+            parent
+        )
 
         self.config = config
 
-        self.game_scope = GameScope(
-            config=self.config,
-            game_id=self.config.selected_game,
+        # ====================================================
+        # Game Scope
+        # ====================================================
+
+        self.game_scope = (
+            GameScope(
+                config=self.config,
+                game_id=(
+                    self.config
+                    .selected_game
+                ),
+            )
         )
 
-        self.mod_manager = ModManager(
-            config=self.game_scope
+        # ====================================================
+        # Gemeinsamer ModManager
+        # ====================================================
+
+        self.mod_manager = (
+            ModManager(
+                config=(
+                    self.game_scope
+                )
+            )
         )
 
-        self.conflict_scanner = ConflictScanner(
-            game_scope=self.game_scope,
-            mod_manager=self.mod_manager,
+        # ====================================================
+        # Konflikte
+        # ====================================================
+
+        self.conflict_scanner = (
+            ConflictScanner(
+                game_scope=(
+                    self.game_scope
+                ),
+                mod_manager=(
+                    self.mod_manager
+                ),
+            )
         )
 
-        self._conflict_report = ConflictReport()
+        self._conflict_report = (
+            ConflictReport()
+        )
 
         self._last_scanned_mods: tuple[
             ModInfo,
             ...,
         ] = ()
 
+        # ====================================================
+        # GameBanana Import-Metadaten
+        #
+        # key:
+        #   absoluter Downloadpfad
+        #
+        # value:
+        #   (game_id, mod_id)
+        # ====================================================
+
         self._pending_gamebanana_imports: dict[
             str,
-            tuple[str, int],
+            tuple[
+                str,
+                int,
+            ],
         ] = {}
 
         # ====================================================
@@ -215,7 +284,9 @@ class LibraryPage(QWidget):
 
         self.mod_action_controller = (
             LibraryModActionController(
-                mod_manager=self.mod_manager
+                mod_manager=(
+                    self.mod_manager
+                )
             )
         )
 
@@ -227,7 +298,9 @@ class LibraryPage(QWidget):
 
         self.bulk_controller = (
             LibraryBulkController(
-                mod_manager=self.mod_manager,
+                mod_manager=(
+                    self.mod_manager
+                ),
                 parent=self,
             )
         )
@@ -240,26 +313,38 @@ class LibraryPage(QWidget):
 
         self.operation_state = (
             LibraryOperationState(
-                scan_controller=self.scan_controller,
-                import_controller=self.import_controller,
-                bulk_controller=self.bulk_controller,
+                scan_controller=(
+                    self.scan_controller
+                ),
+                import_controller=(
+                    self.import_controller
+                ),
+                bulk_controller=(
+                    self.bulk_controller
+                ),
             )
         )
 
         # ====================================================
-        # Widgets
+        # Hauptwidgets
         # ====================================================
 
-        self.header_widget = LibraryHeader(
-            parent=self
+        self.header_widget = (
+            LibraryHeader(
+                parent=self
+            )
         )
 
-        self.stats_widget = LibraryStatsWidget(
-            parent=self
+        self.stats_widget = (
+            LibraryStatsWidget(
+                parent=self
+            )
         )
 
-        self.filter_bar = LibraryFilterBar(
-            parent=self
+        self.filter_bar = (
+            LibraryFilterBar(
+                parent=self
+            )
         )
 
         self.operation_status = (
@@ -268,17 +353,29 @@ class LibraryPage(QWidget):
             )
         )
 
+        # ====================================================
+        # Liste
+        # ====================================================
+
         self.mod_list_widget = (
             LibraryModListWidget(
                 parent=self
             )
         )
 
+        # ====================================================
+        # Details
+        # ====================================================
+
         self.details_panel = (
             ModDetailsPanel(
                 parent=self
             )
         )
+
+        # ====================================================
+        # Galerie
+        # ====================================================
 
         self.gallery_widget = (
             LibraryGalleryWidget(
@@ -287,13 +384,64 @@ class LibraryPage(QWidget):
         )
 
         # ====================================================
-        # View switch
+        # Gallery Details
+        # ====================================================
+
+        self.gallery_details_panel = (
+            ModDetailsPanel(
+                parent=self
+            )
+        )
+
+        self.gallery_details_panel.show_empty()
+
+        # Die Gallery ist für einzelne Mod-Aktionen gedacht.
+        # Conflict-Adoption und direkte Metadatenbearbeitung
+        # bleiben in der Listenansicht.
+        if hasattr(
+            self.gallery_details_panel,
+            "adopt_button",
+        ):
+            self.gallery_details_panel.adopt_button.hide()
+
+        if hasattr(
+            self.gallery_details_panel,
+            "gamebanana_id_button",
+        ):
+            self.gallery_details_panel.gamebanana_id_button.hide()
+
+        if hasattr(
+            self.gallery_details_panel,
+            "set_metadata_edit_enabled",
+        ):
+            self.gallery_details_panel.set_metadata_edit_enabled(
+                False
+            )
+
+        self._gallery_selected_mod: (
+            ModInfo
+            | None
+        ) = None
+
+        self.list_empty_state = (
+            LibraryEmptyState(
+                parent=self
+            )
+        )
+
+        self.gallery_empty_state = (
+            LibraryEmptyState(
+                parent=self
+            )
+        )
+        # ====================================================
+        # View Switcher
         # ====================================================
 
         self.view_title_label = QLabel()
 
         self.view_title_label.setObjectName(
-            "sectionLabel"
+            "libraryViewTitle"
         )
 
         self.view_count_label = QLabel()
@@ -302,7 +450,9 @@ class LibraryPage(QWidget):
             "libraryViewCount"
         )
 
-        self.list_view_button = QPushButton()
+        self.list_view_button = (
+            QPushButton()
+        )
 
         self.gallery_view_button = (
             QPushButton()
@@ -325,7 +475,9 @@ class LibraryPage(QWidget):
         )
 
         self.view_button_group = (
-            QButtonGroup(self)
+            QButtonGroup(
+                self
+            )
         )
 
         self.view_button_group.setExclusive(
@@ -347,22 +499,32 @@ class LibraryPage(QWidget):
         )
 
         self.content_stack = (
-            QStackedWidget(self)
+            QStackedWidget(
+                self
+            )
         )
 
         # ====================================================
-        # Selection
+        # Selection Controller
+        #
+        # WICHTIG:
+        # is_running bleibt Callable.
         # ====================================================
 
         self.selection_controller = (
             LibrarySelectionController(
-                mod_list_widget=self.mod_list_widget,
-                details_panel=self.details_panel,
+                mod_list_widget=(
+                    self.mod_list_widget
+                ),
+                details_panel=(
+                    self.details_panel
+                ),
                 mod_action_controller=(
                     self.mod_action_controller
                 ),
                 operation_running_provider=(
-                    self.operation_state.is_running
+                    self.operation_state
+                    .is_running
                 ),
                 refresh_stats_callback=(
                     self._update_stats
@@ -371,27 +533,44 @@ class LibraryPage(QWidget):
             )
         )
 
+        # ====================================================
+        # Mod Info
+        # ====================================================
+
         self.mod_info_controller = (
             LibraryModInfoController(
-                mod_manager=self.mod_manager,
+                mod_manager=(
+                    self.mod_manager
+                ),
                 selected_mod_provider=(
-                    self.mod_list_widget.selected_mod
+                    self.mod_list_widget
+                    .selected_mod
                 ),
                 parent=self,
             )
         )
 
+        # ====================================================
+        # Header Controller
+        # ====================================================
+
         self.header_controller = (
             LibraryHeaderController(
-                header=self.header_widget,
-                operation_state=self.operation_state,
+                header=(
+                    self.header_widget
+                ),
+                operation_state=(
+                    self.operation_state
+                ),
                 import_archives_callback=(
                     self._choose_import_archives
                 ),
                 import_directory_callback=(
                     self._choose_import_directory
                 ),
-                scan_callback=self.scan_mods,
+                scan_callback=(
+                    self.scan_mods
+                ),
                 cancel_import_callback=(
                     self.cancel_import
                 ),
@@ -400,12 +579,14 @@ class LibraryPage(QWidget):
         )
 
         # ====================================================
-        # Drop
+        # Drag & Drop
         # ====================================================
 
         self.drop_handler = (
             LibraryDropHandler(
-                import_callback=self._request_import,
+                import_callback=(
+                    self._request_import
+                ),
                 parent=self,
             )
         )
@@ -415,8 +596,13 @@ class LibraryPage(QWidget):
         )
 
         self.drop_handler.install_on(
-            self.mod_list_widget.drop_target()
+            self.mod_list_widget
+            .drop_target()
         )
+
+        # ====================================================
+        # UI
+        # ====================================================
 
         self._build_ui()
 
@@ -428,14 +614,14 @@ class LibraryPage(QWidget):
 
         self._retranslate_view_buttons()
 
-        # ========================================================
-        # Gespeicherte Library-Ansicht wiederherstellen
-        # ========================================================
-
         initial_view_index = (
             1
             if (
-                self.config.library_view_mode
+                getattr(
+                    self.config,
+                    "library_view_mode",
+                    "list",
+                )
                 == "gallery"
             )
             else 0
@@ -445,6 +631,10 @@ class LibraryPage(QWidget):
             initial_view_index,
             reapply_filters=False,
         )
+
+        # ====================================================
+        # Initialer Scan
+        # ====================================================
 
         QTimer.singleShot(
             0,
@@ -489,6 +679,10 @@ class LibraryPage(QWidget):
             self.filter_bar
         )
 
+        # ====================================================
+        # Workspace
+        # ====================================================
+
         workspace = QFrame(
             self
         )
@@ -516,12 +710,14 @@ class LibraryPage(QWidget):
             self._create_view_toolbar()
         )
 
+        # Index 0 = List + Details
         self.content_stack.addWidget(
             self._create_content_splitter()
         )
 
+        # Index 1 = Gallery + Details
         self.content_stack.addWidget(
-            self.gallery_widget
+            self._create_gallery_splitter()
         )
 
         workspace_layout.addWidget(
@@ -566,10 +762,6 @@ class LibraryPage(QWidget):
             10
         )
 
-        # ========================================================
-        # LEFT SIDE
-        # ========================================================
-
         self.view_title_label.setObjectName(
             "libraryViewTitle"
         )
@@ -578,7 +770,6 @@ class LibraryPage(QWidget):
             self.view_title_label
         )
 
-        # Ergebniszahl direkt daneben
         layout.addWidget(
             self.view_count_label
         )
@@ -586,10 +777,6 @@ class LibraryPage(QWidget):
         layout.addStretch(
             1
         )
-
-        # ========================================================
-        # VIEW SWITCHER
-        # ========================================================
 
         mode_frame = QFrame(
             frame
@@ -656,7 +843,7 @@ class LibraryPage(QWidget):
         )
 
         splitter.addWidget(
-            self.mod_list_widget
+            self._create_list_content()
         )
 
         splitter.addWidget(
@@ -682,125 +869,202 @@ class LibraryPage(QWidget):
 
         return splitter
 
+    def _create_gallery_splitter(
+        self,
+    ) -> QSplitter:
+        """Gallery links und Mod-Details rechts."""
+
+        splitter = QSplitter(
+            Qt.Orientation.Horizontal
+        )
+
+        splitter.setObjectName(
+            "librarySplitter"
+        )
+
+        splitter.setChildrenCollapsible(
+            False
+        )
+
+        splitter.setHandleWidth(
+            8
+        )
+
+        splitter.addWidget(
+            self._create_gallery_content()
+        )
+
+        splitter.addWidget(
+            self.gallery_details_panel
+        )
+
+        splitter.setStretchFactor(
+            0,
+            5,
+        )
+
+        splitter.setStretchFactor(
+            1,
+            2,
+        )
+
+        splitter.setSizes(
+            [
+                1050,
+                400,
+            ]
+        )
+
+        return splitter
+
+    # ========================================================
+    # Signals
+    # ========================================================
+
     def _connect_signals(
         self,
     ) -> None:
+        # Scan
         self.scan_controller.progress.connect(
             self._on_scan_progress
         )
-
         self.scan_controller.finished.connect(
             self._on_scan_finished
         )
-
         self.scan_controller.failed.connect(
             self._on_scan_failed
         )
-
         self.scan_controller.cancelled.connect(
             self._on_scan_cancelled
         )
 
+        # Import
         self.import_controller.progress.connect(
             self._on_import_progress
         )
-
         self.import_controller.finished.connect(
             self._on_import_finished
         )
-
         self.import_controller.failed.connect(
             self._on_import_failed
         )
-
         self.import_controller.cancelled.connect(
             self._on_import_cancelled
         )
 
+        # Bulk
         self.bulk_controller.progress.connect(
             self._on_bulk_progress
         )
-
         self.bulk_controller.finished.connect(
             self._on_bulk_finished
         )
-
         self.bulk_controller.failed.connect(
             self._on_bulk_failed
         )
 
+        # List
         self.mod_list_widget.info_requested.connect(
             self.mod_info_controller.show_mod
         )
-
         self.mod_list_widget.enable_requested.connect(
             partial(
                 self._start_bulk_action,
                 BulkAction.ENABLE,
             )
         )
-
         self.mod_list_widget.disable_requested.connect(
             partial(
                 self._start_bulk_action,
                 BulkAction.DISABLE,
             )
         )
-
         self.mod_list_widget.adopt_requested.connect(
             partial(
                 self._start_bulk_action,
                 BulkAction.ADOPT,
             )
         )
-
         self.mod_list_widget.cancel_requested.connect(
             self.cancel_bulk_action
         )
-
         self.mod_list_widget.selection_changed.connect(
             self._refresh_selection_ui
         )
 
+        # List detail panel
         self.details_panel.toggle_requested.connect(
             self._toggle_selected_mod
         )
-
         self.details_panel.adopt_requested.connect(
             self._ignore_selected_conflict
         )
-
         self.details_panel.info_requested.connect(
-            self.mod_info_controller
-            .show_selected_mod
+            self.mod_info_controller.show_selected_mod
         )
 
-        self.details_panel.gamebanana_id_requested.connect(
-            self._edit_selected_gamebanana_id
-        )
+        if hasattr(
+            self.details_panel,
+            "gamebanana_id_requested",
+        ):
+            self.details_panel.gamebanana_id_requested.connect(
+                self._edit_selected_gamebanana_id
+            )
 
+        # Gallery cards
         self.gallery_widget.toggle_requested.connect(
             self._toggle_gallery_mod
         )
 
-        self.gallery_widget.info_requested.connect(
-            self.mod_info_controller.show_mod
+        if hasattr(
+            self.gallery_widget,
+            "info_requested",
+        ):
+            self.gallery_widget.info_requested.connect(
+                self.mod_info_controller.show_mod
+            )
+
+        # Gallery detail panel
+        self.gallery_details_panel.toggle_requested.connect(
+            self._toggle_gallery_selected_mod
+        )
+        self.gallery_details_panel.info_requested.connect(
+            self._show_gallery_selected_mod_info
         )
 
+        # View switch
         self.list_view_button.clicked.connect(
             lambda _checked=False:
-            self._set_library_view(0)
+            self._set_library_view(
+                0
+            )
         )
-
         self.gallery_view_button.clicked.connect(
             lambda _checked=False:
-            self._set_library_view(1)
+            self._set_library_view(
+                1
+            )
         )
 
+        # Filters
         self.filter_bar.filters_changed.connect(
             self._apply_mod_filters
         )
+        for empty_state in (
+            self.list_empty_state,
+            self.gallery_empty_state,
+        ):
+            empty_state.import_requested.connect(
+                self._choose_import_archives
+            )
 
+            empty_state.scan_requested.connect(
+                self.scan_mods
+            )
+
+            empty_state.reset_filters_requested.connect(
+                self._reset_library_filters
+            )
     # ========================================================
     # View
     # ========================================================
@@ -811,36 +1075,15 @@ class LibraryPage(QWidget):
         *,
         reapply_filters: bool = True,
     ) -> None:
-        """
-        Wechselt zwischen List View und Gallery View
-        und merkt sich die Auswahl in der AppConfig.
-
-        Index:
-            0 = List View
-            1 = Gallery View
-        """
-
-        # ========================================================
-        # Index normalisieren
-        # ========================================================
-
         index = (
             1
             if index == 1
             else 0
         )
 
-        # ========================================================
-        # Content wechseln
-        # ========================================================
-
         self.content_stack.setCurrentIndex(
             index
         )
-
-        # ========================================================
-        # Buttons synchronisieren
-        # ========================================================
 
         self.list_view_button.setChecked(
             index == 0
@@ -850,25 +1093,17 @@ class LibraryPage(QWidget):
             index == 1
         )
 
-        # ========================================================
-        # Benutzerpräferenz speichern
-        # ========================================================
-
-        self.config.library_view_mode = (
-            "gallery"
-            if index == 1
-            else "list"
-        )
-
-        # ========================================================
-        # UI Texte aktualisieren
-        # ========================================================
+        if hasattr(
+            self.config,
+            "library_view_mode",
+        ):
+            self.config.library_view_mode = (
+                "gallery"
+                if index == 1
+                else "list"
+            )
 
         self._retranslate_view_buttons()
-
-        # ========================================================
-        # Filter neu anwenden
-        # ========================================================
 
         if reapply_filters:
             self._apply_mod_filters()
@@ -904,6 +1139,17 @@ class LibraryPage(QWidget):
         self._apply_mod_filters()
         self._refresh_selection_ui()
 
+        retranslate = getattr(
+            self.gallery_details_panel,
+            "retranslate_ui",
+            None,
+        )
+
+        if callable(
+            retranslate
+        ):
+            retranslate()
+
     # ========================================================
     # Selection
     # ========================================================
@@ -923,36 +1169,224 @@ class LibraryPage(QWidget):
 
         self.details_panel.set_metadata_edit_enabled(
             (
-                len(selected_mods)
+                len(
+                    selected_mods
+                )
                 == 1
             )
             and not (
-                self.operation_state.is_running()
+                self.operation_state
+                .is_running()
             )
         )
 
         self.details_panel.retranslate_ui()
 
+    # ========================================================
+    # Gallery Operation State
+    # ========================================================
+
     def _sync_gallery_operation_state(
         self,
     ) -> None:
+        running = (
+            self.operation_state
+            .is_running()
+        )
+
         self.gallery_widget.set_operation_running(
-            self.operation_state.is_running()
+            running
+        )
+
+        mod = self._selected_gallery_mod()
+
+        if mod is None:
+            self.gallery_details_panel.toggle_button.setEnabled(
+                False
+            )
+            return
+
+        state = (
+            self.mod_action_controller
+            .get_state_for_path(
+                mod.path
+            )
+        )
+
+        can_toggle = state in {
+            ModState.ENABLED,
+            ModState.DISABLED,
+            ModState.BROKEN,
+        }
+
+        self.gallery_details_panel.toggle_button.setEnabled(
+            can_toggle
+            and not running
+        )
+
+    def _connect_gallery_card_selection_signals(
+        self,
+    ) -> None:
+        """
+        Verbindet die Card-Auswahl mit dem Gallery-Detailpanel.
+
+        Die aktuelle Gallery besitzt selected_requested bereits auf
+        LibraryModCard. Dadurch bleibt dieses Rework kompatibel, ohne
+        eine zweite Ersatzdatei für library_gallery.py zu verlangen.
+        """
+
+        cards = getattr(
+            self.gallery_widget,
+            "_cards",
+            (),
+        )
+
+        for card in cards:
+            signal = getattr(
+                card,
+                "selected_requested",
+                None,
+            )
+
+            if signal is None:
+                continue
+
+            try:
+                signal.disconnect(
+                    self._on_gallery_selection_changed
+                )
+            except (
+                RuntimeError,
+                TypeError,
+            ):
+                pass
+
+            signal.connect(
+                self._on_gallery_selection_changed
+            )
+
+    def _selected_gallery_mod(
+        self,
+    ) -> ModInfo | None:
+        if self._gallery_selected_mod is not None:
+            return self._gallery_selected_mod
+
+        selected_card = getattr(
+            self.gallery_widget,
+            "_selected_card",
+            None,
+        )
+
+        if selected_card is None:
+            return None
+
+        mod = getattr(
+            selected_card,
+            "mod",
+            None,
+        )
+
+        if isinstance(
+            mod,
+            ModInfo,
+        ):
+            return mod
+
+        return None
+
+    def _on_gallery_selection_changed(
+        self,
+        mod: object,
+    ) -> None:
+        if not isinstance(
+            mod,
+            ModInfo,
+        ):
+            self._gallery_selected_mod = None
+            self.gallery_details_panel.show_empty()
+            return
+
+        self._gallery_selected_mod = mod
+
+        state = (
+            self.mod_action_controller
+            .get_state_for_path(
+                mod.path
+            )
+        )
+
+        self.gallery_details_panel.show_mod(
+            mod=mod,
+            state=state,
+        )
+
+        if hasattr(
+            self.gallery_details_panel,
+            "set_metadata_edit_enabled",
+        ):
+            self.gallery_details_panel.set_metadata_edit_enabled(
+                False
+            )
+
+        can_toggle = state in {
+            ModState.ENABLED,
+            ModState.DISABLED,
+            ModState.BROKEN,
+        }
+
+        self.gallery_details_panel.toggle_button.setEnabled(
+            can_toggle
+            and not (
+                self.operation_state
+                .is_running()
+            )
+        )
+
+    def _toggle_gallery_selected_mod(
+        self,
+    ) -> None:
+        mod = self._selected_gallery_mod()
+
+        if mod is None:
+            return
+
+        self._toggle_gallery_mod(
+            mod
+        )
+
+    def _show_gallery_selected_mod_info(
+        self,
+    ) -> None:
+        mod = self._selected_gallery_mod()
+
+        if mod is None:
+            return
+
+        self.mod_info_controller.show_mod(
+            mod
         )
 
     # ========================================================
-    # Stats / Conflicts
+    # Statistics
     # ========================================================
 
     def _update_stats(
         self,
     ) -> None:
         stats = (
-            self.mod_list_widget.statistics()
+            self.mod_list_widget
+            .statistics()
         )
 
+        # ----------------------------------------------------
+        # Konfliktzahl kommt NICHT mehr nur aus der Tabelle.
+        #
+        # Dadurch zählen auch manuell in XXMI abgelegte Mods.
+        # ----------------------------------------------------
+
         conflict_count = (
-            self._conflict_report.count
+            self._conflict_report
+            .count
         )
 
         self.stats_widget.set_values(
@@ -966,11 +1400,16 @@ class LibraryPage(QWidget):
             conflict_count
         )
 
+    # ========================================================
+    # Conflict Scanner
+    # ========================================================
+
     def refresh_conflicts(
         self,
     ) -> None:
         report = (
-            self.conflict_scanner.scan(
+            self.conflict_scanner
+            .scan(
                 self._last_scanned_mods
             )
         )
@@ -990,58 +1429,25 @@ class LibraryPage(QWidget):
     def conflict_report(
         self,
     ) -> ConflictReport:
-        return self._conflict_report
-
-    def _open_gallery_mod_folder(
-        self,
-        mod: ModInfo,
-    ) -> None:
-        path = (
-            Path(
-                mod.path
-            )
-            .expanduser()
-            .absolute()
-        )
-
-        if not path.is_dir():
-            return
-
-        QDesktopServices.openUrl(
-            QUrl.fromLocalFile(
-                str(
-                    path
-                )
-            )
-        )
-
-    def _open_gallery_gamebanana(
-        self,
-        mod: ModInfo,
-        mod_id: int,
-    ) -> None:
-        if mod_id <= 0:
-            return
-
-        url = QUrl(
-            (
-                "https://gamebanana.com/mods/"
-                f"{mod_id}"
-            )
-        )
-
-        QDesktopServices.openUrl(
-            url
+        return (
+            self._conflict_report
         )
 
     # ========================================================
-    # Adopt conflict
+    # Conflict Page: Adopt
     # ========================================================
 
     def adopt_conflict(
         self,
         conflict: ConflictItem,
     ) -> None:
+        """
+        Nur echte Library-Konflikte dürfen automatisch
+        übernommen werden.
+
+        Unmanaged Active Mods bleiben unangetastet.
+        """
+
         if (
             not conflict.can_adopt
             or conflict.library_mod_path
@@ -1061,7 +1467,8 @@ class LibraryPage(QWidget):
 
         target_path = (
             Path(
-                conflict.library_mod_path
+                conflict
+                .library_mod_path
             )
             .expanduser()
             .absolute()
@@ -1089,7 +1496,9 @@ class LibraryPage(QWidget):
 
         problem = (
             self.mod_action_controller
-            .validate_adopt(mod)
+            .validate_adopt(
+                mod
+            )
         )
 
         if problem is not None:
@@ -1101,7 +1510,9 @@ class LibraryPage(QWidget):
             return
 
         if not confirm_adopt_existing(
-            mod_name=mod.name,
+            mod_name=(
+                mod.name
+            ),
             parent=self,
         ):
             return
@@ -1109,7 +1520,9 @@ class LibraryPage(QWidget):
         try:
             result = (
                 self.mod_action_controller
-                .adopt(mod)
+                .adopt(
+                    mod
+                )
             )
 
         except ModManagerError as error:
@@ -1118,7 +1531,9 @@ class LibraryPage(QWidget):
                 tr(
                     "library.dialog.adopt_failed"
                 ),
-                str(error),
+                str(
+                    error
+                ),
             )
 
             return
@@ -1158,10 +1573,11 @@ class LibraryPage(QWidget):
             self.operation_status.finish_operation()
 
         self._refresh_selection_ui()
+
         self._sync_gallery_operation_state()
 
     # ========================================================
-    # Picker
+    # Import Picker
     # ========================================================
 
     def _choose_import_archives(
@@ -1193,12 +1609,14 @@ class LibraryPage(QWidget):
         )
 
     # ========================================================
-    # Normaler Import
+    # Import
     # ========================================================
 
     def _request_import(
         self,
-        paths: list[Path],
+        paths: list[
+            Path
+        ],
     ) -> bool:
         blocking_operation = (
             self.operation_state
@@ -1209,8 +1627,12 @@ class LibraryPage(QWidget):
 
         if blocking_operation is not None:
             show_operation_blocked(
-                requested=LibraryOperation.IMPORT,
-                blocking=blocking_operation,
+                requested=(
+                    LibraryOperation.IMPORT
+                ),
+                blocking=(
+                    blocking_operation
+                ),
                 parent=self,
             )
 
@@ -1226,18 +1648,26 @@ class LibraryPage(QWidget):
         if prepared_import is None:
             return False
 
-        # Controller zuerst starten.
+        # ====================================================
+        # WICHTIG:
+        # Controller ZUERST starten.
+        # UI ERST DANACH auf running setzen.
+        # ====================================================
+
         started = (
-            self.import_controller.start(
+            self.import_controller
+            .start(
                 sources=(
-                    prepared_import.sources
+                    prepared_import
+                    .sources
                 ),
                 library_root=(
                     self.game_scope
                     .mod_library_directory
                 ),
                 options=(
-                    prepared_import.options
+                    prepared_import
+                    .options
                 ),
             )
         )
@@ -1255,7 +1685,6 @@ class LibraryPage(QWidget):
 
             return False
 
-        # UI erst danach sperren.
         self._set_import_ui_running(
             True,
             source_count=len(
@@ -1297,8 +1726,10 @@ class LibraryPage(QWidget):
             False
         )
 
-        message = format_import_result(
-            result
+        message = (
+            format_import_result(
+                result
+            )
         )
 
         title = tr(
@@ -1325,8 +1756,10 @@ class LibraryPage(QWidget):
                 ),
                 tr(
                     "library.gamebanana_metadata.error.message",
-                    errors="\n".join(
-                        metadata_errors
+                    errors=(
+                        "\n".join(
+                            metadata_errors
+                        )
                     ),
                 ),
             )
@@ -1382,316 +1815,27 @@ class LibraryPage(QWidget):
         )
 
     # ========================================================
-    # External Import / Conflict Copy
+    # External Import
     # ========================================================
 
     def request_external_import(
         self,
-        paths: list[Path],
+        paths: list[
+            Path
+        ],
     ) -> bool:
-        """
-        Normale externe Imports laufen weiterhin über den
-        normalen Importer.
-
-        Ausnahme:
-
-        Wird genau EIN Ordner übergeben und dieser liegt im
-        aktiven XXMI-Mod-Verzeichnis, handelt es sich um den
-        "Copy to library"-Pfad der ConflictPage.
-
-        Dieser Ordner wird direkt kopiert.
-        """
-
         normalized_paths = [
-            Path(path)
+            Path(
+                path
+            )
             .expanduser()
             .absolute()
             for path
             in paths
         ]
 
-        if len(normalized_paths) == 1:
-            source = normalized_paths[0]
-
-            if (
-                source.is_dir()
-                and self._is_active_mod_path(
-                    source
-                )
-            ):
-                try:
-                    self.copy_active_mod_to_library(
-                        source
-                    )
-
-                except Exception as error:
-                    QMessageBox.critical(
-                        self,
-                        tr(
-                            "conflicts.copy.failed.title"
-                        ),
-                        tr(
-                            "conflicts.copy.failed.message",
-                            error=str(error),
-                        ),
-                    )
-
-                    return False
-
-                return True
-
         return self._request_import(
             normalized_paths
-        )
-
-    def copy_conflict_to_library(
-        self,
-        conflict: ConflictItem,
-    ) -> Path:
-        return (
-            self.copy_active_mod_to_library(
-                Path(
-                    conflict.path
-                )
-            )
-        )
-
-    def copy_active_mod_to_library(
-        self,
-        source: Path,
-    ) -> Path:
-        """
-        Kopiert einen aktiven XXMI Mod exakt so:
-
-            ACTIVE/MeinMod/
-                    ↓
-            LIBRARY/MeinMod/
-
-        Es wird kein Character- oder Mod-Type-Unterordner
-        erzeugt.
-        """
-
-        source = (
-            Path(source)
-            .expanduser()
-            .absolute()
-        )
-
-        if not source.exists():
-            raise ModManagerError(
-                (
-                    "Der Mod-Ordner existiert "
-                    "nicht mehr.\n\n"
-                    f"{source}"
-                )
-            )
-
-        if not source.is_dir():
-            raise ModManagerError(
-                (
-                    "Der ausgewählte Pfad ist "
-                    "kein Mod-Ordner.\n\n"
-                    f"{source}"
-                )
-            )
-
-        if not self._is_active_mod_path(
-            source
-        ):
-            raise ModManagerError(
-                (
-                    "Der ausgewählte Ordner liegt "
-                    "nicht im aktiven "
-                    "XXMI-Mods-Verzeichnis.\n\n"
-                    f"{source}"
-                )
-            )
-
-        library_root = (
-            self.game_scope
-            .mod_library_directory
-            .expanduser()
-            .absolute()
-        )
-
-        library_root.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        source_resolved = (
-            source.resolve()
-        )
-
-        library_resolved = (
-            library_root.resolve()
-        )
-
-        if (
-            source_resolved
-            == library_resolved
-        ):
-            raise ModManagerError(
-                (
-                    "Der Library-Ordner kann "
-                    "nicht in sich selbst "
-                    "kopiert werden."
-                )
-            )
-
-        # ====================================================
-        # Ziel = Library / exakter Source-Ordnername
-        # ====================================================
-
-        destination = (
-            library_root
-            / source.name
-        )
-
-        # Niemals überschreiben.
-        if (
-            destination.exists()
-            or destination.is_symlink()
-        ):
-            counter = 2
-
-            while True:
-                candidate = (
-                    library_root
-                    / (
-                        f"{source.name} "
-                        f"({counter})"
-                    )
-                )
-
-                if not (
-                    candidate.exists()
-                    or candidate.is_symlink()
-                ):
-                    destination = candidate
-                    break
-
-                counter += 1
-
-        temporary_destination = (
-            library_root
-            / (
-                ".xxmimm-copy-"
-                f"{uuid.uuid4().hex}.tmp"
-            )
-        )
-
-        # Marker eines Active-Mods nicht mit in die Library
-        # übernehmen.
-        ignored_manager_files = {
-            ".gmm-managed.json",
-            ".gmm-managed.json.tmp",
-            ".xxmimm-managed.json",
-            ".xxmimm-managed.json.tmp",
-        }
-
-        def ignore_manager_files(
-            _directory: str,
-            names: list[str],
-        ) -> set[str]:
-            return {
-                name
-                for name
-                in names
-                if name in ignored_manager_files
-            }
-
-        try:
-            shutil.copytree(
-                source,
-                temporary_destination,
-                symlinks=False,
-                ignore=ignore_manager_files,
-                copy_function=shutil.copy2,
-            )
-
-            if (
-                destination.exists()
-                or destination.is_symlink()
-            ):
-                raise ModManagerError(
-                    (
-                        "Das Ziel wurde während "
-                        "des Kopiervorgangs "
-                        "erstellt.\n\n"
-                        f"{destination}"
-                    )
-                )
-
-            temporary_destination.rename(
-                destination
-            )
-
-        except Exception:
-            if (
-                temporary_destination.exists()
-                or temporary_destination.is_symlink()
-            ):
-                if temporary_destination.is_dir():
-                    shutil.rmtree(
-                        temporary_destination,
-                        ignore_errors=True,
-                    )
-
-                else:
-                    try:
-                        temporary_destination.unlink()
-
-                    except OSError:
-                        pass
-
-            raise
-
-        # Library neu scannen.
-        QTimer.singleShot(
-            0,
-            self.scan_mods,
-        )
-
-        return destination
-
-    def _is_active_mod_path(
-        self,
-        source: Path,
-    ) -> bool:
-        """
-        Prüft, ob source tatsächlich innerhalb des aktiven
-        XXMI Mods-Verzeichnisses des ausgewählten Spiels liegt.
-        """
-
-        try:
-            source_resolved = (
-                Path(source)
-                .expanduser()
-                .resolve()
-            )
-
-            active_root = (
-                self.game_scope
-                .active_mods_directory
-                .expanduser()
-                .resolve()
-            )
-
-            source_resolved.relative_to(
-                active_root
-            )
-
-        except (
-            OSError,
-            ValueError,
-        ):
-            return False
-
-        # Der Mods-Root selbst ist kein Mod.
-        return (
-            source_resolved
-            != active_root
         )
 
     # ========================================================
@@ -1706,7 +1850,9 @@ class LibraryPage(QWidget):
         mod_id: int,
     ) -> bool:
         source = (
-            Path(path)
+            Path(
+                path
+            )
             .expanduser()
             .absolute()
         )
@@ -1733,7 +1879,9 @@ class LibraryPage(QWidget):
             key
         ] = (
             game_id,
-            int(mod_id),
+            int(
+                mod_id
+            ),
         )
 
         started = (
@@ -1755,8 +1903,12 @@ class LibraryPage(QWidget):
     def _apply_pending_gamebanana_metadata(
         self,
         result: ImportBatchResult,
-    ) -> list[str]:
-        errors: list[str] = []
+    ) -> list[
+        str
+    ]:
+        errors: list[
+            str
+        ] = []
 
         for item in result.items:
             key = (
@@ -1776,7 +1928,10 @@ class LibraryPage(QWidget):
             if pending is None:
                 continue
 
-            game_id, mod_id = pending
+            (
+                game_id,
+                mod_id,
+            ) = pending
 
             if (
                 item.status
@@ -1789,8 +1944,12 @@ class LibraryPage(QWidget):
             try:
                 set_gamebanana_mod_id(
                     item.destination,
-                    game_id=game_id,
-                    mod_id=mod_id,
+                    game_id=(
+                        game_id
+                    ),
+                    mod_id=(
+                        mod_id
+                    ),
                 )
 
             except (
@@ -1811,7 +1970,9 @@ class LibraryPage(QWidget):
         path: Path,
     ) -> str:
         return str(
-            Path(path)
+            Path(
+                path
+            )
             .expanduser()
             .absolute()
         )
@@ -1823,7 +1984,10 @@ class LibraryPage(QWidget):
     def cancel_import(
         self,
     ) -> None:
-        if not self.import_controller.cancel():
+        if not (
+            self.import_controller
+            .cancel()
+        ):
             return
 
         self.header_controller.mark_import_cancel_requested()
@@ -1841,7 +2005,9 @@ class LibraryPage(QWidget):
     def scan_mods(
         self,
     ) -> None:
-        if not self._prepare_scan_start():
+        if not (
+            self._prepare_scan_start()
+        ):
             return
 
         mods_directory = (
@@ -1867,14 +2033,19 @@ class LibraryPage(QWidget):
                 tr(
                     "library.error.directory.title"
                 ),
-                str(error),
+                str(
+                    error
+                ),
             )
 
             return
 
         request_status = (
-            self.scan_controller.request_scan(
-                root_path=mods_directory
+            self.scan_controller
+            .request_scan(
+                root_path=(
+                    mods_directory
+                )
             )
         )
 
@@ -1902,12 +2073,19 @@ class LibraryPage(QWidget):
 
             return
 
+        # ====================================================
+        # request_scan() ist jetzt erfolgreich.
+        # Erst jetzt UI sperren.
+        # ====================================================
+
         self._set_scan_ui_running(
             True
         )
 
         self.filter_bar.set_path_text(
-            str(mods_directory)
+            str(
+                mods_directory
+            )
         )
 
         self.filter_bar.set_location_text(
@@ -1937,8 +2115,12 @@ class LibraryPage(QWidget):
 
         self.operation_status.set_status(
             operation_block_message(
-                requested=LibraryOperation.SCAN,
-                blocking=blocking_operation,
+                requested=(
+                    LibraryOperation.SCAN
+                ),
+                blocking=(
+                    blocking_operation
+                ),
             )
         )
 
@@ -1957,12 +2139,17 @@ class LibraryPage(QWidget):
             self.operation_status.finish_operation()
 
         self._refresh_selection_ui()
+
         self._sync_gallery_operation_state()
 
     def cancel_scan(
         self,
     ) -> None:
         self.scan_controller.cancel()
+
+    # ========================================================
+    # Scan Callbacks
+    # ========================================================
 
     def _on_scan_progress(
         self,
@@ -2001,7 +2188,9 @@ class LibraryPage(QWidget):
         self.operation_status.set_status(
             tr(
                 "library.status.scan_result",
-                count=len(result.mods),
+                count=len(
+                    result.mods
+                ),
                 seconds=(
                     result.duration_seconds
                 ),
@@ -2047,12 +2236,18 @@ class LibraryPage(QWidget):
             )
         )
 
+    # ========================================================
+    # Scan Result
+    # ========================================================
+
     def _display_result(
         self,
         result: ScanResult,
     ) -> None:
         self._last_scanned_mods = (
-            tuple(result.mods)
+            tuple(
+                result.mods
+            )
         )
 
         state_provider = (
@@ -2065,21 +2260,26 @@ class LibraryPage(QWidget):
             state_provider=state_provider,
         )
 
+        # Neue Gallery-Card-Liste bedeutet auch eine neue Auswahl.
+        self._gallery_selected_mod = None
+        self.gallery_details_panel.show_empty()
+
         self.gallery_widget.set_mods(
             mods=result.mods,
             state_provider=state_provider,
         )
+
+        self._connect_gallery_card_selection_signals()
 
         self.filter_bar.set_mods(
             result.mods
         )
 
         self._apply_mod_filters()
-
         self.refresh_conflicts()
 
     # ========================================================
-    # Filters
+    # Filter
     # ========================================================
 
     def _apply_mod_filters(
@@ -2087,7 +2287,8 @@ class LibraryPage(QWidget):
         _value: object | None = None,
     ) -> None:
         search_term = (
-            self.filter_bar.search_term()
+            self.filter_bar
+            .search_term()
         )
 
         character = (
@@ -2126,45 +2327,93 @@ class LibraryPage(QWidget):
         )
 
         total_mods = (
-            self.mod_list_widget.row_count()
+            self.mod_list_widget
+            .row_count()
+        )
+        # ========================================================
+        # Empty States
+        # ========================================================
+
+        library_is_empty = (
+            total_mods == 0
         )
 
+        # --------------------------------------------------------
+        # List
+        # --------------------------------------------------------
+
+        if list_visible > 0:
+            self.list_content_stack.setCurrentWidget(
+                self.mod_list_widget
+            )
+
+        else:
+            if library_is_empty:
+                self.list_empty_state.show_library_empty()
+
+            else:
+                self.list_empty_state.show_no_results()
+
+            self.list_content_stack.setCurrentWidget(
+                self.list_empty_state
+            )
+
+        # --------------------------------------------------------
+        # Gallery
+        # --------------------------------------------------------
+
+        if gallery_visible > 0:
+            self.gallery_content_stack.setCurrentWidget(
+                self.gallery_widget
+            )
+
+        else:
+            if library_is_empty:
+                self.gallery_empty_state.show_library_empty()
+
+            else:
+                self.gallery_empty_state.show_no_results()
+
+            self.gallery_content_stack.setCurrentWidget(
+                self.gallery_empty_state
+            )
         visible_mods = (
             gallery_visible
             if (
-                self.content_stack.currentWidget()
-                is self.gallery_widget
+                self.content_stack.currentIndex()
+                == 1
             )
             else list_visible
         )
 
+        filter_text = tr(
+            "library.status.filter_result",
+            visible=visible_mods,
+            total=total_mods,
+        )
+
         self.view_count_label.setText(
-            tr(
-                "library.status.filter_result",
-                visible=visible_mods,
-                total=total_mods,
-            )
+            filter_text
         )
 
         self.operation_status.set_status(
-            tr(
-                "library.status.filter_result",
-                visible=visible_mods,
-                total=total_mods,
-            )
+            filter_text
         )
 
         self._refresh_selection_ui()
 
     # ========================================================
-    # State
+    # State Sync
     # ========================================================
 
     def _sync_mod_state(
         self,
         *,
         mod: ModInfo,
-        state: ModState | None = None,
+        state: (
+            ModState
+            | None
+        ) = None,
         reapply_filters: bool = True,
     ) -> ModState:
         if state is None:
@@ -2185,9 +2434,43 @@ class LibraryPage(QWidget):
             state=state,
         )
 
+        gallery_mod = self._selected_gallery_mod()
+
+        if (
+            gallery_mod is not None
+            and gallery_mod.path == mod.path
+        ):
+            self._gallery_selected_mod = mod
+
+            self.gallery_details_panel.show_mod(
+                mod=mod,
+                state=state,
+            )
+
+            if hasattr(
+                self.gallery_details_panel,
+                "set_metadata_edit_enabled",
+            ):
+                self.gallery_details_panel.set_metadata_edit_enabled(
+                    False
+                )
+
+            can_toggle = state in {
+                ModState.ENABLED,
+                ModState.DISABLED,
+                ModState.BROKEN,
+            }
+
+            self.gallery_details_panel.toggle_button.setEnabled(
+                can_toggle
+                and not (
+                    self.operation_state
+                    .is_running()
+                )
+            )
+
         if reapply_filters:
             self._apply_mod_filters()
-
         else:
             self._refresh_selection_ui()
 
@@ -2196,7 +2479,7 @@ class LibraryPage(QWidget):
         return state
 
     # ========================================================
-    # Toggles
+    # Detailpanel Toggle
     # ========================================================
 
     def _toggle_selected_mod(
@@ -2210,13 +2493,18 @@ class LibraryPage(QWidget):
         if mod is None:
             return
 
-        if self.operation_state.is_running():
+        if (
+            self.operation_state
+            .is_running()
+        ):
             return
 
         try:
             result = (
                 self.mod_action_controller
-                .toggle(mod)
+                .toggle(
+                    mod
+                )
             )
 
         except ModManagerError as error:
@@ -2225,7 +2513,9 @@ class LibraryPage(QWidget):
                 tr(
                     "library.dialog.mod_management_failed"
                 ),
-                str(error),
+                str(
+                    error
+                ),
             )
 
             return
@@ -2249,18 +2539,27 @@ class LibraryPage(QWidget):
         self.operation_status.set_status(
             result.message
         )
+
+    # ========================================================
+    # Galerie Toggle
+    # ========================================================
 
     def _toggle_gallery_mod(
         self,
         mod: ModInfo,
     ) -> None:
-        if self.operation_state.is_running():
+        if (
+            self.operation_state
+            .is_running()
+        ):
             return
 
         try:
             result = (
                 self.mod_action_controller
-                .toggle(mod)
+                .toggle(
+                    mod
+                )
             )
 
         except ModManagerError as error:
@@ -2269,7 +2568,9 @@ class LibraryPage(QWidget):
                 tr(
                     "library.dialog.mod_management_failed"
                 ),
-                str(error),
+                str(
+                    error
+                ),
             )
 
             return
@@ -2293,6 +2594,10 @@ class LibraryPage(QWidget):
         self.operation_status.set_status(
             result.message
         )
+
+    # ========================================================
+    # Selected Conflict Adopt
+    # ========================================================
 
     def _ignore_selected_conflict(
         self,
@@ -2307,7 +2612,9 @@ class LibraryPage(QWidget):
 
         problem = (
             self.mod_action_controller
-            .validate_adopt(mod)
+            .validate_adopt(
+                mod
+            )
         )
 
         if problem is not None:
@@ -2319,7 +2626,9 @@ class LibraryPage(QWidget):
             return
 
         if not confirm_adopt_existing(
-            mod_name=mod.name,
+            mod_name=(
+                mod.name
+            ),
             parent=self,
         ):
             return
@@ -2327,7 +2636,9 @@ class LibraryPage(QWidget):
         try:
             result = (
                 self.mod_action_controller
-                .adopt(mod)
+                .adopt(
+                    mod
+                )
             )
 
         except ModManagerError as error:
@@ -2336,7 +2647,9 @@ class LibraryPage(QWidget):
                 tr(
                     "library.dialog.adopt_failed"
                 ),
-                str(error),
+                str(
+                    error
+                ),
             )
 
             return
@@ -2357,13 +2670,16 @@ class LibraryPage(QWidget):
         )
 
     # ========================================================
-    # GB ID
+    # GameBanana-ID bearbeiten
     # ========================================================
 
     def _edit_selected_gamebanana_id(
         self,
     ) -> None:
-        if self.operation_state.is_running():
+        if (
+            self.operation_state
+            .is_running()
+        ):
             return
 
         selected = (
@@ -2371,10 +2687,14 @@ class LibraryPage(QWidget):
             .selected_mods()
         )
 
-        if len(selected) != 1:
+        if len(
+            selected
+        ) != 1:
             return
 
-        mod = selected[0]
+        mod = selected[
+            0
+        ]
 
         metadata = (
             load_mod_metadata(
@@ -2383,7 +2703,8 @@ class LibraryPage(QWidget):
         )
 
         current_value = (
-            metadata.gamebanana_mod_id
+            metadata
+            .gamebanana_mod_id
             or 1
         )
 
@@ -2397,7 +2718,9 @@ class LibraryPage(QWidget):
             ),
             tr(
                 "library.gamebanana_id.dialog.message",
-                mod_name=mod.name,
+                mod_name=(
+                    mod.name
+                ),
             ),
             current_value,
             1,
@@ -2411,8 +2734,13 @@ class LibraryPage(QWidget):
         try:
             set_gamebanana_mod_id(
                 mod.path,
-                game_id=self.game_scope.game_id,
-                mod_id=mod_id,
+                game_id=(
+                    self.game_scope
+                    .game_id
+                ),
+                mod_id=(
+                    mod_id
+                ),
             )
 
         except (
@@ -2426,7 +2754,9 @@ class LibraryPage(QWidget):
                 ),
                 tr(
                     "library.gamebanana_id.error.message",
-                    error=error,
+                    error=(
+                        error
+                    ),
                 ),
             )
 
@@ -2449,8 +2779,12 @@ class LibraryPage(QWidget):
         self.operation_status.set_status(
             tr(
                 "library.gamebanana_id.status.saved",
-                mod_name=mod.name,
-                mod_id=mod_id,
+                mod_name=(
+                    mod.name
+                ),
+                mod_id=(
+                    mod_id
+                ),
             )
         )
 
@@ -2460,7 +2794,9 @@ class LibraryPage(QWidget):
 
     def _can_start_bulk_action(
         self,
-        selected_mods: list[ModInfo],
+        selected_mods: list[
+            ModInfo
+        ],
     ) -> bool:
         blocking_operation = (
             self.operation_state
@@ -2471,8 +2807,12 @@ class LibraryPage(QWidget):
 
         if blocking_operation is not None:
             show_operation_blocked(
-                requested=LibraryOperation.BULK,
-                blocking=blocking_operation,
+                requested=(
+                    LibraryOperation.BULK
+                ),
+                blocking=(
+                    blocking_operation
+                ),
                 parent=self,
             )
 
@@ -2503,8 +2843,10 @@ class LibraryPage(QWidget):
             .selected_mods()
         )
 
-        if not self._can_start_bulk_action(
-            selected_mods
+        if not (
+            self._can_start_bulk_action(
+                selected_mods
+            )
         ):
             return
 
@@ -2521,11 +2863,21 @@ class LibraryPage(QWidget):
         if confirmation is None:
             return
 
+        # ====================================================
+        # WICHTIG:
         # Controller zuerst.
+        # UI danach.
+        # ====================================================
+
         started = (
-            self.bulk_controller.start(
-                mods=selected_mods,
-                action=action,
+            self.bulk_controller
+            .start(
+                mods=(
+                    selected_mods
+                ),
+                action=(
+                    action
+                ),
             )
         )
 
@@ -2542,7 +2894,6 @@ class LibraryPage(QWidget):
 
             return
 
-        # UI danach.
         self._set_bulk_ui_running(
             running=True,
             item_count=len(
@@ -2552,13 +2903,16 @@ class LibraryPage(QWidget):
 
         started_key = {
             BulkAction.ENABLE: (
-                "library.status.bulk_enable_started"
+                "library.status."
+                "bulk_enable_started"
             ),
             BulkAction.DISABLE: (
-                "library.status.bulk_disable_started"
+                "library.status."
+                "bulk_disable_started"
             ),
             BulkAction.ADOPT: (
-                "library.status.bulk_adopt_started"
+                "library.status."
+                "bulk_adopt_started"
             ),
         }[
             action
@@ -2590,6 +2944,7 @@ class LibraryPage(QWidget):
             self.operation_status.finish_operation()
 
         self._refresh_selection_ui()
+
         self._sync_gallery_operation_state()
 
     def _on_bulk_progress(
@@ -2672,7 +3027,10 @@ class LibraryPage(QWidget):
     def cancel_bulk_action(
         self,
     ) -> None:
-        if not self.bulk_controller.cancel():
+        if not (
+            self.bulk_controller
+            .cancel()
+        ):
             return
 
         self.mod_list_widget.mark_bulk_cancel_requested()
@@ -2691,15 +3049,23 @@ class LibraryPage(QWidget):
         self,
     ) -> bool:
         return not (
-            self.operation_state.is_running()
+            self.operation_state
+            .is_running()
         )
 
     def on_game_changed(
         self,
         game_id: str,
     ) -> None:
-        if self.operation_state.is_running():
+        if (
+            self.operation_state
+            .is_running()
+        ):
             return
+
+        # ----------------------------------------------------
+        # Doppelten Startup-Scan vermeiden.
+        # ----------------------------------------------------
 
         if (
             game_id
@@ -2718,6 +3084,10 @@ class LibraryPage(QWidget):
         self._conflict_report = (
             ConflictReport()
         )
+
+        # ----------------------------------------------------
+        # Alte UI-Daten sofort entfernen.
+        # ----------------------------------------------------
 
         self.mod_list_widget.set_mods(
             mods=[],
@@ -2739,7 +3109,9 @@ class LibraryPage(QWidget):
         )
 
         self.filter_bar.set_path_text(
-            str(mods_directory)
+            str(
+                mods_directory
+            )
         )
 
         self.filter_bar.set_location_text(
@@ -2768,7 +3140,11 @@ class LibraryPage(QWidget):
         self.operation_status.set_status(
             tr(
                 "library.status.game_changed",
-                game=self.game_scope.game.name,
+                game=(
+                    self.game_scope
+                    .game
+                    .name
+                ),
             )
         )
 
@@ -2778,16 +3154,20 @@ class LibraryPage(QWidget):
         )
 
     # ========================================================
-    # Style
+    # Stylesheet
     # ========================================================
 
     def _apply_stylesheet(
         self,
     ) -> None:
         style_path = (
-            Path(__file__)
+            Path(
+                __file__
+            )
             .resolve()
-            .parents[1]
+            .parents[
+                1
+            ]
             / "styles"
             / "library.qss"
         )
@@ -2803,7 +3183,9 @@ class LibraryPage(QWidget):
             raise RuntimeError(
                 tr(
                     "library.error.stylesheet_load",
-                    path=style_path,
+                    path=(
+                        style_path
+                    ),
                 )
             ) from error
 
@@ -2812,7 +3194,7 @@ class LibraryPage(QWidget):
         )
 
     # ========================================================
-    # Public Conflict API
+    # Public Conflict / Duplicate API
     # ========================================================
 
     def library_mod_paths(
@@ -2822,7 +3204,9 @@ class LibraryPage(QWidget):
         ...,
     ]:
         return tuple(
-            Path(mod.path)
+            Path(
+                mod.path
+            )
             for mod
             in self._last_scanned_mods
         )
@@ -2831,7 +3215,8 @@ class LibraryPage(QWidget):
         self,
     ) -> str:
         return (
-            self.game_scope.game_id
+            self.game_scope
+            .game_id
         )
 
     def active_mods_root(
@@ -2842,7 +3227,56 @@ class LibraryPage(QWidget):
             .active_mods_directory
         )
 
+    def _create_list_content(
+        self,
+    ) -> QStackedWidget:
+        stack = QStackedWidget(
+            self
+        )
 
+        stack.setObjectName(
+            "libraryListContentStack"
+        )
+
+        stack.addWidget(
+            self.mod_list_widget
+        )
+
+        stack.addWidget(
+            self.list_empty_state
+        )
+
+        self.list_content_stack = stack
+
+        return stack
+
+
+    def _create_gallery_content(
+        self,
+    ) -> QStackedWidget:
+        stack = QStackedWidget(
+            self
+        )
+
+        stack.setObjectName(
+            "libraryGalleryContentStack"
+        )
+
+        stack.addWidget(
+            self.gallery_widget
+        )
+
+        stack.addWidget(
+            self.gallery_empty_state
+        )
+
+        self.gallery_content_stack = stack
+
+        return stack
+    def _reset_library_filters(
+        self,
+    ) -> None:
+        self.filter_bar.reset_filters()
 __all__ = [
     "LibraryPage",
 ]

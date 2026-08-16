@@ -458,7 +458,11 @@
 
     "library.gamebanana_metadata.error.title": "GameBanana metadata",
     "library.gamebanana_metadata.error.message": "The mod was imported, but the GameBanana link could not be saved completely.\n\n{errors}",
-
+    "library.empty.title": "Your mod library is empty",
+    "library.empty.description": "Import your first mod or scan the library directory again.",
+    "library.empty.no_results_title": "No matching mods found",
+    "library.empty.no_results_description": "Change your search or filters to show mods again.",
+    
     "conflicts.title": "Conflicts",
     "conflicts.description": "Check library conflicts, manually added XXMI mods and possible duplicates.",
     "conflicts.refresh": "Check again",
