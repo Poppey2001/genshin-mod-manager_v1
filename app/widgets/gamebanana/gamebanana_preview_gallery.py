@@ -352,6 +352,7 @@ class GameBananaPreviewGallery(
 
         self._current_index = 0
         self._generation = 0
+        self._compact_mode = False
 
         self._pixmaps: dict[
             str,
@@ -670,6 +671,53 @@ class GameBananaPreviewGallery(
         self.open_button.clicked.connect(
             self.open_current_image
         )
+
+    def set_compact_mode(
+        self,
+        enabled: bool,
+    ) -> None:
+        enabled = bool(enabled)
+
+        if enabled == self._compact_mode:
+            return
+
+        self._compact_mode = enabled
+
+        image_height = (
+            260
+            if enabled
+            else 340
+        )
+
+        self.main_image_label.setMinimumHeight(
+            image_height
+        )
+        self.main_image_label.setMaximumHeight(
+            image_height
+        )
+
+        if enabled:
+            self.thumbnail_scroll.setMinimumHeight(72)
+            self.thumbnail_scroll.setMaximumHeight(84)
+        else:
+            self.thumbnail_scroll.setMinimumHeight(82)
+            self.thumbnail_scroll.setMaximumHeight(96)
+
+        self.main_image_label.updateGeometry()
+        self.thumbnail_scroll.updateGeometry()
+
+        # GameBananaPreviewGallery besitzt absichtlich keine
+        # parameterlose _render_pixmap()-Methode. Diese gehört
+        # ausschließlich zum PreviewLightboxDialog.
+        #
+        # Die Gallery rendert immer das aktuell ausgewählte Bild
+        # über _current_pixmap() -> _render_main_pixmap(...).
+        pixmap = self._current_pixmap()
+
+        if pixmap is not None:
+            self._render_main_pixmap(
+                pixmap
+            )
 
     # ========================================================
     # Public API

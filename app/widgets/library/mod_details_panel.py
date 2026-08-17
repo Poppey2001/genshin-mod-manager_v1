@@ -259,6 +259,25 @@ class ModDetailsPanel(
         self.show_empty()
 
     # ========================================================
+    # Responsive Layout
+    # ========================================================
+
+    def set_stacked_mode(
+        self,
+        stacked: bool,
+    ) -> None:
+        if stacked:
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(16777215)
+            self.setMinimumHeight(280)
+        else:
+            self.setMinimumWidth(330)
+            self.setMaximumWidth(470)
+            self.setMinimumHeight(0)
+
+        self.updateGeometry()
+
+    # ========================================================
     # UI-Konfiguration
     # ========================================================
 

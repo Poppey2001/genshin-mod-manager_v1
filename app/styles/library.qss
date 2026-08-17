@@ -2543,3 +2543,21 @@ QPushButton#libraryEmptySecondaryButton:hover {
 
     border-color: #434c59;
 }
+
+/* ============================================================
+   RESPONSIVE POLISH V1
+   ============================================================ */
+
+QSplitter#librarySplitter::handle:vertical {
+    height: 8px;
+    width: auto;
+}
+
+QFrame#selectionToolbar[responsiveMode="compact"] {
+    min-height: 94px;
+}
+
+QWidget#libraryPage[responsiveMode="tight"] QFrame#libraryViewToolbar {
+    margin-left: 0px;
+    margin-right: 0px;
+}

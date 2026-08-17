@@ -18,6 +18,7 @@ from PySide6.QtCore import (
 
 from PySide6.QtWidgets import (
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -109,6 +110,8 @@ class ConflictCard(
             "",
         )
 
+        self._action_mode = ""
+
         self.setObjectName(
             "conflictCard"
         )
@@ -192,6 +195,8 @@ class ConflictCard(
             self
         )
 
+        self._root_layout = layout
+
         layout.setContentsMargins(
             16,
             12,
@@ -211,6 +216,9 @@ class ConflictCard(
 
         self.title_label.setObjectName(
             "conflictTitle"
+        )
+        self.title_label.setWordWrap(
+            True
         )
 
         self.type_label.setObjectName(
@@ -357,10 +365,14 @@ class ConflictCard(
         # Buttons
         # ----------------------------------------------------
 
-        actions = QHBoxLayout()
+        self.actions_layout = QGridLayout()
 
-        actions.setSpacing(
+        self.actions_layout.setHorizontalSpacing(
             8
+        )
+
+        self.actions_layout.setVerticalSpacing(
+            6
         )
 
         self.check_button.setObjectName(
@@ -383,33 +395,17 @@ class ConflictCard(
             "dangerButton"
         )
 
-        actions.addWidget(
-            self.check_button
-        )
-
-        actions.addWidget(
-            self.copy_button
-        )
-
-        actions.addStretch(
-            1
-        )
-
-        if self.conflict.can_adopt:
-            actions.addWidget(
-                self.adopt_button
-            )
-        else:
+        if not self.conflict.can_adopt:
             self.adopt_button.hide()
-
-        actions.addWidget(
-            self.delete_button
-        )
 
         self.delete_button.hide()
 
         layout.addLayout(
-            actions
+            self.actions_layout
+        )
+
+        self._reflow_actions(
+            force=True
         )
 
         # Im alten kompakten Design stand "Open folder"
@@ -458,6 +454,164 @@ class ConflictCard(
         self.delete_button.clicked.connect(
             self._request_delete
         )
+
+    def resizeEvent(
+        self,
+        event,
+    ) -> None:
+        super().resizeEvent(
+            event
+        )
+
+        self._reflow_actions()
+
+    def _reflow_actions(
+        self,
+        *,
+        force: bool = False,
+    ) -> None:
+        mode = (
+            "tight"
+            if self.width() < 620
+            else "wide"
+        )
+
+        if (
+            not force
+            and mode == self._action_mode
+        ):
+            return
+
+        self._action_mode = mode
+
+        buttons = (
+            self.check_button,
+            self.copy_button,
+            self.adopt_button,
+            self.delete_button,
+        )
+
+        for button in buttons:
+            self.actions_layout.removeWidget(
+                button
+            )
+
+        for column in range(5):
+            self.actions_layout.setColumnStretch(
+                column,
+                0,
+            )
+
+        if mode == "wide":
+            self.check_button.setSizePolicy(
+                QSizePolicy.Policy.Preferred,
+                QSizePolicy.Policy.Fixed,
+            )
+
+            self.copy_button.setSizePolicy(
+                QSizePolicy.Policy.Preferred,
+                QSizePolicy.Policy.Fixed,
+            )
+
+            self.actions_layout.addWidget(
+                self.check_button,
+                0,
+                0,
+            )
+
+            self.actions_layout.addWidget(
+                self.copy_button,
+                0,
+                1,
+            )
+
+            self.actions_layout.setColumnStretch(
+                2,
+                1,
+            )
+
+            column = 3
+
+            if self.adopt_button.isVisible():
+                self.actions_layout.addWidget(
+                    self.adopt_button,
+                    0,
+                    column,
+                )
+                column += 1
+
+            if self.delete_button.isVisible():
+                self.actions_layout.addWidget(
+                    self.delete_button,
+                    0,
+                    column,
+                )
+
+        else:
+            self.check_button.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+
+            self.copy_button.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+
+            self.actions_layout.addWidget(
+                self.check_button,
+                0,
+                0,
+            )
+
+            self.actions_layout.addWidget(
+                self.copy_button,
+                0,
+                1,
+            )
+
+            self.actions_layout.setColumnStretch(
+                0,
+                1,
+            )
+
+            self.actions_layout.setColumnStretch(
+                1,
+                1,
+            )
+
+            row = 1
+
+            if self.adopt_button.isVisible():
+                self.adopt_button.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Fixed,
+                )
+
+                self.actions_layout.addWidget(
+                    self.adopt_button,
+                    row,
+                    0,
+                    1,
+                    2,
+                )
+                row += 1
+
+            if self.delete_button.isVisible():
+                self.delete_button.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Fixed,
+                )
+
+                self.actions_layout.addWidget(
+                    self.delete_button,
+                    row,
+                    0,
+                    1,
+                    2,
+                )
+
+        self.updateGeometry()
 
     def _refresh_compact_geometry(
         self,
@@ -547,6 +701,9 @@ class ConflictCard(
         )
 
         self.delete_button.hide()
+        self._reflow_actions(
+            force=True
+        )
 
         self.crc_label.clear()
         self.sha_label.clear()
@@ -597,6 +754,10 @@ class ConflictCard(
             result.is_duplicate
         )
 
+        self._reflow_actions(
+            force=True
+        )
+
         self.retranslate_ui()
 
     def set_duplicate_error(
@@ -616,6 +777,10 @@ class ConflictCard(
         )
 
         self.delete_button.hide()
+
+        self._reflow_actions(
+            force=True
+        )
 
         self.crc_label.clear()
         self.sha_label.clear()
@@ -1000,6 +1165,8 @@ class ConflictsPage(
         )
 
         self._content_state_message = ""
+        self._responsive_mode = ""
+        self._root_layout: QVBoxLayout | None = None
 
         self.scroll_area = (
             QScrollArea()
@@ -1032,6 +1199,10 @@ class ConflictsPage(
         # Bis der erste Report von der Library eintrifft,
         # zeigen wir keinen falschen "alles sauber"-Zustand.
         self._show_loading_state()
+
+        self._update_responsive_layout(
+            force=True
+        )
 
     # ========================================================
     # Build
@@ -1530,8 +1701,134 @@ class ConflictsPage(
             QScrollBar:horizontal {
                 background: transparent;
             }
+
+            QWidget#conflictsPage[responsiveMode="compact"]
+            QLabel#pageTitle {
+                font-size: 25px;
+            }
+
+            QWidget#conflictsPage[responsiveMode="tight"]
+            QLabel#pageTitle {
+                font-size: 23px;
+            }
+
+            QWidget#conflictsPage[responsiveMode="tight"]
+            QFrame#conflictsSummary {
+                border-radius: 8px;
+            }
+
+            QWidget#conflictsPage[responsiveMode="tight"]
+            QLabel#conflictsSummaryCount {
+                padding-left: 8px;
+                padding-right: 8px;
+            }
+
+            QWidget#conflictsPage[responsiveMode="tight"]
+            QFrame#conflictCard {
+                border-radius: 8px;
+            }
+
             """
         )
+
+    # ========================================================
+    # Responsive Layout
+    # ========================================================
+
+    def resizeEvent(
+        self,
+        event,
+    ) -> None:
+        super().resizeEvent(
+            event
+        )
+
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(
+        self,
+        *,
+        force: bool = False,
+    ) -> None:
+        width = self.width()
+
+        if width < 680:
+            mode = "tight"
+        elif width < 1000:
+            mode = "compact"
+        else:
+            mode = "wide"
+
+        if (
+            not force
+            and mode == self._responsive_mode
+        ):
+            return
+
+        self._responsive_mode = mode
+
+        self.setProperty(
+            "responsiveMode",
+            mode,
+        )
+
+        root = self._root_layout
+
+        if root is not None:
+            if mode == "wide":
+                root.setContentsMargins(
+                    28,
+                    24,
+                    28,
+                    24,
+                )
+                root.setSpacing(
+                    16
+                )
+            elif mode == "compact":
+                root.setContentsMargins(
+                    18,
+                    18,
+                    18,
+                    16,
+                )
+                root.setSpacing(
+                    13
+                )
+            else:
+                root.setContentsMargins(
+                    10,
+                    12,
+                    10,
+                    10,
+                )
+                root.setSpacing(
+                    10
+                )
+
+        self.count_label.setVisible(
+            mode != "tight"
+        )
+
+        self.content_layout.setContentsMargins(
+            0,
+            0,
+            4 if mode != "wide" else 8,
+            12 if mode != "wide" else 16,
+        )
+
+        style = self.style()
+        style.unpolish(
+            self
+        )
+        style.polish(
+            self
+        )
+
+        for card in self._cards:
+            card._reflow_actions(
+                force=True
+            )
 
     # ========================================================
     # Report

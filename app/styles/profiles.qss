@@ -312,3 +312,28 @@ QWidget#profilesStatePanel {
     background-color: transparent;
     border: none;
 }
+
+
+/* ============================================================
+   RESPONSIVE POLISH V1
+   ============================================================ */
+
+QWidget#profilesPage[responsiveMode="compact"] QLabel#pageTitle {
+    font-size: 25px;
+}
+
+QWidget#profilesPage[responsiveMode="tight"] QLabel#pageTitle {
+    font-size: 23px;
+}
+
+QWidget#profilesPage[responsiveMode="tight"] QPushButton#profilesRefreshButton,
+QWidget#profilesPage[responsiveMode="tight"] QPushButton#profilesNewButton {
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+QWidget#profilesPage[responsiveMode="tight"] QLabel#profilesSummaryCount {
+    min-width: 58px;
+    padding-left: 7px;
+    padding-right: 7px;
+}

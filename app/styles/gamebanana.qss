@@ -460,3 +460,27 @@ QWidget#gameBananaDetailsStatePanel {
 QWidget#gameBananaDetailsStatePanel {
     min-height: 220px;
 }
+
+
+/* ============================================================
+   RESPONSIVE POLISH V1
+   ============================================================ */
+
+QSplitter#gameBananaSplitter::handle:vertical {
+    height: 8px;
+    width: auto;
+}
+
+QWidget#gameBananaPage[responsiveMode="tight"] QLabel#pageTitle {
+    font-size: 24px;
+}
+
+QWidget#gameBananaPage[responsiveMode="tight"]
+QPushButton#gameBananaPrimaryButton,
+QWidget#gameBananaPage[responsiveMode="tight"]
+QPushButton#gameBananaSecondaryButton,
+QWidget#gameBananaPage[responsiveMode="tight"]
+QPushButton#gameBananaResultOpenButton {
+    padding-left: 9px;
+    padding-right: 9px;
+}

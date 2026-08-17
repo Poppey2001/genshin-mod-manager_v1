@@ -651,6 +651,8 @@ class TopNavigationButton(
         )
 
         self.page_id = page_id
+        self._full_text = ""
+        self._icon_only = False
 
         self.setObjectName(
             "topNavigationButton"
@@ -702,6 +704,58 @@ class TopNavigationButton(
         )
 
         self.badge.hide()
+
+    def set_full_text(
+        self,
+        text: str,
+    ) -> None:
+        self._full_text = str(text)
+
+        self.setToolTip(
+            self._full_text
+        )
+
+        if not self._icon_only:
+            self.setText(
+                self._full_text
+            )
+
+    def set_icon_only(
+        self,
+        enabled: bool,
+    ) -> None:
+        enabled = bool(enabled)
+
+        if enabled == self._icon_only:
+            return
+
+        self._icon_only = enabled
+
+        if enabled:
+            self.setText("")
+            self.setFixedWidth(46)
+        else:
+            self.setMinimumWidth(0)
+            self.setMaximumWidth(16777215)
+            self.setText(
+                self._full_text
+            )
+
+        self._position_badge()
+
+    def set_compact_padding(
+        self,
+        compact: bool,
+    ) -> None:
+        self.setProperty(
+            "compact",
+            bool(compact),
+        )
+
+        style = self.style()
+        style.unpolish(self)
+        style.polish(self)
+        self.update()
 
     def set_badge_count(
         self,
@@ -836,6 +890,14 @@ class MainWindowUI(
 
         self.settings_button = QPushButton()
 
+        self._sidebar: QFrame | None = None
+        self._top_bar: QFrame | None = None
+        self._top_bar_layout: QHBoxLayout | None = None
+        self._current_game_card: QFrame | None = None
+
+        self._settings_full_text = ""
+        self._responsive_mode = ""
+
         self._build_ui()
 
         translation_manager.language_changed.connect(
@@ -850,6 +912,10 @@ class MainWindowUI(
 
         self.set_active_page(
             self.PAGE_LIBRARY
+        )
+
+        self._apply_responsive_layout(
+            force=True
         )
 
     # ========================================================
@@ -899,6 +965,8 @@ class MainWindowUI(
         sidebar.setObjectName(
             "gameSidebar"
         )
+
+        self._sidebar = sidebar
 
         sidebar.setFixedWidth(
             92
@@ -1060,6 +1128,8 @@ class MainWindowUI(
             "topBar"
         )
 
+        self._top_bar = top_bar
+
         layout = QHBoxLayout(
             top_bar
         )
@@ -1075,6 +1145,8 @@ class MainWindowUI(
             12
         )
 
+        self._top_bar_layout = layout
+
         # ----------------------------------------------------
         # Current Game
         # ----------------------------------------------------
@@ -1086,6 +1158,8 @@ class MainWindowUI(
         game_info.setObjectName(
             "currentGameCard"
         )
+
+        self._current_game_card = game_info
 
         game_info.setMinimumWidth(
             190
@@ -1353,24 +1427,165 @@ class MainWindowUI(
             )
 
             if button is not None:
-                button.setText(
+                button.set_full_text(
                     text
                 )
 
+        self._settings_full_text = tr(
+            "navigation.settings"
+        )
+
         self.settings_button.setText(
-            tr(
-                "navigation.settings"
-            )
+            self._settings_full_text
         )
 
         self.settings_button.setToolTip(
-            tr(
-                "navigation.settings"
-            )
+            self._settings_full_text
         )
 
         for button in self.game_buttons.values():
             button.refresh_tooltip()
+
+        self._apply_responsive_layout(
+            force=True
+        )
+
+    # ========================================================
+    # Responsive Layout
+    # ========================================================
+
+    def resizeEvent(
+        self,
+        event: QResizeEvent,
+    ) -> None:
+        super().resizeEvent(
+            event
+        )
+
+        self._apply_responsive_layout()
+
+    def _apply_responsive_layout(
+        self,
+        *,
+        force: bool = False,
+    ) -> None:
+        width = self.width()
+
+        if width < 1040:
+            mode = "tight"
+        elif width < 1280:
+            mode = "compact"
+        else:
+            mode = "roomy"
+
+        if (
+            not force
+            and mode == self._responsive_mode
+        ):
+            return
+
+        self._responsive_mode = mode
+
+        sidebar = self._sidebar
+        top_layout = self._top_bar_layout
+        game_card = self._current_game_card
+
+        if mode == "roomy":
+            if sidebar is not None:
+                sidebar.setFixedWidth(92)
+
+            if top_layout is not None:
+                top_layout.setContentsMargins(
+                    22,
+                    10,
+                    16,
+                    10,
+                )
+                top_layout.setSpacing(12)
+
+            if game_card is not None:
+                game_card.show()
+                game_card.setMinimumWidth(190)
+                game_card.setMaximumWidth(290)
+
+            self.importer_label.show()
+
+            for button in self.navigation_buttons.values():
+                button.set_icon_only(False)
+                button.set_compact_padding(False)
+
+            self.settings_button.setText(
+                self._settings_full_text
+            )
+            self.settings_button.setFixedWidth(
+                0
+            )
+            self.settings_button.setMinimumWidth(
+                0
+            )
+            self.settings_button.setMaximumWidth(
+                16777215
+            )
+
+        elif mode == "compact":
+            if sidebar is not None:
+                sidebar.setFixedWidth(84)
+
+            if top_layout is not None:
+                top_layout.setContentsMargins(
+                    14,
+                    10,
+                    12,
+                    10,
+                )
+                top_layout.setSpacing(7)
+
+            if game_card is not None:
+                game_card.show()
+                game_card.setMinimumWidth(150)
+                game_card.setMaximumWidth(185)
+
+            self.importer_label.hide()
+
+            for button in self.navigation_buttons.values():
+                button.set_icon_only(False)
+                button.set_compact_padding(True)
+
+            self.settings_button.setText(
+                self._settings_full_text
+            )
+            self.settings_button.setMinimumWidth(
+                0
+            )
+            self.settings_button.setMaximumWidth(
+                16777215
+            )
+
+        else:
+            if sidebar is not None:
+                sidebar.setFixedWidth(78)
+
+            if top_layout is not None:
+                top_layout.setContentsMargins(
+                    10,
+                    10,
+                    10,
+                    10,
+                )
+                top_layout.setSpacing(5)
+
+            # Bei wirklich kleinen Fenstern verschwindet nur
+            # die redundante Game-Infokarte. Das aktive Spiel
+            # bleibt links über sein ausgewähltes Icon sichtbar.
+            if game_card is not None:
+                game_card.hide()
+
+            for button in self.navigation_buttons.values():
+                button.set_icon_only(True)
+                button.set_compact_padding(True)
+
+            self.settings_button.setText("")
+            self.settings_button.setFixedWidth(46)
 
     # ========================================================
     # Styles
@@ -1490,6 +1705,11 @@ class MainWindowUI(
 
                 font-size: 10px;
                 font-weight: 750;
+            }
+
+            QPushButton#topNavigationButton[compact="true"] {
+                padding-left: 9px;
+                padding-right: 9px;
             }
 
             QPushButton#topNavigationButton:hover {

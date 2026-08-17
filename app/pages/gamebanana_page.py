@@ -50,7 +50,8 @@ class GameBananaPage(QWidget):
     # Unterhalb dieses Wertes werden Browser und Details
     # vertikal angeordnet. So funktionieren auch längere
     # Übersetzungen auf kleineren Fenstern sauber.
-    RESPONSIVE_BREAKPOINT = 1180
+    RESPONSIVE_BREAKPOINT = 1120
+    TIGHT_BREAKPOINT = 760
 
     def __init__(
         self,
@@ -72,6 +73,9 @@ class GameBananaPage(QWidget):
         self._browse_loaded_once = False
         self._result_cards: list[GameBananaResultCard] = []
         self._last_browse_has_next = False
+        self._responsive_mode = ""
+        self._main_layout: QVBoxLayout | None = None
+        self._details_content_layout: QVBoxLayout | None = None
 
         # Dynamische Statusmeldungen werden als Translation-Key
         # gespeichert, damit ein Sprachwechsel auch bereits
@@ -147,7 +151,9 @@ class GameBananaPage(QWidget):
         translation_manager.language_changed.connect(self.retranslate_ui)
         self.retranslate_ui()
         self._sync_busy_state()
-        self._update_responsive_layout()
+        self._update_responsive_layout(
+            force=True
+        )
 
     # ========================================================
     # UI
@@ -155,6 +161,7 @@ class GameBananaPage(QWidget):
 
     def _build_ui(self) -> None:
         main_layout = QVBoxLayout(self)
+        self._main_layout = main_layout
         main_layout.setContentsMargins(22, 20, 22, 16)
         main_layout.setSpacing(14)
 
@@ -319,6 +326,7 @@ class GameBananaPage(QWidget):
         content = QWidget()
         content.setObjectName("gameBananaDetailsContent")
         layout = QVBoxLayout(content)
+        self._details_content_layout = layout
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
 
@@ -495,21 +503,122 @@ class GameBananaPage(QWidget):
         super().resizeEvent(event)
         self._update_responsive_layout()
 
-    def _update_responsive_layout(self) -> None:
-        splitter = getattr(self, "workspace_splitter", None)
+    def _update_responsive_layout(
+        self,
+        *,
+        force: bool = False,
+    ) -> None:
+        splitter = getattr(
+            self,
+            "workspace_splitter",
+            None,
+        )
+
         if splitter is None:
             return
 
-        if self.width() < self.RESPONSIVE_BREAKPOINT:
-            orientation = Qt.Orientation.Vertical
-            sizes = [430, 520]
+        width = self.width()
+
+        if width < self.TIGHT_BREAKPOINT:
+            mode = "tight"
+        elif width < self.RESPONSIVE_BREAKPOINT:
+            mode = "stacked"
         else:
+            mode = "wide"
+
+        if (
+            not force
+            and mode == self._responsive_mode
+        ):
+            return
+
+        self._responsive_mode = mode
+        self.setProperty(
+            "responsiveMode",
+            mode,
+        )
+
+        if mode == "wide":
             orientation = Qt.Orientation.Horizontal
             sizes = [760, 580]
 
-        if splitter.orientation() != orientation:
-            splitter.setOrientation(orientation)
-            splitter.setSizes(sizes)
+            if self._main_layout is not None:
+                self._main_layout.setContentsMargins(
+                    22, 20, 22, 16
+                )
+                self._main_layout.setSpacing(14)
+
+            if self._details_content_layout is not None:
+                self._details_content_layout.setContentsMargins(
+                    12, 12, 12, 12
+                )
+
+            self.game_badge.show()
+            self.preview_gallery.set_compact_mode(False)
+            self.results_layout.setContentsMargins(
+                12, 12, 12, 12
+            )
+
+        elif mode == "stacked":
+            orientation = Qt.Orientation.Vertical
+            sizes = [430, 520]
+
+            if self._main_layout is not None:
+                self._main_layout.setContentsMargins(
+                    16, 16, 16, 14
+                )
+                self._main_layout.setSpacing(12)
+
+            if self._details_content_layout is not None:
+                self._details_content_layout.setContentsMargins(
+                    10, 10, 10, 10
+                )
+
+            self.game_badge.show()
+            self.preview_gallery.set_compact_mode(False)
+            self.results_layout.setContentsMargins(
+                10, 10, 10, 10
+            )
+
+        else:
+            orientation = Qt.Orientation.Vertical
+            sizes = [360, 470]
+
+            if self._main_layout is not None:
+                self._main_layout.setContentsMargins(
+                    10, 12, 10, 10
+                )
+                self._main_layout.setSpacing(10)
+
+            if self._details_content_layout is not None:
+                self._details_content_layout.setContentsMargins(
+                    8, 8, 8, 8
+                )
+
+            self.game_badge.hide()
+            self.preview_gallery.set_compact_mode(True)
+            self.results_layout.setContentsMargins(
+                8, 8, 8, 8
+            )
+
+        changed = (
+            splitter.orientation()
+            != orientation
+        )
+
+        if changed:
+            splitter.setOrientation(
+                orientation
+            )
+
+        if changed or force:
+            splitter.setSizes(
+                sizes
+            )
+
+        style = self.style()
+        style.unpolish(self)
+        style.polish(self)
 
     # ========================================================
     # Game

@@ -66,7 +66,7 @@ class ProfileCard(
 
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Minimum,
         )
 
         self.setMinimumHeight(
@@ -78,6 +78,9 @@ class ProfileCard(
         )
         self.name_label.setObjectName(
             "profileCardName"
+        )
+        self.name_label.setWordWrap(
+            True
         )
 
         self.active_badge = QLabel(

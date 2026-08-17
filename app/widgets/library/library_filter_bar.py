@@ -8,6 +8,7 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -63,6 +64,9 @@ class LibraryFilterBar(QFrame):
 
         self.setObjectName("filterCard")
 
+        self._responsive_mode = ""
+        self._full_path_text = ""
+
         self.path_label = QLabel()
         self.location_label = QLabel()
 
@@ -93,6 +97,10 @@ class LibraryFilterBar(QFrame):
         self.path_label.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
+        )
+
+        self.path_label.setMinimumWidth(
+            0
         )
 
         self.location_label.setObjectName(
@@ -362,39 +370,21 @@ class LibraryFilterBar(QFrame):
         # FILTER TOOLBAR
         # ========================================================
 
-        filter_layout = QHBoxLayout()
+        self.filter_layout = QGridLayout()
 
-        filter_layout.setContentsMargins(
+        self.filter_layout.setContentsMargins(
             0,
             0,
             0,
             0,
         )
 
-        filter_layout.setSpacing(
+        self.filter_layout.setHorizontalSpacing(
             8
         )
 
-        # Suche bekommt den meisten Platz
-        filter_layout.addWidget(
-            self.search_input,
-            stretch=1,
-        )
-
-        filter_layout.addWidget(
-            self.character_filter
-        )
-
-        filter_layout.addWidget(
-            self.mod_type_filter
-        )
-
-        filter_layout.addWidget(
-            self.status_filter
-        )
-
-        filter_layout.addWidget(
-            self.reset_button
+        self.filter_layout.setVerticalSpacing(
+            8
         )
 
         root_layout.addLayout(
@@ -402,7 +392,11 @@ class LibraryFilterBar(QFrame):
         )
 
         root_layout.addLayout(
-            filter_layout
+            self.filter_layout
+        )
+
+        self._update_responsive_layout(
+            force=True
         )
 
     def _connect_signals(self) -> None:
@@ -510,28 +504,185 @@ class LibraryFilterBar(QFrame):
 
         return str(value)
 
-    def set_path_text(
+    def resizeEvent(
         self,
-        text: str,
+        event,
     ) -> None:
-        self.path_label.setText(
-            text
+        super().resizeEvent(
+            event
         )
 
-    def set_location_text(
+        self._update_responsive_layout()
+        self._refresh_path_display()
+
+    def _update_responsive_layout(
         self,
-        text: str,
+        *,
+        force: bool = False,
     ) -> None:
-        self.location_label.setText(
-            text
+        width = self.width()
+
+        if width < 620:
+            mode = "tight"
+        elif width < 920:
+            mode = "compact"
+        else:
+            mode = "wide"
+
+        if (
+            not force
+            and mode == self._responsive_mode
+        ):
+            return
+
+        self._responsive_mode = mode
+        self.setProperty(
+            "responsiveMode",
+            mode,
         )
-    
+
+        widgets = (
+            self.search_input,
+            self.character_filter,
+            self.mod_type_filter,
+            self.status_filter,
+            self.reset_button,
+        )
+
+        for widget in widgets:
+            self.filter_layout.removeWidget(
+                widget
+            )
+
+        for column in range(5):
+            self.filter_layout.setColumnStretch(
+                column,
+                0,
+            )
+
+        if mode == "wide":
+            self.search_input.setMinimumWidth(280)
+            self.character_filter.setMinimumWidth(135)
+            self.mod_type_filter.setMinimumWidth(135)
+            self.status_filter.setMinimumWidth(125)
+
+            self.filter_layout.addWidget(
+                self.search_input, 0, 0
+            )
+            self.filter_layout.addWidget(
+                self.character_filter, 0, 1
+            )
+            self.filter_layout.addWidget(
+                self.mod_type_filter, 0, 2
+            )
+            self.filter_layout.addWidget(
+                self.status_filter, 0, 3
+            )
+            self.filter_layout.addWidget(
+                self.reset_button, 0, 4
+            )
+            self.filter_layout.setColumnStretch(
+                0, 1
+            )
+
+        elif mode == "compact":
+            self.search_input.setMinimumWidth(0)
+            self.character_filter.setMinimumWidth(120)
+            self.mod_type_filter.setMinimumWidth(120)
+            self.status_filter.setMinimumWidth(110)
+
+            self.filter_layout.addWidget(
+                self.search_input,
+                0, 0, 1, 4,
+            )
+            self.filter_layout.addWidget(
+                self.character_filter, 1, 0
+            )
+            self.filter_layout.addWidget(
+                self.mod_type_filter, 1, 1
+            )
+            self.filter_layout.addWidget(
+                self.status_filter, 1, 2
+            )
+            self.filter_layout.addWidget(
+                self.reset_button, 1, 3
+            )
+
+            for column in range(4):
+                self.filter_layout.setColumnStretch(
+                    column, 1
+                )
+
+        else:
+            self.search_input.setMinimumWidth(0)
+            self.character_filter.setMinimumWidth(0)
+            self.mod_type_filter.setMinimumWidth(0)
+            self.status_filter.setMinimumWidth(0)
+
+            self.filter_layout.addWidget(
+                self.search_input,
+                0, 0, 1, 2,
+            )
+            self.filter_layout.addWidget(
+                self.character_filter, 1, 0
+            )
+            self.filter_layout.addWidget(
+                self.mod_type_filter, 1, 1
+            )
+            self.filter_layout.addWidget(
+                self.status_filter, 2, 0
+            )
+            self.filter_layout.addWidget(
+                self.reset_button, 2, 1
+            )
+
+            self.filter_layout.setColumnStretch(
+                0, 1
+            )
+            self.filter_layout.setColumnStretch(
+                1, 1
+            )
+
+        self.folder_caption.setVisible(
+            mode != "tight"
+        )
+
+        style = self.style()
+        style.unpolish(self)
+        style.polish(self)
+
+        self._refresh_path_display()
+
     def set_path_text(
         self,
         text: str,
     ) -> None:
+        self._full_path_text = str(text)
+        self.path_label.setToolTip(
+            self._full_path_text
+        )
+        self._refresh_path_display()
+
+    def _refresh_path_display(
+        self,
+    ) -> None:
+        text = self._full_path_text
+
+        if not text:
+            self.path_label.setText("")
+            return
+
+        available = max(
+            80,
+            self.path_label.width() - 20,
+        )
+
         self.path_label.setText(
-            text
+            self.path_label.fontMetrics().elidedText(
+                text,
+                Qt.TextElideMode.ElideMiddle,
+                available,
+            )
         )
 
     def set_location_text(

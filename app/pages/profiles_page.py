@@ -131,6 +131,8 @@ class ProfilesPage(
         ) = None
         self._busy = False
         self._current_columns = 0
+        self._responsive_mode = ""
+        self._root_layout: QVBoxLayout | None = None
 
         # ====================================================
         # Header
@@ -228,6 +230,9 @@ class ProfilesPage(
 
         self.retranslate_ui()
         self.refresh()
+        self._update_responsive_layout(
+            force=True
+        )
 
     # ========================================================
     # UI
@@ -239,6 +244,8 @@ class ProfilesPage(
         root = QVBoxLayout(
             self
         )
+        self._root_layout = root
+
         root.setContentsMargins(
             22,
             20,
@@ -1180,10 +1187,114 @@ class ProfilesPage(
             self._reflow_cards,
         )
 
+    def _update_responsive_layout(
+        self,
+        *,
+        force: bool = False,
+    ) -> None:
+        width = self.width()
+
+        if width < 700:
+            mode = "tight"
+        elif width < 1100:
+            mode = "compact"
+        else:
+            mode = "wide"
+
+        if (
+            not force
+            and mode == self._responsive_mode
+        ):
+            return
+
+        self._responsive_mode = mode
+
+        self.setProperty(
+            "responsiveMode",
+            mode,
+        )
+
+        root = self._root_layout
+
+        if root is not None:
+            if mode == "wide":
+                root.setContentsMargins(
+                    22,
+                    20,
+                    22,
+                    16,
+                )
+                root.setSpacing(
+                    14
+                )
+            elif mode == "compact":
+                root.setContentsMargins(
+                    16,
+                    16,
+                    16,
+                    14,
+                )
+                root.setSpacing(
+                    12
+                )
+            else:
+                root.setContentsMargins(
+                    10,
+                    12,
+                    10,
+                    10,
+                )
+                root.setSpacing(
+                    10
+                )
+
+        if mode == "wide":
+            self.new_button.setMinimumWidth(
+                126
+            )
+            self.operation_progress.setMinimumWidth(
+                260
+            )
+        elif mode == "compact":
+            self.new_button.setMinimumWidth(
+                110
+            )
+            self.operation_progress.setMinimumWidth(
+                190
+            )
+        else:
+            self.new_button.setMinimumWidth(
+                0
+            )
+            self.operation_progress.setMinimumWidth(
+                0
+            )
+
+        self.cards_grid.setHorizontalSpacing(
+            12 if mode == "wide" else 10
+        )
+        self.cards_grid.setVerticalSpacing(
+            12 if mode != "tight" else 10
+        )
+
+        style = self.style()
+        style.unpolish(
+            self
+        )
+        style.polish(
+            self
+        )
+
+        QTimer.singleShot(
+            0,
+            self._reflow_cards,
+        )
+
     def _reflow_cards(
         self,
     ) -> None:
         if not self._cards:
+            self._current_columns = 0
             return
 
         width = max(
@@ -1191,9 +1302,9 @@ class ProfilesPage(
             1,
         )
 
-        if width >= 1280:
+        if width >= 1200:
             columns = 3
-        elif width >= 760:
+        elif width >= 700:
             columns = 2
         else:
             columns = 1
@@ -1236,6 +1347,8 @@ class ProfilesPage(
         super().resizeEvent(
             event
         )
+
+        self._update_responsive_layout()
 
         QTimer.singleShot(
             0,

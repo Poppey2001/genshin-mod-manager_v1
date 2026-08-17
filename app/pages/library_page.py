@@ -180,6 +180,9 @@ from app.workers.bulk_mod_worker import (
 class LibraryPage(
     QWidget
 ):
+    RESPONSIVE_BREAKPOINT = 1080
+    TIGHT_BREAKPOINT = 760
+
     """
     Library des aktuell ausgewählten XXMI-Spiels.
 
@@ -212,6 +215,11 @@ class LibraryPage(
         )
 
         self.config = config
+
+        self._responsive_mode = ""
+        self._root_layout: QVBoxLayout | None = None
+        self.list_splitter: QSplitter | None = None
+        self.gallery_splitter: QSplitter | None = None
 
         # ====================================================
         # Game Scope
@@ -642,6 +650,10 @@ class LibraryPage(
             reapply_filters=False,
         )
 
+        self._update_responsive_layout(
+            force=True
+        )
+
         # ====================================================
         # Initialer Scan
         # ====================================================
@@ -665,6 +677,8 @@ class LibraryPage(
         layout = QVBoxLayout(
             self
         )
+
+        self._root_layout = layout
 
         layout.setContentsMargins(
             22,
@@ -893,6 +907,8 @@ class LibraryPage(
             ]
         )
 
+        self.list_splitter = splitter
+
         return splitter
 
     def _create_gallery_splitter(
@@ -941,7 +957,129 @@ class LibraryPage(
             ]
         )
 
+        self.gallery_splitter = splitter
+
         return splitter
+
+    # ========================================================
+    # Responsive Layout
+    # ========================================================
+
+    def resizeEvent(
+        self,
+        event,
+    ) -> None:
+        super().resizeEvent(
+            event
+        )
+
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(
+        self,
+        *,
+        force: bool = False,
+    ) -> None:
+        width = self.width()
+
+        if width < self.TIGHT_BREAKPOINT:
+            mode = "tight"
+        elif width < self.RESPONSIVE_BREAKPOINT:
+            mode = "stacked"
+        else:
+            mode = "wide"
+
+        if (
+            not force
+            and mode == self._responsive_mode
+        ):
+            return
+
+        self._responsive_mode = mode
+        self.setProperty(
+            "responsiveMode",
+            mode,
+        )
+
+        root_layout = self._root_layout
+
+        if root_layout is not None:
+            if mode == "wide":
+                root_layout.setContentsMargins(
+                    22, 20, 22, 16
+                )
+                root_layout.setSpacing(14)
+            elif mode == "stacked":
+                root_layout.setContentsMargins(
+                    16, 16, 16, 14
+                )
+                root_layout.setSpacing(12)
+            else:
+                root_layout.setContentsMargins(
+                    10, 12, 10, 10
+                )
+                root_layout.setSpacing(10)
+
+        stacked = mode != "wide"
+
+        orientation = (
+            Qt.Orientation.Vertical
+            if stacked
+            else Qt.Orientation.Horizontal
+        )
+
+        splitter_configs = (
+            (
+                self.list_splitter,
+                self.details_panel,
+                [620, 360]
+                if stacked
+                else [1080, 420],
+            ),
+            (
+                self.gallery_splitter,
+                self.gallery_details_panel,
+                [620, 360]
+                if stacked
+                else [1050, 400],
+            ),
+        )
+
+        for splitter, detail_panel, sizes in splitter_configs:
+            if splitter is None:
+                continue
+
+            detail_panel.set_stacked_mode(
+                stacked
+            )
+
+            changed = (
+                splitter.orientation()
+                != orientation
+            )
+
+            if changed:
+                splitter.setOrientation(
+                    orientation
+                )
+
+            if changed or force:
+                splitter.setSizes(
+                    sizes
+                )
+
+        if mode == "tight":
+            self.view_title_label.hide()
+            self.list_view_button.setMinimumWidth(86)
+            self.gallery_view_button.setMinimumWidth(86)
+        else:
+            self.view_title_label.show()
+            self.list_view_button.setMinimumWidth(104)
+            self.gallery_view_button.setMinimumWidth(104)
+
+        style = self.style()
+        style.unpolish(self)
+        style.polish(self)
 
     # ========================================================
     # Signals

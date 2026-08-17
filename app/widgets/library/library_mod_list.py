@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -99,6 +100,8 @@ class LibraryModListWidget(QFrame):
         self.cancel_bulk_button = QPushButton()
                 
         self.table = QTableWidget()
+
+        self._toolbar_mode = ""
 
         self._configure_buttons()
         self._configure_table()
@@ -350,24 +353,28 @@ class LibraryModListWidget(QFrame):
             0
         )
 
-        actions = QFrame()
-        actions.setObjectName(
+        self.selection_toolbar = QFrame()
+        self.selection_toolbar.setObjectName(
             "selectionToolbar"
         )
 
-        actions_layout = QHBoxLayout(
-            actions
+        self.actions_layout = QGridLayout(
+            self.selection_toolbar
         )
 
-        actions_layout.setContentsMargins(
+        self.actions_layout.setContentsMargins(
             14,
             10,
             14,
             10,
         )
 
-        actions_layout.setSpacing(
+        self.actions_layout.setHorizontalSpacing(
             8
+        )
+
+        self.actions_layout.setVerticalSpacing(
+            6
         )
 
         self.selection_label = QLabel()
@@ -375,35 +382,151 @@ class LibraryModListWidget(QFrame):
             "sectionLabel"
         )
 
-        actions_layout.addWidget(
-            self.selection_label
-        )
-
-        actions_layout.addStretch()
-
-        actions_layout.addWidget(
-            self.bulk_enable_button
-        )
-
-        actions_layout.addWidget(
-            self.bulk_disable_button
-        )
-
-        actions_layout.addWidget(
-            self.bulk_adopt_button
-        )
-
-        actions_layout.addWidget(
-            self.cancel_bulk_button
-        )
-
         layout.addWidget(
-            actions
+            self.selection_toolbar
+        )
+
+        self._reflow_selection_toolbar(
+            force=True
         )
 
         layout.addWidget(
             self.table,
             stretch=1,
+        )
+
+    def resizeEvent(
+        self,
+        event,
+    ) -> None:
+        super().resizeEvent(
+            event
+        )
+
+        self._reflow_selection_toolbar()
+
+    def _reflow_selection_toolbar(
+        self,
+        *,
+        force: bool = False,
+    ) -> None:
+        mode = (
+            "compact"
+            if self.width() < 760
+            else "wide"
+        )
+
+        visible_buttons = [
+            self.bulk_enable_button,
+            self.bulk_disable_button,
+            self.bulk_adopt_button,
+        ]
+
+        if self.cancel_bulk_button.isVisible():
+            visible_buttons.append(
+                self.cancel_bulk_button
+            )
+
+        self._toolbar_mode = mode
+
+        all_widgets = [
+            self.selection_label,
+            self.bulk_enable_button,
+            self.bulk_disable_button,
+            self.bulk_adopt_button,
+            self.cancel_bulk_button,
+        ]
+
+        for widget in all_widgets:
+            self.actions_layout.removeWidget(
+                widget
+            )
+
+        for column in range(6):
+            self.actions_layout.setColumnStretch(
+                column,
+                0,
+            )
+
+        if mode == "wide":
+            self.selection_toolbar.setMinimumHeight(
+                58
+            )
+
+            self.actions_layout.addWidget(
+                self.selection_label,
+                0,
+                0,
+            )
+
+            self.actions_layout.setColumnStretch(
+                1,
+                1,
+            )
+
+            for index, button in enumerate(
+                visible_buttons,
+                start=2,
+            ):
+                button.setSizePolicy(
+                    QSizePolicy.Policy.Preferred,
+                    QSizePolicy.Policy.Fixed,
+                )
+
+                self.actions_layout.addWidget(
+                    button,
+                    0,
+                    index,
+                )
+
+        else:
+            self.selection_toolbar.setMinimumHeight(
+                94
+            )
+
+            columns = max(
+                1,
+                len(visible_buttons),
+            )
+
+            self.actions_layout.addWidget(
+                self.selection_label,
+                0,
+                0,
+                1,
+                columns,
+            )
+
+            for index, button in enumerate(
+                visible_buttons
+            ):
+                button.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Fixed,
+                )
+
+                self.actions_layout.addWidget(
+                    button,
+                    1,
+                    index,
+                )
+
+                self.actions_layout.setColumnStretch(
+                    index,
+                    1,
+                )
+
+        self.selection_toolbar.setProperty(
+            "responsiveMode",
+            mode,
+        )
+
+        style = self.selection_toolbar.style()
+        style.unpolish(
+            self.selection_toolbar
+        )
+        style.polish(
+            self.selection_toolbar
         )
 
     def _connect_signals(self) -> None:
@@ -1184,6 +1307,10 @@ class LibraryModListWidget(QFrame):
 
         self.cancel_bulk_button.setEnabled(
             running
+        )
+
+        self._reflow_selection_toolbar(
+            force=True
         )
 
     def mark_bulk_cancel_requested(
