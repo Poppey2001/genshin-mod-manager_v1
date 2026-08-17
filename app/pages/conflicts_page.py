@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import (
     Callable,
 )
+
 from pathlib import Path
 
 from shiboken6 import (
@@ -22,6 +23,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -46,577 +49,9 @@ from app.workers.mod_duplicate_worker import (
     ModDuplicateWorker,
 )
 
-
-# ============================================================
-# Local Conflicts Styles
-# ============================================================
-
-CONFLICTS_PAGE_QSS = r"""
-QWidget#conflictsPage {
-    background-color: #101319;
-    color: #e7e9ef;
-}
-
-
-/* ============================================================
-   PAGE HEADER
-   ============================================================ */
-
-QWidget#conflictsPage QLabel#pageTitle {
-    background-color: transparent;
-
-    color: #f5f6f8;
-
-    font-size: 27px;
-    font-weight: 850;
-}
-
-QWidget#conflictsPage QLabel#pageDescription {
-    background-color: transparent;
-
-    color: #838d9b;
-
-    font-size: 12px;
-}
-
-
-/* ============================================================
-   HEADER ACTIONS
-   ============================================================ */
-
-QFrame#conflictsHeaderActions {
-    background-color: #15191f;
-
-    border: 1px solid #292f38;
-    border-radius: 11px;
-}
-
-QPushButton#conflictsRefreshButton,
-QPushButton#conflictsEmptyRefreshButton {
-    min-height: 36px;
-
-    padding-left: 15px;
-    padding-right: 15px;
-
-    background-color: #20252d;
-
-    color: #d8dce3;
-
-    border: 1px solid #303742;
-    border-radius: 7px;
-
-    font-size: 11px;
-    font-weight: 750;
-}
-
-QPushButton#conflictsRefreshButton:hover,
-QPushButton#conflictsEmptyRefreshButton:hover {
-    background-color: #292f39;
-
-    color: #ffffff;
-
-    border-color: #434c59;
-}
-
-QPushButton#conflictsRefreshButton:pressed,
-QPushButton#conflictsEmptyRefreshButton:pressed {
-    background-color: #1a1f26;
-}
-
-
-/* ============================================================
-   SUMMARY
-   ============================================================ */
-
-QFrame#conflictsSummary {
-    min-height: 62px;
-
-    background-color: #171c22;
-
-    border: 1px solid #2b323b;
-    border-left: 3px solid #4f5966;
-    border-radius: 11px;
-}
-
-QFrame#conflictsSummary[hasConflicts="true"] {
-    background-color: #241e14;
-
-    border: 1px solid #604721;
-    border-left: 3px solid #e2a43a;
-}
-
-QLabel#conflictsSummaryIcon {
-    background-color: #252c35;
-
-    color: #98a4b4;
-
-    border: 1px solid #343d48;
-    border-radius: 19px;
-
-    font-size: 16px;
-    font-weight: 900;
-}
-
-QFrame#conflictsSummary[hasConflicts="true"]
-QLabel#conflictsSummaryIcon {
-    background-color: #443118;
-
-    color: #ffc66d;
-
-    border-color: #725021;
-}
-
-QLabel#conflictsSummaryTitle {
-    background-color: transparent;
-
-    color: #edf0f4;
-
-    font-size: 13px;
-    font-weight: 850;
-}
-
-QLabel#conflictsSummaryDescription {
-    background-color: transparent;
-
-    color: #828c99;
-
-    font-size: 10px;
-    font-weight: 600;
-}
-
-QLabel#conflictCount {
-    min-width: 72px;
-    min-height: 28px;
-
-    padding-left: 10px;
-    padding-right: 10px;
-
-    background-color: #242a32;
-
-    color: #aeb6c1;
-
-    border: 1px solid #363e49;
-    border-radius: 8px;
-
-    font-size: 10px;
-    font-weight: 850;
-}
-
-QLabel#conflictCount[hasConflicts="true"] {
-    background-color: #443118;
-
-    color: #ffc66d;
-
-    border-color: #725021;
-}
-
-
-/* ============================================================
-   SCROLL AREA
-   ============================================================ */
-
-QScrollArea#conflictsScroll {
-    background-color: transparent;
-
-    border: none;
-}
-
-QScrollArea#conflictsScroll > QWidget,
-QScrollArea#conflictsScroll > QWidget > QWidget,
-QWidget#conflictsContent {
-    background-color: #101319;
-}
-
-
-/* ============================================================
-   EMPTY STATE
-   ============================================================ */
-
-QFrame#conflictsEmptyCard {
-    background-color: #14181e;
-
-    border: 1px solid #282e37;
-    border-radius: 12px;
-}
-
-QLabel#conflictsEmptyIcon {
-    background-color: transparent;
-
-    color: #57cf91;
-
-    font-size: 42px;
-    font-weight: 900;
-}
-
-QLabel#conflictsEmptyTitle {
-    background-color: transparent;
-
-    color: #edf1f4;
-
-    font-size: 17px;
-    font-weight: 850;
-}
-
-QLabel#conflictsEmpty {
-    background-color: transparent;
-
-    color: #7f8997;
-
-    font-size: 11px;
-}
-
-
-/* ============================================================
-   CONFLICT CARD
-   ============================================================ */
-
-QFrame#conflictCard {
-    background-color: #181d24;
-
-    border: 1px solid #303641;
-    border-left: 3px solid #d89b38;
-    border-radius: 11px;
-}
-
-QFrame#conflictCard:hover {
-    background-color: #1c222a;
-
-    border-color: #3a424e;
-}
-
-
-/* ------------------------------------------------------------
-   Different conflict types
-   ------------------------------------------------------------ */
-
-QFrame#conflictCard[conflictKind="library"] {
-    border-left-color: #d89b38;
-}
-
-QFrame#conflictCard[conflictKind="unmanaged_active"] {
-    border-left-color: #8067ff;
-}
-
-QFrame#conflictCard[conflictKind="invalid_marker"] {
-    border-left-color: #e25d6a;
-}
-
-QFrame#conflictCard[conflictKind="orphaned_managed"] {
-    border-left-color: #4d9fea;
-}
-
-
-/* ============================================================
-   CARD TEXT
-   ============================================================ */
-
-QLabel#conflictTitle {
-    background-color: transparent;
-
-    color: #f3f5f7;
-
-    font-size: 13px;
-    font-weight: 850;
-}
-
-QLabel#conflictType {
-    min-height: 23px;
-
-    padding-left: 9px;
-    padding-right: 9px;
-
-    background-color: #392b17;
-
-    color: #f0b659;
-
-    border: 1px solid #60471f;
-    border-radius: 7px;
-
-    font-size: 9px;
-    font-weight: 850;
-}
-
-
-/* unmanaged */
-
-QLabel#conflictType[conflictKind="unmanaged_active"] {
-    background-color: #2a2445;
-
-    color: #b5a7ff;
-
-    border-color: #4a3d80;
-}
-
-
-/* invalid marker */
-
-QLabel#conflictType[conflictKind="invalid_marker"] {
-    background-color: #402026;
-
-    color: #ff9aa4;
-
-    border-color: #663139;
-}
-
-
-/* orphaned */
-
-QLabel#conflictType[conflictKind="orphaned_managed"] {
-    background-color: #172b3d;
-
-    color: #8cc8ff;
-
-    border-color: #285173;
-}
-
-
-QLabel#conflictMessage {
-    background-color: transparent;
-
-    color: #a9b0bb;
-
-    font-size: 11px;
-}
-
-
-/* ============================================================
-   PATH
-   ============================================================ */
-
-QLabel#conflictPath {
-    min-height: 28px;
-
-    padding: 7px 9px;
-
-    background-color: #11151a;
-
-    color: #8f99a7;
-
-    border: 1px solid #29313a;
-    border-radius: 7px;
-
-    font-family: monospace;
-    font-size: 10px;
-}
-
-
-/* ============================================================
-   HASH PANEL
-   ============================================================ */
-
-QFrame#conflictHashPanel {
-    background-color: #14191f;
-
-    border: 1px solid #292f38;
-    border-radius: 8px;
-}
-
-
-/* Checking */
-
-QFrame#conflictHashPanel[hashState="checking"] {
-    background-color: #201c14;
-
-    border-color: #554321;
-}
-
-
-/* Duplicate */
-
-QFrame#conflictHashPanel[hashState="duplicate"] {
-    background-color: #142019;
-
-    border-color: #28563e;
-}
-
-
-/* Unique */
-
-QFrame#conflictHashPanel[hashState="unique"] {
-    background-color: #151d25;
-
-    border-color: #2b4961;
-}
-
-
-/* Error */
-
-QFrame#conflictHashPanel[hashState="error"] {
-    background-color: #25171a;
-
-    border-color: #633039;
-}
-
-
-QLabel#conflictHashStatus {
-    background-color: transparent;
-
-    color: #c0c7d1;
-
-    font-size: 10px;
-    font-weight: 750;
-}
-
-QLabel#conflictHash {
-    background-color: transparent;
-
-    color: #818c99;
-
-    font-family: monospace;
-    font-size: 9px;
-}
-
-QLabel#conflictDuplicate {
-    background-color: transparent;
-
-    color: #69d39a;
-
-    font-size: 10px;
-    font-weight: 700;
-}
-
-
-/* ============================================================
-   ACTION AREA
-   ============================================================ */
-
-QFrame#conflictActions {
-    background-color: transparent;
-
-    border: none;
-}
-
-
-/* ------------------------------------------------------------
-   Normal action
-   ------------------------------------------------------------ */
-
-QPushButton#conflictCheckButton,
-QPushButton#conflictOpenButton {
-    min-height: 34px;
-
-    padding-left: 13px;
-    padding-right: 13px;
-
-    background-color: #20262e;
-
-    color: #ccd2da;
-
-    border: 1px solid #303843;
-    border-radius: 7px;
-
-    font-size: 10px;
-    font-weight: 750;
-}
-
-QPushButton#conflictCheckButton:hover,
-QPushButton#conflictOpenButton:hover {
-    background-color: #29313a;
-
-    color: #ffffff;
-
-    border-color: #424c59;
-}
-
-
-/* ------------------------------------------------------------
-   Copy
-   ------------------------------------------------------------ */
-
-QPushButton#conflictCopyButton {
-    min-height: 34px;
-
-    padding-left: 14px;
-    padding-right: 14px;
-
-    background-color: #6651d7;
-
-    color: #ffffff;
-
-    border: 1px solid #7b66eb;
-    border-radius: 7px;
-
-    font-size: 10px;
-    font-weight: 800;
-}
-
-QPushButton#conflictCopyButton:hover {
-    background-color: #7560ea;
-
-    border-color: #9180f5;
-}
-
-
-/* ------------------------------------------------------------
-   Adopt
-   ------------------------------------------------------------ */
-
-QPushButton#conflictAdoptButton {
-    min-height: 34px;
-
-    padding-left: 13px;
-    padding-right: 13px;
-
-    background-color: #3d3018;
-
-    color: #f1ba63;
-
-    border: 1px solid #654b20;
-    border-radius: 7px;
-
-    font-size: 10px;
-    font-weight: 800;
-}
-
-QPushButton#conflictAdoptButton:hover {
-    background-color: #4c3a1b;
-
-    border-color: #816028;
-}
-
-
-/* ------------------------------------------------------------
-   Delete
-   ------------------------------------------------------------ */
-
-QPushButton#conflictDeleteButton {
-    min-height: 34px;
-
-    padding-left: 13px;
-    padding-right: 13px;
-
-    background-color: #3d2026;
-
-    color: #ff9da7;
-
-    border: 1px solid #67313b;
-    border-radius: 7px;
-
-    font-size: 10px;
-    font-weight: 800;
-}
-
-QPushButton#conflictDeleteButton:hover {
-    background-color: #512831;
-
-    color: #ffb1b9;
-
-    border-color: #82404b;
-}
-
-
-/* ------------------------------------------------------------
-   Disabled
-   ------------------------------------------------------------ */
-
-QWidget#conflictsPage QPushButton:disabled {
-    background-color: #181d23;
-
-    color: #59616d;
-
-    border-color: #252c34;
-}
-"""
+from app.widgets.common.state_panel import (
+    StatePanel,
+)
 
 
 # ============================================================
@@ -674,12 +109,6 @@ class ConflictCard(
             "",
         )
 
-        self._duplicate_error = ""
-
-        # ====================================================
-        # Widget
-        # ====================================================
-
         self.setObjectName(
             "conflictCard"
         )
@@ -689,9 +118,18 @@ class ConflictCard(
             conflict.kind.value,
         )
 
-        # ====================================================
+        # Wichtig:
+        # Eine Konfliktkarte darf nicht die komplette freie Höhe
+        # der ScrollArea übernehmen. Sie wächst horizontal, bleibt
+        # vertikal aber auf ihrer tatsächlichen Inhaltshöhe.
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
+
+        # ----------------------------------------------------
         # Labels
-        # ====================================================
+        # ----------------------------------------------------
 
         self.title_label = QLabel(
             conflict.title
@@ -715,9 +153,9 @@ class ConflictCard(
 
         self.duplicate_label = QLabel()
 
-        # ====================================================
+        # ----------------------------------------------------
         # Buttons
-        # ====================================================
+        # ----------------------------------------------------
 
         self.check_button = (
             QPushButton()
@@ -739,10 +177,6 @@ class ConflictCard(
             QPushButton()
         )
 
-        # ====================================================
-        # Build
-        # ====================================================
-
         self._build_ui()
 
         self.retranslate_ui()
@@ -760,38 +194,27 @@ class ConflictCard(
 
         layout.setContentsMargins(
             16,
-            14,
+            12,
             16,
-            14,
+            12,
         )
 
         layout.setSpacing(
-            9
+            6
         )
 
-        # ====================================================
-        # Header
-        # ====================================================
+        # ----------------------------------------------------
+        # Top
+        # ----------------------------------------------------
 
         top = QHBoxLayout()
-
-        top.setContentsMargins(
-            0,
-            0,
-            0,
-            0,
-        )
-
-        top.setSpacing(
-            10
-        )
 
         self.title_label.setObjectName(
             "conflictTitle"
         )
 
-        self.title_label.setWordWrap(
-            True
+        self.type_label.setObjectName(
+            "conflictType"
         )
 
         top.addWidget(
@@ -799,34 +222,17 @@ class ConflictCard(
             stretch=1,
         )
 
-        self.type_label.setObjectName(
-            "conflictType"
-        )
-
-        self.type_label.setProperty(
-            "conflictKind",
-            self.conflict.kind.value,
-        )
-
-        self.type_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
         top.addWidget(
-            self.type_label,
-            alignment=(
-                Qt.AlignmentFlag.AlignTop
-                | Qt.AlignmentFlag.AlignRight
-            ),
+            self.type_label
         )
 
         layout.addLayout(
             top
         )
 
-        # ====================================================
+        # ----------------------------------------------------
         # Message
-        # ====================================================
+        # ----------------------------------------------------
 
         self.message_label.setObjectName(
             "conflictMessage"
@@ -840,9 +246,9 @@ class ConflictCard(
             self.message_label
         )
 
-        # ====================================================
+        # ----------------------------------------------------
         # Path
-        # ====================================================
+        # ----------------------------------------------------
 
         self.path_label.setObjectName(
             "conflictPath"
@@ -861,37 +267,9 @@ class ConflictCard(
             self.path_label
         )
 
-        # ====================================================
-        # Hash / Duplicate Panel
-        # ====================================================
-
-        self.hash_frame = QFrame(
-            self
-        )
-
-        self.hash_frame.setObjectName(
-            "conflictHashPanel"
-        )
-
-        self.hash_frame.setProperty(
-            "hashState",
-            self._hash_state,
-        )
-
-        hash_layout = QVBoxLayout(
-            self.hash_frame
-        )
-
-        hash_layout.setContentsMargins(
-            12,
-            10,
-            12,
-            10,
-        )
-
-        hash_layout.setSpacing(
-            5
-        )
+        # ----------------------------------------------------
+        # Hash information
+        # ----------------------------------------------------
 
         self.hash_status_label.setObjectName(
             "conflictHashStatus"
@@ -901,16 +279,44 @@ class ConflictCard(
             True
         )
 
+        hash_frame = QFrame(
+            self
+        )
+
+        hash_frame.setObjectName(
+            "conflictHashFrame"
+        )
+
+        hash_layout = QVBoxLayout(
+            hash_frame
+        )
+
+        hash_layout.setContentsMargins(
+            10,
+            7,
+            10,
+            7,
+        )
+
+        hash_layout.setSpacing(
+            4
+        )
+
         hash_layout.addWidget(
             self.hash_status_label
         )
 
-        # ----------------------------------------------------
-        # CRC
-        # ----------------------------------------------------
-
         self.crc_label.setObjectName(
             "conflictHash"
+        )
+
+        self.sha_label.setObjectName(
+            "conflictHash"
+        )
+
+        self.sha_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag
+            .TextSelectableByMouse
         )
 
         self.crc_label.setTextInteractionFlags(
@@ -922,26 +328,9 @@ class ConflictCard(
             self.crc_label
         )
 
-        # ----------------------------------------------------
-        # SHA
-        # ----------------------------------------------------
-
-        self.sha_label.setObjectName(
-            "conflictHash"
-        )
-
-        self.sha_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag
-            .TextSelectableByMouse
-        )
-
         hash_layout.addWidget(
             self.sha_label
         )
-
-        # ----------------------------------------------------
-        # Duplicate
-        # ----------------------------------------------------
 
         self.duplicate_label.setObjectName(
             "conflictDuplicate"
@@ -961,139 +350,94 @@ class ConflictCard(
         )
 
         layout.addWidget(
-            self.hash_frame
-        )
-
-        # ====================================================
-        # Actions
-        # ====================================================
-
-        self.actions_frame = QFrame(
-            self
-        )
-
-        self.actions_frame.setObjectName(
-            "conflictActions"
-        )
-
-        actions_layout = QVBoxLayout(
-            self.actions_frame
-        )
-
-        actions_layout.setContentsMargins(
-            0,
-            0,
-            0,
-            0,
-        )
-
-        actions_layout.setSpacing(
-            6
+            hash_frame
         )
 
         # ----------------------------------------------------
-        # First row
+        # Buttons
         # ----------------------------------------------------
 
-        first_row = QHBoxLayout()
+        actions = QHBoxLayout()
 
-        first_row.setContentsMargins(
-            0,
-            0,
-            0,
-            0,
-        )
-
-        first_row.setSpacing(
-            7
+        actions.setSpacing(
+            8
         )
 
         self.check_button.setObjectName(
-            "conflictCheckButton"
+            "secondaryButton"
         )
 
         self.copy_button.setObjectName(
-            "conflictCopyButton"
-        )
-
-        first_row.addWidget(
-            self.check_button
-        )
-
-        first_row.addWidget(
-            self.copy_button
-        )
-
-        first_row.addStretch(
-            1
-        )
-
-        actions_layout.addLayout(
-            first_row
-        )
-
-        # ----------------------------------------------------
-        # Second row
-        # ----------------------------------------------------
-
-        second_row = QHBoxLayout()
-
-        second_row.setContentsMargins(
-            0,
-            0,
-            0,
-            0,
-        )
-
-        second_row.setSpacing(
-            7
+            "primaryButton"
         )
 
         self.open_button.setObjectName(
-            "conflictOpenButton"
+            "secondaryButton"
         )
 
         self.adopt_button.setObjectName(
-            "conflictAdoptButton"
+            "warningActionButton"
         )
 
         self.delete_button.setObjectName(
-            "conflictDeleteButton"
+            "dangerButton"
         )
 
-        second_row.addWidget(
-            self.open_button
+        actions.addWidget(
+            self.check_button
+        )
+
+        actions.addWidget(
+            self.copy_button
+        )
+
+        actions.addStretch(
+            1
         )
 
         if self.conflict.can_adopt:
-            second_row.addWidget(
+            actions.addWidget(
                 self.adopt_button
             )
-
         else:
             self.adopt_button.hide()
 
-        second_row.addWidget(
+        actions.addWidget(
             self.delete_button
-        )
-
-        second_row.addStretch(
-            1
         )
 
         self.delete_button.hide()
 
-        actions_layout.addLayout(
-            second_row
+        layout.addLayout(
+            actions
         )
 
-        layout.addWidget(
-            self.actions_frame
+        # Im alten kompakten Design stand "Open folder"
+        # bewusst in einer eigenen kleinen Zeile links.
+        open_row = QHBoxLayout()
+
+        open_row.setContentsMargins(
+            0,
+            0,
+            0,
+            0,
         )
 
-        # ====================================================
-        # Signals
-        # ====================================================
+        open_row.addWidget(
+            self.open_button
+        )
+
+        open_row.addStretch(
+            1
+        )
+
+        layout.addLayout(
+            open_row
+        )
+
+        # ----------------------------------------------------
+        # Connections
+        # ----------------------------------------------------
 
         self.check_button.clicked.connect(
             self._request_duplicate_check
@@ -1114,6 +458,23 @@ class ConflictCard(
         self.delete_button.clicked.connect(
             self._request_delete
         )
+
+    def _refresh_compact_geometry(
+        self,
+    ) -> None:
+        """
+        Hash-/Duplicate-Texte können die notwendige Kartenhöhe
+        verändern. Nach solchen Änderungen darf die Karte wachsen,
+        aber nie die restliche ScrollArea-Höhe auffüllen.
+        """
+
+        layout = self.layout()
+
+        if layout is not None:
+            layout.invalidate()
+            layout.activate()
+
+        self.updateGeometry()
 
     # ========================================================
     # Signals
@@ -1155,23 +516,19 @@ class ConflictCard(
         self,
         _checked: bool = False,
     ) -> None:
-        result = (
+        if (
             self._duplicate_result
-        )
-
-        if result is None:
-            return
-
-        if not result.is_duplicate:
+            is None
+        ):
             return
 
         self.delete_duplicate_requested.emit(
             self.conflict,
-            result,
+            self._duplicate_result,
         )
 
     # ========================================================
-    # Hash State
+    # Hash UI
     # ========================================================
 
     def set_checking(
@@ -1184,8 +541,6 @@ class ConflictCard(
         self._duplicate_result = (
             None
         )
-
-        self._duplicate_error = ""
 
         self.check_button.setEnabled(
             False
@@ -1226,12 +581,12 @@ class ConflictCard(
             result
         )
 
-        self._duplicate_error = ""
-
         self._hash_state = (
-            "duplicate"
-            if result.is_duplicate
-            else "unique"
+            (
+                "duplicate"
+                if result.is_duplicate
+                else "unique"
+            )
         )
 
         self.check_button.setEnabled(
@@ -1252,10 +607,6 @@ class ConflictCard(
             None
         )
 
-        self._duplicate_error = (
-            message
-        )
-
         self._hash_state = (
             "error"
         )
@@ -1269,26 +620,12 @@ class ConflictCard(
         self.crc_label.clear()
         self.sha_label.clear()
 
-        self.retranslate_ui()
-
-    # ========================================================
-    # Visual State
-    # ========================================================
-
-    def _refresh_hash_style(
-        self,
-    ) -> None:
-        self.hash_frame.setProperty(
-            "hashState",
-            self._hash_state,
+        self.duplicate_label.setText(
+            message
         )
 
-        self.hash_frame.style().unpolish(
-            self.hash_frame
-        )
-
-        self.hash_frame.style().polish(
-            self.hash_frame
+        self.retranslate_ui(
+            preserve_error=True
         )
 
     # ========================================================
@@ -1298,10 +635,12 @@ class ConflictCard(
     def retranslate_ui(
         self,
         _language: str | None = None,
+        *,
+        preserve_error: bool = False,
     ) -> None:
-        # ====================================================
+        # ----------------------------------------------------
         # Type
-        # ====================================================
+        # ----------------------------------------------------
 
         type_key = {
             ConflictKind.LIBRARY: (
@@ -1326,9 +665,12 @@ class ConflictCard(
             )
         )
 
-        # ====================================================
+        # ----------------------------------------------------
         # Message
-        # ====================================================
+        #
+        # Wir zeigen nicht mehr den deutschen
+        # hardcoded Scanner-Text an.
+        # ----------------------------------------------------
 
         message_key = {
             ConflictKind.LIBRARY: (
@@ -1353,9 +695,9 @@ class ConflictCard(
             )
         )
 
-        # ====================================================
+        # ----------------------------------------------------
         # Buttons
-        # ====================================================
+        # ----------------------------------------------------
 
         self.check_button.setText(
             tr(
@@ -1387,11 +729,14 @@ class ConflictCard(
             )
         )
 
-        # ====================================================
-        # Hash Status
-        # ====================================================
+        # ----------------------------------------------------
+        # Hash State
+        # ----------------------------------------------------
 
-        if self._hash_state == "idle":
+        if (
+            self._hash_state
+            == "idle"
+        ):
             self.hash_status_label.setText(
                 tr(
                     "conflicts.hash.idle"
@@ -1402,7 +747,10 @@ class ConflictCard(
             self.sha_label.clear()
             self.duplicate_label.clear()
 
-        elif self._hash_state == "checking":
+        elif (
+            self._hash_state
+            == "checking"
+        ):
             (
                 current,
                 total,
@@ -1418,86 +766,87 @@ class ConflictCard(
                 )
             )
 
-            self.crc_label.clear()
-            self.sha_label.clear()
-            self.duplicate_label.clear()
-
-        elif self._hash_state in {
-            "duplicate",
-            "unique",
-        }:
+        elif (
+            self._hash_state
+            in {
+                "duplicate",
+                "unique",
+            }
+        ):
             result = (
                 self._duplicate_result
             )
 
-            if result is not None:
-                self.crc_label.setText(
+            if result is None:
+                return
+
+            self.crc_label.setText(
+                tr(
+                    "conflicts.hash.crc32",
+                    value=(
+                        result
+                        .source_fingerprint
+                        .crc32
+                    ),
+                )
+            )
+
+            self.sha_label.setText(
+                tr(
+                    "conflicts.hash.sha256",
+                    value=(
+                        result
+                        .source_fingerprint
+                        .sha256
+                    ),
+                )
+            )
+
+            if result.is_duplicate:
+                self.hash_status_label.setText(
                     tr(
-                        "conflicts.hash.crc32",
-                        value=(
+                        "conflicts.hash.duplicate"
+                    )
+                )
+
+                self.duplicate_label.setText(
+                    tr(
+                        "conflicts.hash.duplicate_path",
+                        path=(
                             result
-                            .source_fingerprint
-                            .crc32
+                            .duplicate_path
                         ),
                     )
                 )
 
-                self.sha_label.setText(
+            else:
+                self.hash_status_label.setText(
                     tr(
-                        "conflicts.hash.sha256",
-                        value=(
-                            result
-                            .source_fingerprint
-                            .sha256
-                        ),
+                        "conflicts.hash.no_duplicate"
                     )
                 )
 
-                if result.is_duplicate:
-                    self.hash_status_label.setText(
-                        tr(
-                            "conflicts.hash.duplicate"
-                        )
-                    )
+                self.duplicate_label.clear()
 
-                    self.duplicate_label.setText(
-                        tr(
-                            "conflicts.hash.duplicate_path",
-                            path=(
-                                result
-                                .duplicate_path
-                            ),
-                        )
-                    )
-
-                else:
-                    self.hash_status_label.setText(
-                        tr(
-                            "conflicts.hash.no_duplicate"
-                        )
-                    )
-
-                    self.duplicate_label.clear()
-
-        elif self._hash_state == "error":
+        elif (
+            self._hash_state
+            == "error"
+        ):
             self.hash_status_label.setText(
                 tr(
                     "conflicts.hash.failed"
                 )
             )
 
-            self.crc_label.clear()
-            self.sha_label.clear()
+            if not preserve_error:
+                # Technische Fehlermeldung behalten.
+                pass
 
-            self.duplicate_label.setText(
-                self._duplicate_error
-            )
-
-        self._refresh_hash_style()
+        self._refresh_compact_geometry()
 
 
 # ============================================================
-# Conflicts Page
+# Page
 # ============================================================
 
 class ConflictsPage(
@@ -1547,10 +896,6 @@ class ConflictsPage(
             "conflictsPage"
         )
 
-        # ====================================================
-        # Providers
-        # ====================================================
-
         self.library_paths_provider = (
             library_paths_provider
         )
@@ -1562,10 +907,6 @@ class ConflictsPage(
         self.active_root_provider = (
             active_root_provider
         )
-
-        # ====================================================
-        # State
-        # ====================================================
 
         self._report = (
             ConflictReport()
@@ -1584,10 +925,6 @@ class ConflictsPage(
             ModDuplicateWorker
         ] = set()
 
-        # ====================================================
-        # Services
-        # ====================================================
-
         self.thread_pool = (
             QThreadPool.globalInstance()
         )
@@ -1596,120 +933,83 @@ class ConflictsPage(
             ModDuplicateService()
         )
 
-        # ====================================================
-        # Header
-        # ====================================================
+        # ----------------------------------------------------
+        # Widgets
+        # ----------------------------------------------------
 
-        self.title_label = QLabel(
-            self
-        )
+        self.title_label = QLabel()
 
-        self.description_label = QLabel(
-            self
-        )
+        self.description_label = QLabel()
 
-        self.refresh_button = QPushButton(
-            self
+        self.count_label = QLabel()
+
+        self.refresh_button = (
+            QPushButton()
         )
 
         # ====================================================
-        # Summary
+        # Old compact summary bar
         # ====================================================
 
         self.summary_frame = QFrame(
             self
         )
 
-        self.summary_frame.setObjectName(
-            "conflictsSummary"
-        )
-
         self.summary_icon_label = QLabel(
             self.summary_frame
-        )
-
-        self.summary_icon_label.setObjectName(
-            "conflictsSummaryIcon"
         )
 
         self.summary_title_label = QLabel(
             self.summary_frame
         )
 
-        self.summary_title_label.setObjectName(
-            "conflictsSummaryTitle"
-        )
-
         self.summary_description_label = QLabel(
             self.summary_frame
         )
 
-        self.summary_description_label.setObjectName(
-            "conflictsSummaryDescription"
-        )
-
-        self.summary_description_label.setWordWrap(
-            True
-        )
-
-        self.count_label = QLabel(
+        self.summary_count_label = QLabel(
             self.summary_frame
         )
 
         # ====================================================
-        # Empty State
+        # Unified Page State
         # ====================================================
 
-        self.empty_frame = QFrame(
-            self
+        self.content_stack = (
+            QStackedWidget(
+                self
+            )
         )
 
-        self.empty_frame.setObjectName(
-            "conflictsEmptyCard"
+        self.content_stack.setObjectName(
+            "conflictsContentStack"
         )
 
-        self.empty_icon_label = QLabel(
-            self.empty_frame
+        self.state_panel = (
+            StatePanel(
+                self.content_stack
+            )
         )
 
-        self.empty_icon_label.setObjectName(
-            "conflictsEmptyIcon"
+        self.state_panel.setObjectName(
+            "conflictsStatePanel"
         )
 
-        self.empty_title_label = QLabel(
-            self.empty_frame
+        self._content_state_mode = (
+            "loading"
         )
 
-        self.empty_title_label.setObjectName(
-            "conflictsEmptyTitle"
-        )
+        self._content_state_message = ""
 
-        self.empty_label = QLabel(
-            self.empty_frame
-        )
-
-        self.empty_refresh_button = QPushButton(
-            self.empty_frame
-        )
-
-        self.empty_refresh_button.setObjectName(
-            "conflictsEmptyRefreshButton"
-        )
-
-        # ====================================================
-        # Conflict List
-        # ====================================================
-
-        self.scroll_area = QScrollArea(
-            self
+        self.scroll_area = (
+            QScrollArea()
         )
 
         self.scroll_area.setObjectName(
-            "conflictsScroll"
+            "conflictsScrollArea"
         )
 
         self.content = QWidget()
-
         self.content.setObjectName(
             "conflictsContent"
         )
@@ -1720,13 +1020,8 @@ class ConflictsPage(
             )
         )
 
-        # ====================================================
-        # Build
-        # ====================================================
-
         self._build_ui()
-
-        self._apply_stylesheet()
+        self._apply_old_compact_style()
 
         translation_manager.language_changed.connect(
             self.retranslate_ui
@@ -1734,48 +1029,9 @@ class ConflictsPage(
 
         self.retranslate_ui()
 
-        self.set_report(
-            ConflictReport()
-        )
-
-    # ========================================================
-    # Stylesheet
-    # ========================================================
-
-    def _apply_stylesheet(
-        self,
-    ) -> None:
-        """
-        Lädt zuerst das Library-Stylesheet
-        und ergänzt danach die Conflict-spezifischen Styles.
-
-        Dadurch bleibt die Seite auch unter Windows vollständig
-        dunkel und unabhängig von der nativen Qt-Palette.
-        """
-
-        style_path = (
-            Path(__file__)
-            .resolve()
-            .parents[1]
-            / "styles"
-            / "library.qss"
-        )
-
-        try:
-            base_stylesheet = (
-                style_path.read_text(
-                    encoding="utf-8"
-                )
-            )
-
-        except OSError:
-            base_stylesheet = ""
-
-        self.setStyleSheet(
-            base_stylesheet
-            + "\n"
-            + CONFLICTS_PAGE_QSS
-        )
+        # Bis der erste Report von der Library eintrifft,
+        # zeigen wir keinen falschen "alles sauber"-Zustand.
+        self._show_loading_state()
 
     # ========================================================
     # Build
@@ -1789,49 +1045,23 @@ class ConflictsPage(
         )
 
         layout.setContentsMargins(
-            22,
-            20,
-            22,
-            16,
+            28,
+            24,
+            28,
+            24,
         )
 
         layout.setSpacing(
-            14
+            16
         )
 
-        # ====================================================
+        # ----------------------------------------------------
         # Header
-        # ====================================================
+        # ----------------------------------------------------
 
         header = QHBoxLayout()
 
-        header.setContentsMargins(
-            2,
-            2,
-            2,
-            2,
-        )
-
-        header.setSpacing(
-            18
-        )
-
-        # ----------------------------------------------------
-        # Header text
-        # ----------------------------------------------------
-
         texts = QVBoxLayout()
-
-        texts.setContentsMargins(
-            0,
-            0,
-            0,
-            0,
-        )
-
-        texts.setSpacing(
-            3
-        )
 
         self.title_label.setObjectName(
             "pageTitle"
@@ -1858,76 +1088,66 @@ class ConflictsPage(
             stretch=1,
         )
 
-        # ----------------------------------------------------
-        # Refresh
-        # ----------------------------------------------------
+        right = QVBoxLayout()
 
-        header_actions = QFrame(
-            self
+        self.count_label.setObjectName(
+            "conflictCount"
         )
 
-        header_actions.setObjectName(
-            "conflictsHeaderActions"
+        self.count_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight
         )
 
-        header_actions_layout = (
-            QHBoxLayout(
-                header_actions
-            )
-        )
-
-        header_actions_layout.setContentsMargins(
-            4,
-            4,
-            4,
-            4,
-        )
-
+        # Gleicher Widget-Stil wie "Neu scannen" in der Library.
         self.refresh_button.setObjectName(
-            "conflictsRefreshButton"
+            "refreshButton"
         )
 
         self.refresh_button.setMinimumHeight(
-            40
+            36
         )
 
-        self.refresh_button.setMinimumWidth(
-            120
+        right.addWidget(
+            self.count_label
         )
 
-        header_actions_layout.addWidget(
+        right.addWidget(
             self.refresh_button
         )
 
-        header.addWidget(
-            header_actions,
-            alignment=(
-                Qt.AlignmentFlag.AlignRight
-                | Qt.AlignmentFlag.AlignVCenter
-            ),
+        header.addLayout(
+            right
         )
 
         layout.addLayout(
             header
         )
 
-        # ====================================================
-        # Summary Card
-        # ====================================================
+        # ----------------------------------------------------
+        # Compact summary bar
+        # ----------------------------------------------------
+
+        self.summary_frame.setObjectName(
+            "conflictsSummary"
+        )
 
         summary_layout = QHBoxLayout(
             self.summary_frame
         )
 
         summary_layout.setContentsMargins(
-            16,
             12,
-            16,
+            9,
             12,
+            9,
         )
 
         summary_layout.setSpacing(
-            12
+            10
+        )
+
+        self.summary_icon_label.setObjectName(
+            "conflictsSummaryIcon"
         )
 
         self.summary_icon_label.setAlignment(
@@ -1935,186 +1155,87 @@ class ConflictsPage(
         )
 
         self.summary_icon_label.setFixedSize(
-            38,
-            38,
+            30,
+            30,
         )
 
         summary_layout.addWidget(
-            self.summary_icon_label,
-            alignment=(
-                Qt.AlignmentFlag.AlignVCenter
-            ),
+            self.summary_icon_label
         )
 
-        # ----------------------------------------------------
-        # Summary text
-        # ----------------------------------------------------
+        summary_text = QVBoxLayout()
 
-        summary_texts = QVBoxLayout()
-
-        summary_texts.setContentsMargins(
+        summary_text.setContentsMargins(
             0,
             0,
             0,
             0,
         )
 
-        summary_texts.setSpacing(
-            2
+        summary_text.setSpacing(
+            1
         )
 
-        summary_texts.addWidget(
+        self.summary_title_label.setObjectName(
+            "conflictsSummaryTitle"
+        )
+
+        self.summary_description_label.setObjectName(
+            "conflictsSummaryDescription"
+        )
+
+        self.summary_description_label.setWordWrap(
+            True
+        )
+
+        summary_text.addWidget(
             self.summary_title_label
         )
 
-        summary_texts.addWidget(
+        summary_text.addWidget(
             self.summary_description_label
         )
 
         summary_layout.addLayout(
-            summary_texts,
+            summary_text,
             stretch=1,
         )
 
-        # ----------------------------------------------------
-        # Count
-        # ----------------------------------------------------
-
-        self.count_label.setObjectName(
-            "conflictCount"
+        self.summary_count_label.setObjectName(
+            "conflictsSummaryCount"
         )
 
-        self.count_label.setAlignment(
+        self.summary_count_label.setAlignment(
             Qt.AlignmentFlag.AlignCenter
         )
 
         summary_layout.addWidget(
-            self.count_label,
-            alignment=(
-                Qt.AlignmentFlag.AlignVCenter
-            ),
+            self.summary_count_label
         )
 
         layout.addWidget(
             self.summary_frame
         )
 
-        # ====================================================
-        # Empty State
-        # ====================================================
-
-        empty_layout = QVBoxLayout(
-            self.empty_frame
-        )
-
-        empty_layout.setContentsMargins(
-            32,
-            36,
-            32,
-            36,
-        )
-
-        empty_layout.setSpacing(
-            8
-        )
-
-        empty_layout.addStretch(
-            1
-        )
-
         # ----------------------------------------------------
-        # Icon
+        # Content / Unified State
         # ----------------------------------------------------
-
-        self.empty_icon_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        self.empty_icon_label.setText(
-            "✓"
-        )
-
-        empty_layout.addWidget(
-            self.empty_icon_label
-        )
-
-        # ----------------------------------------------------
-        # Title
-        # ----------------------------------------------------
-
-        self.empty_title_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        empty_layout.addWidget(
-            self.empty_title_label
-        )
-
-        # ----------------------------------------------------
-        # Description
-        # ----------------------------------------------------
-
-        self.empty_label.setObjectName(
-            "conflictsEmpty"
-        )
-
-        self.empty_label.setAlignment(
-            Qt.AlignmentFlag.AlignCenter
-        )
-
-        self.empty_label.setWordWrap(
-            True
-        )
-
-        empty_layout.addWidget(
-            self.empty_label
-        )
-
-        empty_layout.addSpacing(
-            10
-        )
-
-        # ----------------------------------------------------
-        # Refresh
-        # ----------------------------------------------------
-
-        self.empty_refresh_button.setMinimumHeight(
-            36
-        )
-
-        self.empty_refresh_button.setMinimumWidth(
-            130
-        )
-
-        empty_layout.addWidget(
-            self.empty_refresh_button,
-            alignment=(
-                Qt.AlignmentFlag.AlignCenter
-            ),
-        )
-
-        empty_layout.addStretch(
-            1
-        )
-
-        layout.addWidget(
-            self.empty_frame,
-            stretch=1,
-        )
-
-        # ====================================================
-        # Scroll Area
-        # ====================================================
 
         self.content_layout.setContentsMargins(
             0,
             0,
             8,
-            18,
+            16,
         )
 
         self.content_layout.setSpacing(
-            12
+            10
+        )
+
+        # Karten wie in einer kompakten Liste oben halten.
+        # Der Stretch nimmt nur den freien Rest unter den Karten ein.
+        self.content_layout.setAlignment(
+            Qt.AlignmentFlag.AlignTop
         )
 
         self.content_layout.addStretch(
@@ -2133,21 +1254,283 @@ class ConflictsPage(
             self.content
         )
 
+        self.content_stack.addWidget(
+            self.scroll_area
+        )
+
+        self.content_stack.addWidget(
+            self.state_panel
+        )
+
         layout.addWidget(
-            self.scroll_area,
+            self.content_stack,
             stretch=1,
         )
 
-        # ====================================================
-        # Connections
-        # ====================================================
-
         self.refresh_button.clicked.connect(
-            self.refresh_requested
+            self._request_refresh
         )
 
-        self.empty_refresh_button.clicked.connect(
-            self.refresh_requested
+        self.state_panel.primary_requested.connect(
+            self._on_state_primary_requested
+        )
+
+    def _apply_old_compact_style(
+        self,
+    ) -> None:
+        self.setStyleSheet(
+            r"""
+            QWidget#conflictsPage {
+                background: transparent;
+                color: #e7e9ef;
+            }
+
+            QStackedWidget#conflictsContentStack,
+            QWidget#conflictsContent,
+            QScrollArea#conflictsScrollArea,
+            QScrollArea#conflictsScrollArea > QWidget > QWidget {
+                background: transparent;
+                border: none;
+            }
+
+            /* -------------------------------------------------
+               Library-style scan / refresh button
+               ------------------------------------------------- */
+
+            QPushButton#refreshButton {
+                min-height: 36px;
+                padding-left: 13px;
+                padding-right: 13px;
+
+                background-color: #292e37;
+                color: #e1e4e9;
+
+                border: 1px solid #3a404b;
+                border-radius: 8px;
+
+                font-weight: 700;
+            }
+
+            QPushButton#refreshButton:hover {
+                background-color: #343a45;
+                border-color: #4a5260;
+                color: #ffffff;
+            }
+
+            QPushButton#refreshButton:pressed {
+                background-color: #252a32;
+                border-color: #414955;
+            }
+
+            QPushButton#refreshButton:disabled {
+                background-color: #252a32;
+                color: #656c78;
+                border-color: #323842;
+            }
+
+            /* -------------------------------------------------
+               Summary
+               ------------------------------------------------- */
+
+            QFrame#conflictsSummary {
+                background-color: #17201b;
+                border: 1px solid #335843;
+                border-left: 3px solid #4fc183;
+                border-radius: 10px;
+            }
+
+            QFrame#conflictsSummary[hasConflicts="true"] {
+                background-color: #211b10;
+                border-color: #6b4c18;
+                border-left-color: #d49528;
+            }
+
+            QLabel#conflictsSummaryIcon {
+                background-color: #192820;
+                color: #61d795;
+                border: 1px solid #355e48;
+                border-radius: 15px;
+                font-size: 14px;
+                font-weight: 900;
+            }
+
+            QFrame#conflictsSummary[hasConflicts="true"]
+            QLabel#conflictsSummaryIcon {
+                background-color: #2a2112;
+                color: #e5a93d;
+                border-color: #755421;
+            }
+
+            QLabel#conflictsSummaryTitle {
+                background: transparent;
+                color: #f1f3f5;
+                font-size: 11px;
+                font-weight: 850;
+            }
+
+            QLabel#conflictsSummaryDescription {
+                background: transparent;
+                color: #8f99a6;
+                font-size: 9px;
+            }
+
+            QLabel#conflictsSummaryCount {
+                min-height: 28px;
+                padding-left: 13px;
+                padding-right: 13px;
+                background-color: #1d3427;
+                color: #75dda3;
+                border: 1px solid #38634b;
+                border-radius: 8px;
+                font-size: 9px;
+                font-weight: 850;
+            }
+
+            QFrame#conflictsSummary[hasConflicts="true"]
+            QLabel#conflictsSummaryCount {
+                background-color: #3b2b0f;
+                color: #f0bd58;
+                border-color: #76521b;
+            }
+
+            /* -------------------------------------------------
+               Conflict Cards
+               ------------------------------------------------- */
+
+            QFrame#conflictCard {
+                background-color: #1a2028;
+                border: 1px solid #303844;
+                border-left: 3px solid #745cff;
+                border-radius: 10px;
+            }
+
+            QFrame#conflictCard:hover {
+                background-color: #1e252e;
+                border-color: #46515f;
+                border-left-color: #8068ff;
+            }
+
+            QLabel#conflictTitle {
+                background: transparent;
+                color: #f5f6f8;
+                font-size: 11px;
+                font-weight: 850;
+            }
+
+            QLabel#conflictType {
+                min-height: 25px;
+                padding-left: 10px;
+                padding-right: 10px;
+                background-color: #302450;
+                color: #b69cff;
+                border: 1px solid #58438d;
+                border-radius: 7px;
+                font-size: 8px;
+                font-weight: 850;
+            }
+
+            QLabel#conflictMessage {
+                background: transparent;
+                color: #a5afbb;
+                font-size: 9px;
+            }
+
+            QLabel#conflictPath {
+                background-color: #151a20;
+                color: #9aa4b1;
+                border: 1px solid #2b333d;
+                border-radius: 6px;
+                padding: 8px 10px;
+                font-size: 8px;
+            }
+
+            QFrame#conflictHashFrame {
+                background-color: #11161c;
+                border: 1px solid #29313a;
+                border-radius: 7px;
+            }
+
+            QLabel#conflictHashStatus {
+                background: transparent;
+                color: #c4cad2;
+                font-size: 8px;
+                font-weight: 700;
+            }
+
+            QLabel#conflictHash {
+                min-height: 17px;
+                background-color: #10151a;
+                color: #858f9d;
+                border: 1px solid #252d36;
+                border-radius: 4px;
+                padding-left: 7px;
+                padding-right: 7px;
+                font-size: 8px;
+            }
+
+            QLabel#conflictDuplicate {
+                background: transparent;
+                color: #69d49a;
+                font-size: 8px;
+            }
+
+            /* -------------------------------------------------
+               Buttons
+               ------------------------------------------------- */
+
+            QFrame#conflictCard QPushButton {
+                min-height: 30px;
+                padding-left: 11px;
+                padding-right: 11px;
+                border-radius: 6px;
+                font-size: 8px;
+                font-weight: 800;
+            }
+
+            QFrame#conflictCard QPushButton#secondaryButton {
+                background-color: #222a33;
+                color: #d1d7df;
+                border: 1px solid #36414d;
+            }
+
+            QFrame#conflictCard QPushButton#secondaryButton:hover {
+                background-color: #2c3540;
+                color: #ffffff;
+                border-color: #4b5867;
+            }
+
+            QFrame#conflictCard QPushButton#primaryButton {
+                background-color: #7158e8;
+                color: #ffffff;
+                border: 1px solid #856ff0;
+            }
+
+            QFrame#conflictCard QPushButton#primaryButton:hover {
+                background-color: #8068f0;
+            }
+
+            QFrame#conflictCard QPushButton#warningActionButton {
+                background-color: #3b2b0f;
+                color: #f0bd58;
+                border: 1px solid #76521b;
+            }
+
+            QFrame#conflictCard QPushButton#dangerButton {
+                background-color: #3c2026;
+                color: #ff9aa5;
+                border: 1px solid #6b343d;
+            }
+
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+
+            QScrollBar:vertical,
+            QScrollBar:horizontal {
+                background: transparent;
+            }
+            """
         )
 
     # ========================================================
@@ -2161,10 +1544,6 @@ class ConflictsPage(
         self._report = report
 
         self._clear_cards()
-
-        # ====================================================
-        # Build Cards
-        # ====================================================
 
         for conflict in (
             report.items
@@ -2206,14 +1585,31 @@ class ConflictsPage(
                 self.content_layout.count()
                 - 1,
                 card,
+                0,
+                Qt.AlignmentFlag.AlignTop,
             )
 
-        # ====================================================
-        # Page State
-        # ====================================================
+        if report.items:
+            self._show_content()
+        else:
+            self._show_empty_state()
 
-        has_conflicts = bool(
-            report.items
+        self._refresh_summary()
+        self.retranslate_ui()
+
+    # ========================================================
+    # Compact Summary
+    # ========================================================
+
+    def _refresh_summary(
+        self,
+    ) -> None:
+        count = int(
+            self._report.count
+        )
+
+        has_conflicts = (
+            count > 0
         )
 
         self.summary_frame.setProperty(
@@ -2221,44 +1617,197 @@ class ConflictsPage(
             has_conflicts,
         )
 
-        self.count_label.setProperty(
-            "hasConflicts",
-            has_conflicts,
+        self.summary_icon_label.setText(
+            "!"
+            if has_conflicts
+            else "✓"
         )
 
-        # ----------------------------------------------------
-        # Force QSS update
-        # ----------------------------------------------------
+        if has_conflicts:
+            self.summary_title_label.setText(
+                tr(
+                    "conflicts.summary.attention_title"
+                )
+            )
+
+            self.summary_description_label.setText(
+                tr(
+                    "conflicts.summary.attention_description"
+                )
+            )
+        else:
+            self.summary_title_label.setText(
+                tr(
+                    "conflicts.summary.clean_title"
+                )
+            )
+
+            self.summary_description_label.setText(
+                tr(
+                    "conflicts.summary.clean_description"
+                )
+            )
+
+        self.summary_count_label.setText(
+            tr(
+                "conflicts.count",
+                count=count,
+            )
+        )
 
         for widget in (
             self.summary_frame,
-            self.count_label,
+            self.summary_icon_label,
+            self.summary_count_label,
         ):
-            widget.style().unpolish(
+            style = widget.style()
+            style.unpolish(
                 widget
             )
-
-            widget.style().polish(
+            style.polish(
                 widget
             )
-
-        # ----------------------------------------------------
-        # Content
-        # ----------------------------------------------------
-
-        self.scroll_area.setVisible(
-            has_conflicts
-        )
-
-        self.empty_frame.setVisible(
-            not has_conflicts
-        )
-
-        self.retranslate_ui()
+            widget.update()
 
     # ========================================================
-    # Clear Cards
+    # Unified Page States
     # ========================================================
+
+    def _request_refresh(
+        self,
+        _checked: bool = False,
+    ) -> None:
+        """
+        UI sofort auf Loading setzen und anschließend die
+        bestehende Library-Konfliktprüfung anfordern.
+        """
+
+        self._show_loading_state()
+        self.refresh_requested.emit()
+
+    def _show_content(
+        self,
+    ) -> None:
+        self._content_state_mode = (
+            "content"
+        )
+
+        self._content_state_message = ""
+
+        self.content_stack.setCurrentWidget(
+            self.scroll_area
+        )
+
+    def _show_loading_state(
+        self,
+    ) -> None:
+        self._content_state_mode = (
+            "loading"
+        )
+
+        self._content_state_message = ""
+
+        self.state_panel.show_loading(
+            title=tr(
+                "conflicts.refresh"
+            ),
+            description=tr(
+                "conflicts.description"
+            ),
+        )
+
+        self.content_stack.setCurrentWidget(
+            self.state_panel
+        )
+
+    def _show_empty_state(
+        self,
+    ) -> None:
+        self._content_state_mode = (
+            "empty"
+        )
+
+        self._content_state_message = ""
+
+        self.state_panel.show_success(
+            title=tr(
+                "conflicts.empty"
+            ),
+            description=tr(
+                "conflicts.description"
+            ),
+            primary_text=tr(
+                "conflicts.refresh"
+            ),
+        )
+
+        self.content_stack.setCurrentWidget(
+            self.state_panel
+        )
+
+    def set_error(
+        self,
+        message: str,
+    ) -> None:
+        """
+        Öffentliche Fehler-Schnittstelle.
+
+        Falls der Konflikt-Scan später einen eigenen Failure-
+        Signalpfad erhält, kann MainWindow/Library diesen direkt
+        auf conflicts_page.set_error(...) verbinden.
+        """
+
+        self._content_state_mode = (
+            "error"
+        )
+
+        self._content_state_message = str(
+            message
+        ).strip()
+
+        self.state_panel.show_error(
+            title=tr(
+                "conflicts.title"
+            ),
+            description=(
+                self._content_state_message
+                or tr(
+                    "conflicts.description"
+                )
+            ),
+            primary_text=tr(
+                "conflicts.refresh"
+            ),
+        )
+
+        self.content_stack.setCurrentWidget(
+            self.state_panel
+        )
+
+    def _on_state_primary_requested(
+        self,
+    ) -> None:
+        if self._content_state_mode in {
+            "empty",
+            "error",
+        }:
+            self._request_refresh()
+
+    def _refresh_unified_state_texts(
+        self,
+    ) -> None:
+        mode = self._content_state_mode
+
+        if mode == "loading":
+            self._show_loading_state()
+
+        elif mode == "empty":
+            self._show_empty_state()
+
+        elif mode == "error":
+            self.set_error(
+                self._content_state_message
+            )
 
     def _clear_cards(
         self,
@@ -2272,11 +1821,6 @@ class ConflictsPage(
         self._card_by_key.clear()
 
         for card in cards:
-            if not isValid(
-                card
-            ):
-                continue
-
             self.content_layout.removeWidget(
                 card
             )
@@ -2318,29 +1862,23 @@ class ConflictsPage(
 
             return
 
-        # ----------------------------------------------------
-        # UI
-        # ----------------------------------------------------
-
         card.set_checking()
 
-        # ----------------------------------------------------
-        # Worker
-        # ----------------------------------------------------
-
-        worker = ModDuplicateWorker(
-            source=path,
-            library_paths=(
-                tuple(
-                    self.library_paths_provider()
-                )
-            ),
-            game_id=(
-                self.game_id_provider()
-            ),
-            service=(
-                self.duplicate_service
-            ),
+        worker = (
+            ModDuplicateWorker(
+                source=path,
+                library_paths=(
+                    tuple(
+                        self.library_paths_provider()
+                    )
+                ),
+                game_id=(
+                    self.game_id_provider()
+                ),
+                service=(
+                    self.duplicate_service
+                ),
+            )
         )
 
         worker.signals.progress.connect(
@@ -2363,10 +1901,6 @@ class ConflictsPage(
             worker
         )
 
-    # ========================================================
-    # Duplicate Progress
-    # ========================================================
-
     def _on_duplicate_progress(
         self,
         source_key: str,
@@ -2374,10 +1908,8 @@ class ConflictsPage(
         total: int,
         name: str,
     ) -> None:
-        card = (
-            self._card_for_source(
-                source_key
-            )
+        card = self._card_for_source(
+            source_key
         )
 
         if card is None:
@@ -2389,10 +1921,6 @@ class ConflictsPage(
             name=name,
         )
 
-    # ========================================================
-    # Duplicate Finished
-    # ========================================================
-
     def _on_duplicate_finished(
         self,
         worker: ModDuplicateWorker,
@@ -2402,15 +1930,11 @@ class ConflictsPage(
             worker
         )
 
-        source_key = str(
-            result.source
-            .expanduser()
-            .absolute()
-        )
-
-        card = (
-            self._card_for_source(
-                source_key
+        card = self._card_for_source(
+            str(
+                result.source
+                .expanduser()
+                .absolute()
             )
         )
 
@@ -2420,10 +1944,6 @@ class ConflictsPage(
         card.set_duplicate_result(
             result
         )
-
-    # ========================================================
-    # Duplicate Failed
-    # ========================================================
 
     def _on_duplicate_failed(
         self,
@@ -2435,10 +1955,8 @@ class ConflictsPage(
             worker
         )
 
-        card = (
-            self._card_for_source(
-                source_key
-            )
+        card = self._card_for_source(
+            source_key
         )
 
         if card is None:
@@ -2447,10 +1965,6 @@ class ConflictsPage(
         card.set_duplicate_error(
             message
         )
-
-    # ========================================================
-    # Card Lookup
-    # ========================================================
 
     def _card_for_source(
         self,
@@ -2507,10 +2021,6 @@ class ConflictsPage(
         if duplicate_path is None:
             return
 
-        # ----------------------------------------------------
-        # Confirmation
-        # ----------------------------------------------------
-
         answer = QMessageBox.question(
             self,
             tr(
@@ -2526,13 +2036,8 @@ class ConflictsPage(
                 ),
             ),
             (
-                QMessageBox
-                .StandardButton
-                .Yes
-                |
-                QMessageBox
-                .StandardButton
-                .No
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
             ),
             QMessageBox.StandardButton.No,
         )
@@ -2543,19 +2048,12 @@ class ConflictsPage(
         ):
             return
 
-        # ----------------------------------------------------
-        # Delete
-        # ----------------------------------------------------
-
         try:
-            (
-                self.duplicate_service
-                .delete_confirmed_duplicate(
-                    result=result,
-                    active_root=(
-                        self.active_root_provider()
-                    ),
-                )
+            self.duplicate_service.delete_confirmed_duplicate(
+                result=result,
+                active_root=(
+                    self.active_root_provider()
+                ),
             )
 
         except Exception as error:
@@ -2574,10 +2072,6 @@ class ConflictsPage(
 
             return
 
-        # ----------------------------------------------------
-        # Completed
-        # ----------------------------------------------------
-
         QMessageBox.information(
             self,
             tr(
@@ -2588,7 +2082,6 @@ class ConflictsPage(
             ),
         )
 
-        # Der Zustand im Mods-Ordner hat sich geändert.
         self.rescan_requested.emit()
 
     # ========================================================
@@ -2599,18 +2092,6 @@ class ConflictsPage(
         self,
         _language: str | None = None,
     ) -> None:
-        count = (
-            self._report.count
-        )
-
-        has_conflicts = (
-            count > 0
-        )
-
-        # ====================================================
-        # Header
-        # ====================================================
-
         self.title_label.setText(
             tr(
                 "conflicts.title"
@@ -2624,82 +2105,19 @@ class ConflictsPage(
         )
 
         self.refresh_button.setText(
-            "↻  "
-            + tr(
+            tr(
                 "conflicts.refresh"
             )
         )
-
-        # ====================================================
-        # Summary
-        # ====================================================
-
-        if has_conflicts:
-            self.summary_icon_label.setText(
-                "!"
-            )
-
-            self.summary_title_label.setText(
-                tr(
-                    "conflicts.count",
-                    count=count,
-                )
-            )
-
-        else:
-            self.summary_icon_label.setText(
-                "✓"
-            )
-
-            self.summary_title_label.setText(
-                tr(
-                    "conflicts.empty"
-                )
-            )
-
-        self.summary_description_label.setText(
-            tr(
-                "conflicts.description"
-            )
-        )
-
-        # ====================================================
-        # Count
-        # ====================================================
 
         self.count_label.setText(
             tr(
                 "conflicts.count",
-                count=count,
+                count=(
+                    self._report.count
+                ),
             )
         )
-
-        # ====================================================
-        # Empty State
-        # ====================================================
-
-        self.empty_title_label.setText(
-            tr(
-                "conflicts.empty"
-            )
-        )
-
-        self.empty_label.setText(
-            tr(
-                "conflicts.description"
-            )
-        )
-
-        self.empty_refresh_button.setText(
-            "↻  "
-            + tr(
-                "conflicts.refresh"
-            )
-        )
-
-        # ====================================================
-        # Cards
-        # ====================================================
 
         for card in (
             self._cards
@@ -2708,6 +2126,9 @@ class ConflictsPage(
                 card
             ):
                 card.retranslate_ui()
+
+        self._refresh_summary()
+        self._refresh_unified_state_texts()
 
 
 __all__ = [

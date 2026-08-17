@@ -119,36 +119,6 @@ QWidget#profilesCardsContent {
 }
 
 /* ============================================================
-   EMPTY STATE
-   ============================================================ */
-
-QFrame#profilesEmptyState {
-    background-color: #14181e;
-    border: 1px solid #282e37;
-    border-radius: 12px;
-}
-
-QLabel#profilesEmptyIcon {
-    background-color: transparent;
-    color: #8067ff;
-    font-size: 42px;
-    font-weight: 900;
-}
-
-QLabel#profilesEmptyTitle {
-    background-color: transparent;
-    color: #edf1f4;
-    font-size: 17px;
-    font-weight: 850;
-}
-
-QLabel#profilesEmptyDescription {
-    background-color: transparent;
-    color: #7f8997;
-    font-size: 11px;
-}
-
-/* ============================================================
    PROFILE CARD
    ============================================================ */
 
@@ -330,4 +300,15 @@ QScrollBar::sub-line:vertical {
 QScrollBar::add-page:vertical,
 QScrollBar::sub-page:vertical {
     background: transparent;
+}
+
+
+/* ============================================================
+   UNIFIED PROFILE CONTENT STATE
+   ============================================================ */
+
+QStackedWidget#profilesContentStack,
+QWidget#profilesStatePanel {
+    background-color: transparent;
+    border: none;
 }

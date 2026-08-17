@@ -650,9 +650,7 @@ class StatePanel(
                 560,
                 max(
                     340,
-                    int(
-                        available * 0.82
-                    ),
+                    int(available * 0.82),
                 ),
             )
 

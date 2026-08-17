@@ -64,8 +64,6 @@ class ProfileCard(
             active,
         )
 
-        # Profilkarten dürfen horizontal wachsen, aber niemals die
-        # komplette freie Höhe des QGridLayout übernehmen.
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
