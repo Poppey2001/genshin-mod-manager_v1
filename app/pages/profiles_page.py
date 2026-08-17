@@ -523,6 +523,12 @@ class ProfilesPage(
             12
         )
 
+        # Verhindert, dass eine einzelne Grid-Zeile die komplette
+        # ScrollArea-Höhe bekommt.
+        self.cards_grid.setAlignment(
+            Qt.AlignmentFlag.AlignTop
+        )
+
         self.scroll_area.setWidget(
             self.cards_content
         )
@@ -1261,6 +1267,7 @@ class ProfilesPage(
                 card,
                 row,
                 column,
+                alignment=Qt.AlignmentFlag.AlignTop,
             )
 
         for column in range(

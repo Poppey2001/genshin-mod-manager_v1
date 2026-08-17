@@ -6,10 +6,10 @@ APP_NAME = "Genshin Mod Manager"
 # Interne Version für Vergleiche.
 # PEP-440-kompatibel:
 # 0.4.0a1 < 0.4.0a2 < 0.4.0b1 < 0.4.0
-APP_VERSION = "0.5.7a1"
+APP_VERSION = "0.5.7a4"
 
 # Schön dargestellte Version für die Oberfläche.
-APP_VERSION_DISPLAY = "0.5.7 Alpha1"
+APP_VERSION_DISPLAY = "0.5.7 Alpha4"
 
 
 __version__ = APP_VERSION

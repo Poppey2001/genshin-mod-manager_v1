@@ -3,6 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import (
+    QEasingCurve,
+    QParallelAnimationGroup,
+    QPropertyAnimation,
+    QRect,
     QSize,
     Qt,
     Signal,
@@ -10,12 +14,14 @@ from PySide6.QtCore import (
 
 from PySide6.QtGui import (
     QIcon,
+    QPixmap,
     QResizeEvent,
 )
 
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -50,43 +56,63 @@ from app.version import (
 
 
 # ============================================================
-# Game Icon Mapping
+# Game Icons
 # ============================================================
 
 GAME_ICON_FILES = {
-    "genshin-impact": (
-        "genshin-impact.png"
-    ),
-    "honkai-star-rail": (
-        "honkai-star-rail.png"
-    ),
-    "zenless-zone-zero": (
-        "zenless-zone-zero.png"
-    ),
-    "wuthering-waves": (
-        "wuthering-waves.png"
-    ),
-    "honkai-impact-3rd": (
-        "honkai-impact-3rd.png"
-    ),
-    "arknights-endfield": (
-        "arknights-endfield.png"
-    ),
+    "genshin-impact": "genshin-impact.png",
+    "honkai-star-rail": "honkai-star-rail.png",
+    "zenless-zone-zero": "zenless-zone-zero.png",
+    "wuthering-waves": "wuthering-waves.png",
+    "honkai-impact-3rd": "honkai-impact-3rd.png",
+    "arknights-endfield": "arknights-endfield.png",
 }
 
 
 # ============================================================
-# Hilfsfunktionen
+# Top Navigation Icons
+#
+# Hier kannst du später die Icons einfach austauschen.
+#
+# Lege eigene Icons optional hier ab:
+#
+#   assets/icons/navigation/library.svg
+#   assets/icons/navigation/gamebanana.svg
+#   assets/icons/navigation/profiles.svg
+#   assets/icons/navigation/conflicts.svg
+#   assets/icons/navigation/settings.svg
+#
+# PNG funktioniert ebenfalls.
+#
+# Wenn eine Datei fehlt, wird automatisch ein passendes
+# Qt-Standardicon verwendet.
+# ============================================================
+
+TOP_NAV_ICON_FILES = {
+    "library": "library.svg",
+    "gamebanana": "gamebanana.svg",
+    "profiles": "profiles.svg",
+    "conflicts": "conflicts.svg",
+    "settings": "settings.svg",
+}
+
+
+TOP_NAV_FALLBACK_ICONS = {
+    "library": QStyle.StandardPixmap.SP_DirHomeIcon,
+    "gamebanana": QStyle.StandardPixmap.SP_DriveNetIcon,
+    "profiles": QStyle.StandardPixmap.SP_FileDialogInfoView,
+    "conflicts": QStyle.StandardPixmap.SP_MessageBoxWarning,
+    "settings": QStyle.StandardPixmap.SP_FileDialogDetailedView,
+}
+
+
+# ============================================================
+# Helpers
 # ============================================================
 
 def stable_game_id(
     game,
 ) -> str:
-    """
-    Liefert unabhängig von Enum/Property
-    die stabile Game-ID.
-    """
-
     value = getattr(
         game,
         "game_id",
@@ -142,17 +168,60 @@ def game_importer_name(
 
 def load_game_icon(
     game_id: str,
-    widget: QWidget,
 ) -> QIcon:
+    """
+    Lädt ausschließlich das echte Spiel-Icon.
+
+    Es gibt bewusst KEIN generisches Qt-Fallback-Icon mehr.
+    Wenn eine Bilddatei fehlt, bleibt der Button ohne Icon.
+    """
+
     filename = GAME_ICON_FILES.get(
         game_id
+    )
+
+    if not filename:
+        return QIcon()
+
+    icon_path = resource_path(
+        "assets",
+        "icons",
+        "games",
+        filename,
+    )
+
+    if not Path(
+        icon_path
+    ).is_file():
+        return QIcon()
+
+    return QIcon(
+        str(
+            icon_path
+        )
+    )
+
+
+def load_top_navigation_icon(
+    icon_id: str,
+    widget: QWidget,
+) -> QIcon:
+    """
+    Lädt bevorzugt ein eigenes Navigation-Icon.
+
+    Falls keine Datei vorhanden ist, verwendet die UI
+    automatisch ein Qt-Standardicon.
+    """
+
+    filename = TOP_NAV_ICON_FILES.get(
+        icon_id
     )
 
     if filename:
         icon_path = resource_path(
             "assets",
             "icons",
-            "games",
+            "navigation",
             filename,
         )
 
@@ -165,23 +234,322 @@ def load_game_icon(
                 )
             )
 
-    return (
-        widget.style()
-        .standardIcon(
-            QStyle.StandardPixmap.SP_FileIcon
-        )
+    fallback = TOP_NAV_FALLBACK_ICONS.get(
+        icon_id
     )
+
+    if fallback is not None:
+        return (
+            widget.style()
+            .standardIcon(
+                fallback
+            )
+        )
+
+    return QIcon()
 
 
 # ============================================================
-# Game Button
+# Animated Stack
+# ============================================================
+
+class AnimatedStackedWidget(
+    QStackedWidget
+):
+    """
+    Sehr kurze, dezente Seiten-Transition.
+
+    Die Page selbst wird nicht verändert. Stattdessen wird ein
+    Snapshot der alten Seite kurz als Overlay ausgeblendet und
+    minimal verschoben.
+
+    Dadurch bleiben Library/GameBanana/Profiles/Conflicts komplett
+    unabhängig von der Animation.
+    """
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(
+            parent
+        )
+
+        self._duration_ms = 165
+        self._slide_distance = 16
+
+        self._animation_group: (
+            QParallelAnimationGroup
+            | None
+        ) = None
+
+        self._overlay: (
+            QLabel
+            | None
+        ) = None
+
+        self._pending_index: (
+            int
+            | None
+        ) = None
+
+    def setCurrentWidget(
+        self,
+        widget: QWidget,
+    ) -> None:
+        index = self.indexOf(
+            widget
+        )
+
+        if index >= 0:
+            self.setCurrentIndex(
+                index
+            )
+
+    def setCurrentIndex(
+        self,
+        index: int,
+    ) -> None:
+        index = int(
+            index
+        )
+
+        if (
+            index < 0
+            or index >= self.count()
+        ):
+            return
+
+        current_index = (
+            super().currentIndex()
+        )
+
+        if index == current_index:
+            return
+
+        if self._animation_group is not None:
+            self._pending_index = index
+            return
+
+        if (
+            current_index < 0
+            or not self.isVisible()
+            or self.width() <= 1
+            or self.height() <= 1
+        ):
+            super().setCurrentIndex(
+                index
+            )
+            return
+
+        old_widget = self.widget(
+            current_index
+        )
+
+        if old_widget is None:
+            super().setCurrentIndex(
+                index
+            )
+            return
+
+        snapshot = old_widget.grab()
+
+        super().setCurrentIndex(
+            index
+        )
+
+        if snapshot.isNull():
+            return
+
+        overlay = QLabel(
+            self
+        )
+
+        overlay.setObjectName(
+            "pageTransitionOverlay"
+        )
+
+        overlay.setPixmap(
+            snapshot
+        )
+
+        overlay.setScaledContents(
+            True
+        )
+
+        overlay.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
+
+        start_rect = QRect(
+            0,
+            0,
+            self.width(),
+            self.height(),
+        )
+
+        direction = (
+            -1
+            if index > current_index
+            else 1
+        )
+
+        end_rect = QRect(
+            direction
+            * self._slide_distance,
+            0,
+            self.width(),
+            self.height(),
+        )
+
+        overlay.setGeometry(
+            start_rect
+        )
+
+        opacity = QGraphicsOpacityEffect(
+            overlay
+        )
+
+        opacity.setOpacity(
+            1.0
+        )
+
+        overlay.setGraphicsEffect(
+            opacity
+        )
+
+        geometry_animation = QPropertyAnimation(
+            overlay,
+            b"geometry",
+            self,
+        )
+
+        geometry_animation.setDuration(
+            self._duration_ms
+        )
+
+        geometry_animation.setStartValue(
+            start_rect
+        )
+
+        geometry_animation.setEndValue(
+            end_rect
+        )
+
+        geometry_animation.setEasingCurve(
+            QEasingCurve.Type.OutCubic
+        )
+
+        opacity_animation = QPropertyAnimation(
+            opacity,
+            b"opacity",
+            self,
+        )
+
+        opacity_animation.setDuration(
+            self._duration_ms
+        )
+
+        opacity_animation.setStartValue(
+            1.0
+        )
+
+        opacity_animation.setEndValue(
+            0.0
+        )
+
+        opacity_animation.setEasingCurve(
+            QEasingCurve.Type.OutCubic
+        )
+
+        group = QParallelAnimationGroup(
+            self
+        )
+
+        group.addAnimation(
+            geometry_animation
+        )
+
+        group.addAnimation(
+            opacity_animation
+        )
+
+        group.finished.connect(
+            self._finish_transition
+        )
+
+        self._overlay = overlay
+        self._animation_group = group
+
+        overlay.show()
+        overlay.raise_()
+
+        group.start()
+
+    def _finish_transition(
+        self,
+    ) -> None:
+        overlay = self._overlay
+        group = self._animation_group
+
+        self._overlay = None
+        self._animation_group = None
+
+        if overlay is not None:
+            overlay.hide()
+            overlay.setGraphicsEffect(
+                None
+            )
+            overlay.deleteLater()
+
+        if group is not None:
+            group.deleteLater()
+
+        pending = self._pending_index
+        self._pending_index = None
+
+        if (
+            pending is not None
+            and pending
+            != super().currentIndex()
+        ):
+            self.setCurrentIndex(
+                pending
+            )
+
+    def resizeEvent(
+        self,
+        event,
+    ) -> None:
+        super().resizeEvent(
+            event
+        )
+
+        if self._overlay is not None:
+            geometry = (
+                self._overlay.geometry()
+            )
+
+            self._overlay.setGeometry(
+                geometry.x(),
+                geometry.y(),
+                self.width(),
+                self.height(),
+            )
+
+
+# ============================================================
+# Game Button - ICON ONLY
 # ============================================================
 
 class GameSidebarButton(
     QToolButton
 ):
     """
-    Button für ein einzelnes XXMI-Spiel.
+    Ein Game-Button zeigt absichtlich nur das echte Game-Icon.
+
+    Name + Importer erscheinen als Tooltip.
     """
 
     def __init__(
@@ -195,11 +563,8 @@ class GameSidebarButton(
         )
 
         self.game = game
-
-        self.game_id = (
-            stable_game_id(
-                game
-            )
+        self.game_id = stable_game_id(
+            game
         )
 
         self.setObjectName(
@@ -215,52 +580,64 @@ class GameSidebarButton(
         )
 
         self.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+            Qt.ToolButtonStyle.ToolButtonIconOnly
         )
 
         self.setIconSize(
             QSize(
-                46,
-                46,
+                48,
+                48,
             )
         )
 
         self.setIcon(
             load_game_icon(
-                self.game_id,
-                self,
+                self.game_id
             )
         )
 
-        self.setText(
-            (
-                f"{game.name}\n"
-                f"{game_importer_name(game)}"
+        self.setFixedSize(
+            66,
+            66,
+        )
+
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor
+        )
+
+        self.refresh_tooltip()
+
+    def refresh_tooltip(
+        self,
+    ) -> None:
+        importer = game_importer_name(
+            self.game
+        )
+
+        if importer:
+            text = (
+                f"{self.game.name}\n"
+                f"{importer}"
             )
-        )
+        else:
+            text = str(
+                self.game.name
+            )
 
-        self.setMinimumHeight(
-            66
-        )
-
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
+        self.setToolTip(
+            text
         )
 
 
 # ============================================================
-# Navigation Button + Badge
+# Navigation Button + Conflict Badge
 # ============================================================
 
 class TopNavigationButton(
-    QToolButton
+    QPushButton
 ):
     """
-    Button der oberen Navigation.
-
-    Der Konflikt-Button kann zusätzlich
-    einen Zahlen-Badge anzeigen.
+    Hauptnavigation mit Icon + Text.
     """
 
     def __init__(
@@ -283,20 +660,28 @@ class TopNavigationButton(
             True
         )
 
-        self.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextUnderIcon
+        self.setAutoExclusive(
+            False
+        )
+
+        self.setMinimumHeight(
+            42
         )
 
         self.setIconSize(
             QSize(
-                24,
-                24,
+                18,
+                18,
             )
         )
 
-        self.setMinimumSize(
-            92,
-            68,
+        self.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed,
+        )
+
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor
         )
 
         self.badge = QLabel(
@@ -313,7 +698,7 @@ class TopNavigationButton(
 
         self.badge.setFixedSize(
             24,
-            20,
+            18,
         )
 
         self.badge.hide()
@@ -324,26 +709,20 @@ class TopNavigationButton(
     ) -> None:
         count = max(
             0,
-            int(
-                count
-            ),
+            int(count),
         )
 
         if count <= 0:
             self.badge.hide()
-
             return
 
         self.badge.setText(
-            (
-                "99+"
-                if count > 99
-                else str(count)
-            )
+            "99+"
+            if count > 99
+            else str(count)
         )
 
         self.badge.show()
-
         self._position_badge()
 
     def resizeEvent(
@@ -360,8 +739,10 @@ class TopNavigationButton(
         self,
     ) -> None:
         self.badge.move(
-            self.width() - 27,
-            3,
+            self.width()
+            - self.badge.width()
+            - 4,
+            2,
         )
 
 
@@ -373,10 +754,17 @@ class MainWindowUI(
     QWidget
 ):
     """
-    Reine Hauptfenster-Oberfläche.
+    Moderne Hauptfenster-Shell.
 
-    Keine Game-, Import-, Download- oder
-    Mod-Logik gehört hier hinein.
+    Design:
+    - links nur Game-Icons
+    - oben Icon + Text Navigation
+    - Settings ebenfalls mit Icon
+    - aktuelle Game-Info separat
+    - Conflict Badge bleibt erhalten
+    - dezente Page-Transition
+
+    MainWindow-kompatible Public API bleibt unverändert.
     """
 
     game_selected = Signal(
@@ -404,6 +792,10 @@ class MainWindowUI(
             parent
         )
 
+        self.setObjectName(
+            "mainWindowUi"
+        )
+
         self.config = config
 
         self.game_buttons: dict[
@@ -416,47 +808,33 @@ class MainWindowUI(
             TopNavigationButton,
         ] = {}
 
-        self.game_button_group = (
-            QButtonGroup(
-                self
-            )
+        self.game_button_group = QButtonGroup(
+            self
         )
 
         self.game_button_group.setExclusive(
             True
         )
 
-        self.navigation_button_group = (
-            QButtonGroup(
-                self
-            )
+        self.navigation_button_group = QButtonGroup(
+            self
         )
 
         self.navigation_button_group.setExclusive(
             True
         )
 
-        self.page_stack = (
-            QStackedWidget(
-                self
-            )
+        self.page_stack = AnimatedStackedWidget(
+            self
         )
 
         self.game_name_label = QLabel()
-
         self.importer_label = QLabel()
-
         self.sidebar_title = QLabel()
-
-        self.sidebar_subtitle = QLabel()
-
         self.games_title = QLabel()
-
         self.version_label = QLabel()
 
-        self.settings_button = (
-            QToolButton()
-        )
+        self.settings_button = QPushButton()
 
         self._build_ui()
 
@@ -475,16 +853,14 @@ class MainWindowUI(
         )
 
     # ========================================================
-    # Main layout
+    # Root
     # ========================================================
 
     def _build_ui(
         self,
     ) -> None:
-        root_layout = (
-            QHBoxLayout(
-                self
-            )
+        root_layout = QHBoxLayout(
+            self
         )
 
         root_layout.setContentsMargins(
@@ -510,87 +886,79 @@ class MainWindowUI(
         self._apply_stylesheet()
 
     # ========================================================
-    # Game Sidebar
+    # Icon-only Game Sidebar
     # ========================================================
 
     def _create_game_sidebar(
         self,
     ) -> QWidget:
-        sidebar = QFrame()
+        sidebar = QFrame(
+            self
+        )
 
         sidebar.setObjectName(
             "gameSidebar"
         )
 
         sidebar.setFixedWidth(
-            270
+            92
         )
 
-        layout = (
-            QVBoxLayout(
-                sidebar
-            )
+        layout = QVBoxLayout(
+            sidebar
         )
 
         layout.setContentsMargins(
-            16,
-            20,
-            16,
-            18,
+            12,
+            15,
+            12,
+            14,
         )
 
         layout.setSpacing(
-            10
+            9
         )
-
-        # ----------------------------------------------------
-        # App title
-        # ----------------------------------------------------
 
         self.sidebar_title.setObjectName(
             "sidebarAppTitle"
         )
 
-        self.sidebar_subtitle.setObjectName(
-            "sidebarAppSubtitle"
+        self.sidebar_title.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
         )
 
         layout.addWidget(
             self.sidebar_title
         )
 
-        layout.addWidget(
-            self.sidebar_subtitle
-        )
-
         layout.addSpacing(
-            12
+            8
         )
-
-        # ----------------------------------------------------
-        # Games
-        # ----------------------------------------------------
 
         self.games_title.setObjectName(
             "sidebarSectionTitle"
+        )
+
+        self.games_title.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
         )
 
         layout.addWidget(
             self.games_title
         )
 
+        layout.addSpacing(
+            2
+        )
+
         for game in all_games():
-            game_id = (
-                stable_game_id(
-                    game
-                )
+            game_id = stable_game_id(
+                game
             )
 
-            button = (
-                GameSidebarButton(
-                    game=game,
-                    parent=sidebar,
-                )
+            button = GameSidebarButton(
+                game=game,
+                parent=sidebar,
             )
 
             button.clicked.connect(
@@ -610,7 +978,8 @@ class MainWindowUI(
             ] = button
 
             layout.addWidget(
-                button
+                button,
+                alignment=Qt.AlignmentFlag.AlignHCenter,
             )
 
         layout.addStretch(
@@ -619,6 +988,14 @@ class MainWindowUI(
 
         self.version_label.setObjectName(
             "sidebarVersion"
+        )
+
+        self.version_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        self.version_label.setWordWrap(
+            True
         )
 
         layout.addWidget(
@@ -634,7 +1011,9 @@ class MainWindowUI(
     def _create_workspace(
         self,
     ) -> QWidget:
-        workspace = QWidget()
+        workspace = QWidget(
+            self
+        )
 
         workspace.setObjectName(
             "mainWorkspace"
@@ -667,13 +1046,15 @@ class MainWindowUI(
         return workspace
 
     # ========================================================
-    # Top bar
+    # Top Bar
     # ========================================================
 
     def _create_top_bar(
         self,
     ) -> QWidget:
-        top_bar = QFrame()
+        top_bar = QFrame(
+            self
+        )
 
         top_bar.setObjectName(
             "topBar"
@@ -685,25 +1066,48 @@ class MainWindowUI(
 
         layout.setContentsMargins(
             22,
-            8,
+            10,
             16,
-            8,
+            10,
         )
 
         layout.setSpacing(
-            4
+            12
         )
 
         # ----------------------------------------------------
-        # Current game
+        # Current Game
         # ----------------------------------------------------
 
-        game_info_layout = (
-            QVBoxLayout()
+        game_info = QFrame(
+            top_bar
+        )
+
+        game_info.setObjectName(
+            "currentGameCard"
+        )
+
+        game_info.setMinimumWidth(
+            190
+        )
+
+        game_info.setMaximumWidth(
+            290
+        )
+
+        game_info_layout = QVBoxLayout(
+            game_info
+        )
+
+        game_info_layout.setContentsMargins(
+            12,
+            7,
+            12,
+            7,
         )
 
         game_info_layout.setSpacing(
-            0
+            1
         )
 
         self.game_name_label.setObjectName(
@@ -722,52 +1126,52 @@ class MainWindowUI(
             self.importer_label
         )
 
-        layout.addLayout(
-            game_info_layout
-        )
-
-        layout.addSpacing(
-            30
+        layout.addWidget(
+            game_info
         )
 
         # ----------------------------------------------------
-        # Navigation
+        # Navigation - ICON + TEXT
         # ----------------------------------------------------
 
-        navigation_definitions = (
-            (
-                self.PAGE_LIBRARY,
-                QStyle.StandardPixmap.SP_DirHomeIcon,
-            ),
-            (
-                self.PAGE_GAMEBANANA,
-                QStyle.StandardPixmap.SP_DriveNetIcon,
-            ),
-            (
-                self.PAGE_PROFILES,
-                QStyle.StandardPixmap.SP_FileDialogInfoView,
-            ),
-            (
-                self.PAGE_CONFLICTS,
-                QStyle.StandardPixmap.SP_MessageBoxWarning,
-            ),
+        navigation_frame = QFrame(
+            top_bar
         )
 
-        for (
-            page_id,
-            standard_icon,
-        ) in navigation_definitions:
-            button = (
-                TopNavigationButton(
-                    page_id=page_id,
-                    parent=top_bar,
-                )
+        navigation_frame.setObjectName(
+            "topNavigationFrame"
+        )
+
+        navigation_layout = QHBoxLayout(
+            navigation_frame
+        )
+
+        navigation_layout.setContentsMargins(
+            4,
+            4,
+            4,
+            4,
+        )
+
+        navigation_layout.setSpacing(
+            3
+        )
+
+        for page_id in (
+            self.PAGE_LIBRARY,
+            self.PAGE_GAMEBANANA,
+            self.PAGE_PROFILES,
+            self.PAGE_CONFLICTS,
+        ):
+            button = TopNavigationButton(
+                page_id=page_id,
+                parent=navigation_frame,
             )
 
             button.setIcon(
-                self.style()
-                .standardIcon(
-                    standard_icon
+                load_top_navigation_icon(
+                    page_id,
+                    button,
                 )
             )
 
@@ -787,39 +1191,46 @@ class MainWindowUI(
                 page_id
             ] = button
 
-            layout.addWidget(
+            navigation_layout.addWidget(
                 button
             )
+
+        layout.addWidget(
+            navigation_frame
+        )
 
         layout.addStretch(
             1
         )
 
         # ----------------------------------------------------
-        # Settings
+        # Settings - ICON + TEXT
         # ----------------------------------------------------
 
         self.settings_button.setObjectName(
             "settingsTopButton"
         )
 
-        self.settings_button.setIcon(
-            self.style()
-            .standardIcon(
-                QStyle.StandardPixmap.SP_FileDialogDetailedView
-            )
+        self.settings_button.setMinimumHeight(
+            42
         )
 
         self.settings_button.setIconSize(
             QSize(
-                26,
-                26,
+                18,
+                18,
             )
         )
 
-        self.settings_button.setFixedSize(
-            48,
-            48,
+        self.settings_button.setIcon(
+            load_top_navigation_icon(
+                "settings",
+                self.settings_button,
+            )
+        )
+
+        self.settings_button.setCursor(
+            Qt.CursorShape.PointingHandCursor
         )
 
         self.settings_button.clicked.connect(
@@ -840,28 +1251,30 @@ class MainWindowUI(
         self,
         game_id: str,
     ) -> None:
-        button = (
-            self.game_buttons.get(
-                game_id
+        button = self.game_buttons.get(
+            game_id
+        )
+
+        if button is None:
+            return
+
+        button.setChecked(
+            True
+        )
+
+        game = button.game
+
+        self.game_name_label.setText(
+            str(
+                game.name
             )
         )
 
-        if button is not None:
-            button.setChecked(
-                True
+        self.importer_label.setText(
+            game_importer_name(
+                game
             )
-
-            game = button.game
-
-            self.game_name_label.setText(
-                game.name
-            )
-
-            self.importer_label.setText(
-                game_importer_name(
-                    game
-                )
-            )
+        )
 
     # ========================================================
     # Current Page
@@ -871,10 +1284,8 @@ class MainWindowUI(
         self,
         page_id: str,
     ) -> None:
-        button = (
-            self.navigation_buttons.get(
-                page_id
-            )
+        button = self.navigation_buttons.get(
+            page_id
         )
 
         if button is not None:
@@ -890,10 +1301,8 @@ class MainWindowUI(
         self,
         count: int,
     ) -> None:
-        button = (
-            self.navigation_buttons.get(
-                self.PAGE_CONFLICTS
-            )
+        button = self.navigation_buttons.get(
+            self.PAGE_CONFLICTS
         )
 
         if button is not None:
@@ -913,14 +1322,10 @@ class MainWindowUI(
             "XXMI"
         )
 
-        self.sidebar_subtitle.setText(
-            "Mod Manager"
-        )
-
         self.games_title.setText(
             tr(
                 "ui.games.title"
-            )
+            ).upper()
         )
 
         self.version_label.setText(
@@ -928,36 +1333,23 @@ class MainWindowUI(
         )
 
         labels = {
-            self.PAGE_LIBRARY: (
-                tr(
-                    "navigation.library"
-                )
+            self.PAGE_LIBRARY: tr(
+                "navigation.library"
             ),
-            self.PAGE_GAMEBANANA: (
-                tr(
-                    "navigation.gamebanana"
-                )
+            self.PAGE_GAMEBANANA: tr(
+                "navigation.gamebanana"
             ),
-            self.PAGE_PROFILES: (
-                tr(
-                    "navigation.profiles"
-                )
+            self.PAGE_PROFILES: tr(
+                "navigation.profiles"
             ),
-            self.PAGE_CONFLICTS: (
-                tr(
-                    "navigation.conflicts"
-                )
+            self.PAGE_CONFLICTS: tr(
+                "navigation.conflicts"
             ),
         }
 
-        for (
-            page_id,
-            text,
-        ) in labels.items():
-            button = (
-                self.navigation_buttons.get(
-                    page_id
-                )
+        for page_id, text in labels.items():
+            button = self.navigation_buttons.get(
+                page_id
             )
 
             if button is not None:
@@ -965,11 +1357,20 @@ class MainWindowUI(
                     text
                 )
 
+        self.settings_button.setText(
+            tr(
+                "navigation.settings"
+            )
+        )
+
         self.settings_button.setToolTip(
             tr(
                 "navigation.settings"
             )
         )
+
+        for button in self.game_buttons.values():
+            button.refresh_tooltip()
 
     # ========================================================
     # Styles
@@ -980,126 +1381,195 @@ class MainWindowUI(
     ) -> None:
         self.setStyleSheet(
             """
+            QWidget#mainWindowUi,
             QWidget#mainWorkspace {
-                background: #12151b;
+                background-color: #101319;
+                color: #e7e9ef;
             }
 
+            /* ================================================
+               GAME SIDEBAR
+               ================================================ */
+
             QFrame#gameSidebar {
-                background: #191d25;
-                border-right: 1px solid #2b303b;
+                background-color: #151920;
+                border-right: 1px solid #292f39;
             }
 
             QLabel#sidebarAppTitle {
-                color: #ffffff;
-                font-size: 25px;
-                font-weight: 800;
-            }
-
-            QLabel#sidebarAppSubtitle {
-                color: #89909f;
-                font-size: 13px;
+                color: #f5f6f8;
+                font-size: 18px;
+                font-weight: 900;
+                letter-spacing: 1px;
             }
 
             QLabel#sidebarSectionTitle {
-                color: #737b8b;
-                font-size: 11px;
-                font-weight: 700;
-                padding-left: 5px;
+                color: #656f7d;
+                font-size: 8px;
+                font-weight: 800;
             }
 
             QLabel#sidebarVersion {
-                color: #626a78;
-                font-size: 11px;
+                color: #59616d;
+                font-size: 8px;
+                padding-top: 6px;
             }
 
             QToolButton#gameSidebarButton {
-                background: transparent;
+                background-color: transparent;
                 border: 1px solid transparent;
-                border-radius: 10px;
-                color: #c9ced8;
-                padding: 8px 10px;
-                text-align: left;
+                border-radius: 13px;
+                padding: 7px;
             }
 
             QToolButton#gameSidebarButton:hover {
-                background: #222833;
-                border-color: #303744;
+                background-color: #20262e;
+                border-color: #303843;
             }
 
             QToolButton#gameSidebarButton:checked {
-                background: #29243f;
-                border: 1px solid #7967e8;
-                color: #ffffff;
-                font-weight: 600;
+                background-color: #292440;
+                border: 1px solid #7864e8;
             }
 
+            QToolButton#gameSidebarButton:pressed {
+                background-color: #332d4c;
+            }
+
+            /* ================================================
+               TOP BAR
+               ================================================ */
+
             QFrame#topBar {
-                background: #191d25;
-                border-bottom: 1px solid #2b303b;
-                min-height: 82px;
-                max-height: 82px;
+                background-color: #151920;
+                border-bottom: 1px solid #292f39;
+                min-height: 70px;
+                max-height: 70px;
+            }
+
+            QFrame#currentGameCard {
+                background-color: #1a1f27;
+                border: 1px solid #2c333e;
+                border-radius: 9px;
             }
 
             QLabel#currentGameName {
-                color: #ffffff;
-                font-size: 18px;
-                font-weight: 700;
+                background-color: transparent;
+                color: #f4f5f7;
+                font-size: 13px;
+                font-weight: 850;
             }
 
             QLabel#currentImporter {
-                color: #8d95a5;
-                font-size: 12px;
+                background-color: transparent;
+                color: #7f8997;
+                font-size: 9px;
             }
 
-            QToolButton#topNavigationButton {
-                background: transparent;
-                border: none;
-                border-radius: 8px;
-                color: #949cab;
-                padding: 5px 10px;
+            /* ================================================
+               ICON + TEXT NAVIGATION
+               ================================================ */
+
+            QFrame#topNavigationFrame {
+                background-color: #11151a;
+                border: 1px solid #292f39;
+                border-radius: 10px;
             }
 
-            QToolButton#topNavigationButton:hover {
-                background: #232933;
+            QPushButton#topNavigationButton {
+                min-width: 0px;
+                min-height: 40px;
+                padding-left: 12px;
+                padding-right: 14px;
+
+                background-color: transparent;
+                color: #87919f;
+
+                border: 1px solid transparent;
+                border-radius: 7px;
+
+                font-size: 10px;
+                font-weight: 750;
+            }
+
+            QPushButton#topNavigationButton:hover {
+                background-color: #20262e;
+                color: #e8ebef;
+            }
+
+            QPushButton#topNavigationButton:checked {
+                background-color: #292440;
                 color: #ffffff;
-            }
-
-            QToolButton#topNavigationButton:checked {
-                background: #2a2542;
-                color: #ffffff;
-                border-bottom: 2px solid #806bff;
+                border: 1px solid #574a96;
+                font-weight: 850;
             }
 
             QLabel#navigationBadge {
-                background: #e74b5e;
+                background-color: #e24d61;
                 color: #ffffff;
+                border: none;
                 border-radius: 9px;
-                font-size: 10px;
-                font-weight: 800;
+                font-size: 9px;
+                font-weight: 900;
                 padding: 0px;
             }
 
-            QToolButton#settingsTopButton {
-                background: transparent;
-                border: 1px solid transparent;
-                border-radius: 9px;
+            /* ================================================
+               SETTINGS - ICON + TEXT
+               ================================================ */
+
+            QPushButton#settingsTopButton {
+                min-width: 0px;
+                min-height: 40px;
+                padding-left: 12px;
+                padding-right: 14px;
+
+                background-color: #1b2027;
+                color: #a7afbb;
+
+                border: 1px solid #303742;
+                border-radius: 8px;
+
+                font-size: 10px;
+                font-weight: 750;
             }
 
-            QToolButton#settingsTopButton:hover {
-                background: #252b36;
-                border-color: #353c49;
+            QPushButton#settingsTopButton:hover {
+                background-color: #252c35;
+                color: #ffffff;
+                border-color: #444d5a;
             }
+
+            QPushButton#settingsTopButton:pressed {
+                background-color: #2c3440;
+            }
+
+            /* ================================================
+               WORKSPACE
+               ================================================ */
 
             QStackedWidget {
-                background: #12151b;
+                background-color: #101319;
                 border: none;
+            }
+
+            QLabel#pageTransitionOverlay {
+                background-color: #101319;
+                border: none;
+            }
+
+            QToolTip {
+                background-color: #20262e;
+                color: #f0f2f5;
+                border: 1px solid #3a424e;
+                padding: 7px;
             }
             """
         )
 
 
 # ============================================================
-# Placeholder Page
+# Placeholder Page - compatibility helper
 # ============================================================
 
 def create_placeholder_page(
@@ -1160,3 +1630,12 @@ def create_placeholder_page(
     )
 
     return page
+
+
+__all__ = [
+    "AnimatedStackedWidget",
+    "GameSidebarButton",
+    "MainWindowUI",
+    "TopNavigationButton",
+    "create_placeholder_page",
+]

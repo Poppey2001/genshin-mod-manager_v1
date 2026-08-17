@@ -142,6 +142,11 @@ from app.widgets.library.library_filter_bar import (
     LibraryFilterBar,
 )
 
+from app.widgets.library.library_empty_state import (
+    LibraryEmptyState,
+    LibraryFilterEmptyState,
+)
+
 from app.widgets.library.library_gallery import (
     LibraryGalleryWidget,
 )
@@ -350,6 +355,24 @@ class LibraryPage(
                 parent=self
             )
         )
+
+        # ====================================================
+        # Empty Library
+        # ====================================================
+
+        self.empty_state = LibraryEmptyState(
+            parent=self
+        )
+
+        self.filter_empty_state = LibraryFilterEmptyState(
+            parent=self
+        )
+
+        self.workspace_state_stack = QStackedWidget(
+            self
+        )
+
+        self._library_scan_completed = False
 
         # ====================================================
         # Liste
@@ -712,8 +735,24 @@ class LibraryPage(
             stretch=1,
         )
 
+        self.workspace_state_stack.addWidget(
+            workspace
+        )
+
+        self.workspace_state_stack.addWidget(
+            self.empty_state
+        )
+
+        self.workspace_state_stack.addWidget(
+            self.filter_empty_state
+        )
+
+        self.workspace_state_stack.setCurrentWidget(
+            workspace
+        )
+
         layout.addWidget(
-            workspace,
+            self.workspace_state_stack,
             stretch=1,
         )
 
@@ -1033,6 +1072,19 @@ class LibraryPage(
             )
         )
 
+        # Empty Library -> Import
+        self.empty_state.import_archives_requested.connect(
+            self._choose_import_archives
+        )
+
+        self.empty_state.import_directory_requested.connect(
+            self._choose_import_directory
+        )
+
+        self.filter_empty_state.reset_requested.connect(
+            self.filter_bar.reset_filters
+        )
+
         # Filters
         self.filter_bar.filters_changed.connect(
             self._apply_mod_filters
@@ -1109,6 +1161,8 @@ class LibraryPage(
         _language: str | None = None,
     ) -> None:
         self._retranslate_view_buttons()
+        self.empty_state.retranslate_ui()
+        self.filter_empty_state.retranslate_ui()
         self._apply_mod_filters()
         self._refresh_selection_ui()
 
@@ -1548,6 +1602,10 @@ class LibraryPage(
         self._refresh_selection_ui()
 
         self._sync_gallery_operation_state()
+
+        self.empty_state.set_actions_enabled(
+            not running
+        )
 
     # ========================================================
     # Import Picker
@@ -2115,6 +2173,10 @@ class LibraryPage(
 
         self._sync_gallery_operation_state()
 
+        self.empty_state.set_actions_enabled(
+            not running
+        )
+
     def cancel_scan(
         self,
     ) -> None:
@@ -2248,6 +2310,8 @@ class LibraryPage(
             result.mods
         )
 
+        self._library_scan_completed = True
+
         self._apply_mod_filters()
         self.refresh_conflicts()
 
@@ -2328,6 +2392,92 @@ class LibraryPage(
         )
 
         self._refresh_selection_ui()
+
+        self._sync_library_empty_state(
+            total_mods=total_mods,
+            visible_mods=visible_mods,
+        )
+
+    # ========================================================
+    # Empty Library / Empty Filter Result
+    # ========================================================
+
+    def _sync_library_empty_state(
+        self,
+        *,
+        total_mods: int | None = None,
+        visible_mods: int | None = None,
+    ) -> None:
+        """
+        Drei klar getrennte Zustände:
+
+        1. total == 0
+           -> echte leere Library
+           -> Import / Mod-Ordner
+
+        2. total > 0 und visible == 0
+           -> Filter liefern keine Treffer
+           -> Filter zurücksetzen
+
+        3. visible > 0
+           -> normale List-/Gallery-Ansicht
+        """
+
+        if not self._library_scan_completed:
+            self.workspace_state_stack.setCurrentIndex(
+                0
+            )
+            return
+
+        if total_mods is None:
+            total_mods = len(
+                self._last_scanned_mods
+            )
+
+        total_mods = max(
+            0,
+            int(total_mods),
+        )
+
+        # Wirklich leere Bibliothek.
+        if total_mods == 0:
+            self.empty_state.set_actions_enabled(
+                not self.operation_state.is_running()
+            )
+
+            self.workspace_state_stack.setCurrentWidget(
+                self.empty_state
+            )
+            return
+
+        # Wenn die Methode ohne sichtbare Anzahl aufgerufen wird,
+        # bleibt bei vorhandenen Mods zunächst die normale Ansicht.
+        if visible_mods is None:
+            self.workspace_state_stack.setCurrentIndex(
+                0
+            )
+            return
+
+        visible_mods = max(
+            0,
+            int(visible_mods),
+        )
+
+        # Mods existieren, aber Filter treffen nichts.
+        if visible_mods == 0:
+            self.filter_empty_state.set_total_mods(
+                total_mods
+            )
+
+            self.workspace_state_stack.setCurrentWidget(
+                self.filter_empty_state
+            )
+            return
+
+        # Normalfall.
+        self.workspace_state_stack.setCurrentIndex(
+            0
+        )
 
     # ========================================================
     # State Sync
@@ -3006,6 +3156,12 @@ class LibraryPage(
 
         self._pending_gamebanana_imports.clear()
 
+        self._library_scan_completed = False
+
+        self.workspace_state_stack.setCurrentIndex(
+            0
+        )
+
         self._last_scanned_mods = ()
 
         self._conflict_report = (
@@ -3154,9 +3310,8 @@ class LibraryPage(
             .active_mods_directory
         )
 
-
     # ========================================================
-    # Public Profile API
+    # Profiles API
     # ========================================================
 
     def profile_mods(
@@ -3165,7 +3320,6 @@ class LibraryPage(
         ModInfo,
         ...,
     ]:
-        """Liefert den letzten vollständigen Library-Scan für Profile."""
         return tuple(
             self._last_scanned_mods
         )
@@ -3174,7 +3328,6 @@ class LibraryPage(
         self,
         path: Path,
     ) -> ModState:
-        """Liefert den aktuellen verwalteten Zustand eines Library-Mods."""
         return self.mod_manager.get_state(
             path
         )
@@ -3182,13 +3335,11 @@ class LibraryPage(
     def profile_mod_manager(
         self,
     ) -> ModManager:
-        """Gemeinsamer ModManager für sichere Profilwechsel."""
         return self.mod_manager
 
     def profile_operations_running(
         self,
     ) -> bool:
-        """Verhindert Profilwechsel während Scan/Import/Bulk."""
         return self.operation_state.is_running()
 
 __all__ = [

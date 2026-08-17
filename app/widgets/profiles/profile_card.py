@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -61,6 +62,17 @@ class ProfileCard(
         self.setProperty(
             "active",
             active,
+        )
+
+        # Profilkarten dürfen horizontal wachsen, aber niemals die
+        # komplette freie Höhe des QGridLayout übernehmen.
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+
+        self.setMinimumHeight(
+            176
         )
 
         self.name_label = QLabel(

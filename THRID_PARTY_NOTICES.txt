@@ -1,0 +1,56 @@
+XXMI Mod Manager
+Third-Party Notices
+===================
+
+
+Lucide Icons
+------------
+
+This application uses icons from the Lucide icon project.
+
+Copyright (c) 2026 Lucide Icons and Contributors.
+
+Lucide Icons are licensed under the ISC License.
+
+Some Lucide icons are derived from the Feather Icons project.
+Feather Icons are licensed under the MIT License.
+
+Copyright for Feather Icons:
+Copyright (c) 2013-present Cole Bemis.
+
+The complete license terms for Lucide Icons and applicable
+Feather-derived icons are included with this application in:
+
+    licenses/LUCIDE_LICENSE.txt
+
+Lucide project:
+https://lucide.dev/
+
+
+Usage in XXMI Mod Manager
+-------------------------
+
+Lucide icons may be used for interface elements including:
+
+- Library
+- GameBanana
+- Profiles
+- Conflicts
+- Settings
+
+The icons may have been renamed, resized, recolored, or otherwise
+adapted for integration into the XXMI Mod Manager user interface.
+
+No ownership of the original Lucide or Feather icon artwork is
+claimed by the XXMI Mod Manager project.
+
+
+XXMI Mod Manager
+----------------
+
+Application code, original artwork, branding, and other project
+assets remain subject to their respective copyright and license
+terms.
+
+Third-party components remain copyright of their respective
+authors and contributors.

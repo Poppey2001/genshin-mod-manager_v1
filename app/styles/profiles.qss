@@ -153,7 +153,7 @@ QLabel#profilesEmptyDescription {
    ============================================================ */
 
 QFrame#profileCard {
-    min-height: 164px;
+    min-height: 176px;
     background-color: #181d24;
     border: 1px solid #303641;
     border-left: 3px solid #454d59;

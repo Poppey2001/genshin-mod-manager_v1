@@ -210,16 +210,6 @@ QLabel#gameBananaResultId {
     font-weight: 750;
 }
 
-QLabel#gameBananaEmptyState,
-QLabel#gameBananaDetailsEmpty {
-    background-color: #14181e;
-    color: #7e8896;
-    border: 1px dashed #2e3540;
-    border-radius: 10px;
-    padding: 24px;
-    font-size: 10px;
-}
-
 QFrame#gameBananaPagination {
     background-color: #181d24;
     border: none;
@@ -453,4 +443,20 @@ QLabel#gameBananaLightboxCounter {
     color: #aab2be;
     font-size: 10px;
     font-weight: 750;
+}
+
+
+/* ============================================================
+   UNIFIED CONTENT STATES
+   ============================================================ */
+
+QWidget#gameBananaBrowseStatePanel,
+QWidget#gameBananaDetailsStatePanel {
+    background-color: transparent;
+    border: none;
+    min-width: 0px;
+}
+
+QWidget#gameBananaDetailsStatePanel {
+    min-height: 220px;
 }

@@ -30,6 +30,10 @@ from app.widgets.gamebanana import (
     GameBananaPreviewGallery,
     GameBananaResultCard,
 )
+
+from app.widgets.common.state_panel import (
+    StatePanel,
+)
 from app.workers.gamebanana_browse_worker import GameBananaBrowseWorker
 
 
@@ -92,7 +96,13 @@ class GameBananaPage(QWidget):
         self.results_scroll = QScrollArea(self)
         self.results_content = QWidget()
         self.results_layout = QVBoxLayout(self.results_content)
-        self.results_empty_label = QLabel(self)
+
+        # Gemeinsamer Browser-State:
+        # Loading / Empty / Error
+        self.browse_state_panel = StatePanel(self)
+
+        self._browse_state_mode = "idle"
+        self._browse_state_message = ""
 
         # Direct lookup
         self.direct_title_label = QLabel(self)
@@ -101,7 +111,15 @@ class GameBananaPage(QWidget):
 
         # Details
         self.details_title_label = QLabel(self)
-        self.details_empty_label = QLabel(self)
+
+        # Gemeinsamer Details-State:
+        # Empty / Loading / Error
+        self.details_state_panel = StatePanel(self)
+
+        self._details_state_mode = "empty"
+        self._details_state_message = ""
+        self._last_lookup_reference = None
+
         self.mod_frame = QFrame(self)
         self.mod_name_label = QLabel(self.mod_frame)
         self.mod_id_label = QLabel(self.mod_frame)
@@ -256,15 +274,22 @@ class GameBananaPage(QWidget):
         self.results_scroll.setWidget(self.results_content)
         layout.addWidget(self.results_scroll, stretch=1)
 
-        self.results_empty_label.setObjectName("gameBananaEmptyState")
-        self.results_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.results_empty_label.setWordWrap(True)
-        self.results_empty_label.hide()
-        layout.addWidget(self.results_empty_label, stretch=1)
+        self.browse_state_panel.setObjectName(
+            "gameBananaBrowseStatePanel"
+        )
+        self.browse_state_panel.hide()
+        layout.addWidget(
+            self.browse_state_panel,
+            stretch=1,
+        )
 
-        pagination = QFrame(panel)
-        pagination.setObjectName("gameBananaPagination")
-        pagination_layout = QHBoxLayout(pagination)
+        self.pagination_frame = QFrame(panel)
+        self.pagination_frame.setObjectName(
+            "gameBananaPagination"
+        )
+        pagination_layout = QHBoxLayout(
+            self.pagination_frame
+        )
         pagination_layout.setContentsMargins(10, 8, 10, 8)
         pagination_layout.setSpacing(8)
 
@@ -280,7 +305,9 @@ class GameBananaPage(QWidget):
         )
         pagination_layout.addWidget(self.previous_button, stretch=1)
         pagination_layout.addWidget(self.next_button, stretch=1)
-        layout.addWidget(pagination)
+        layout.addWidget(
+            self.pagination_frame
+        )
         return panel
 
     def _create_details_panel(self, parent: QWidget) -> QWidget:
@@ -323,11 +350,15 @@ class GameBananaPage(QWidget):
         self.details_title_label.setObjectName("gameBananaSectionTitle")
         layout.addWidget(self.details_title_label)
 
-        self.details_empty_label.setObjectName("gameBananaDetailsEmpty")
-        self.details_empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.details_empty_label.setWordWrap(True)
-        self.details_empty_label.setMinimumHeight(140)
-        layout.addWidget(self.details_empty_label)
+        self.details_state_panel.setObjectName(
+            "gameBananaDetailsStatePanel"
+        )
+        self.details_state_panel.setMinimumHeight(
+            220
+        )
+        layout.addWidget(
+            self.details_state_panel
+        )
 
         # Mod card
         self.mod_frame.setObjectName("gameBananaModCard")
@@ -438,6 +469,17 @@ class GameBananaPage(QWidget):
         self.controller.download_cancelled.connect(self._on_download_cancelled)
         self.controller.busy_changed.connect(self._on_busy_changed)
 
+        self.browse_state_panel.primary_requested.connect(
+            self._on_browse_state_primary
+        )
+
+        self.details_state_panel.primary_requested.connect(
+            self._retry_last_lookup
+        )
+
+        # Initiale Zustände.
+        self._show_details_empty_state()
+
     # ========================================================
     # Lazy first load
     # ========================================================
@@ -486,7 +528,8 @@ class GameBananaPage(QWidget):
         self.file_combobox.clear()
         self.preview_gallery.clear()
         self.mod_frame.hide()
-        self.details_empty_label.show()
+        self._last_lookup_reference = None
+        self._show_details_empty_state()
         self.reference_input.clear()
         self.search_input.clear()
         self.operation_frame.hide()
@@ -497,6 +540,8 @@ class GameBananaPage(QWidget):
         self._browse_query = ""
         self._last_browse_has_next = False
         self._clear_results()
+        self._browse_state_mode = "idle"
+        self._browse_state_message = ""
         self._update_game_label()
         self._sync_busy_state()
         QTimer.singleShot(0, self._load_latest)
@@ -541,12 +586,30 @@ class GameBananaPage(QWidget):
 
         game_id = str(self.config.selected_game)
         if game_id not in GAMEBANANA_GAME_IDS:
-            self.browse_status_label.setText(tr("gamebanana.status.browse_failed"))
-            QMessageBox.warning(
-                self,
-                tr("gamebanana.error.browse.title"),
-                tr("gamebanana.error.browse.unsupported_game", game=game_id),
+            self._clear_results()
+
+            self._browse_page = max(
+                1,
+                int(page),
             )
+            self._browse_query = query.strip()
+            self._last_browse_has_next = False
+
+            self._show_browse_error_state(
+                tr(
+                    "gamebanana.error.browse.unsupported_game",
+                    game=game_id,
+                ),
+                retry_available=False,
+            )
+
+            self.browse_status_label.setText(
+                tr(
+                    "gamebanana.status.browse_failed"
+                )
+            )
+
+            self._sync_busy_state()
             return
 
         worker = GameBananaBrowseWorker(game_id=game_id, page=page, query=query)
@@ -559,15 +622,9 @@ class GameBananaPage(QWidget):
         self._last_browse_has_next = False
 
         self._clear_results()
-        self.results_scroll.hide()
-        self.results_empty_label.setText(
-            tr(
-                "gamebanana.status.searching"
-                if self._browse_query
-                else "gamebanana.status.loading_latest"
-            )
-        )
-        self.results_empty_label.show()
+
+        self._show_browse_loading_state()
+
         self.browse_status_label.setText(
             tr("gamebanana.browse.search_mode")
             if self._browse_query
@@ -598,12 +655,11 @@ class GameBananaPage(QWidget):
             empty_key = "gamebanana.status.latest_empty"
 
         if count:
-            self.results_empty_label.hide()
-            self.results_scroll.show()
+            self._show_browse_content()
         else:
-            self.results_scroll.hide()
-            self.results_empty_label.setText(tr(empty_key))
-            self.results_empty_label.show()
+            self._show_browse_empty_state(
+                empty_key
+            )
 
         self.previous_button.setEnabled(
             not result.query and result.has_previous
@@ -615,16 +671,21 @@ class GameBananaPage(QWidget):
 
     def _on_browse_failed(self, message: str) -> None:
         self._browse_worker = None
-        self.results_scroll.hide()
-        self.results_empty_label.setText(tr("gamebanana.status.browse_failed"))
-        self.results_empty_label.show()
-        self.browse_status_label.setText(tr("gamebanana.status.browse_failed"))
-        self._sync_busy_state()
-        QMessageBox.warning(
-            self,
-            tr("gamebanana.error.browse.title"),
-            tr("gamebanana.error.browse.message"),
+
+        self._show_browse_error_state(
+            message
+            or tr(
+                "gamebanana.status.browse_failed"
+            )
         )
+
+        self.browse_status_label.setText(
+            tr(
+                "gamebanana.status.browse_failed"
+            )
+        )
+
+        self._sync_busy_state()
 
     def _on_browse_cancelled(self) -> None:
         self._browse_worker = None
@@ -669,10 +730,12 @@ class GameBananaPage(QWidget):
 
         self._current_mod = None
         self._current_game_id = None
+        self._last_lookup_reference = reference
         self.file_combobox.clear()
         self.preview_gallery.clear()
         self.mod_frame.hide()
-        self.details_empty_label.show()
+
+        self._show_details_loading_state()
 
         if not self.controller.lookup(reference):
             QMessageBox.information(
@@ -682,10 +745,14 @@ class GameBananaPage(QWidget):
             )
 
     def _on_lookup_started(self) -> None:
+        self._show_details_loading_state()
+
         self._show_operation_status(True)
         self.progress_bar.show()
         self.progress_bar.setRange(0, 0)
-        self._set_status("gamebanana.status.loading")
+        self._set_status(
+            "gamebanana.status.loading"
+        )
 
     def _on_mod_loaded(self, mod: GameBananaMod, game_id: str) -> None:
         self._current_mod = mod
@@ -721,9 +788,12 @@ class GameBananaPage(QWidget):
                     self.file_combobox.setCurrentIndex(index)
                     break
 
-        self.details_empty_label.hide()
-        self.mod_frame.show()
-        self._set_status("gamebanana.status.loaded", count=len(mod.files))
+        self._show_details_content()
+
+        self._set_status(
+            "gamebanana.status.loaded",
+            count=len(mod.files),
+        )
         self._show_operation_status(True)
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
@@ -732,15 +802,326 @@ class GameBananaPage(QWidget):
         self._sync_busy_state()
 
     def _on_lookup_failed(self, message: str) -> None:
-        self._set_status("gamebanana.status.lookup_failed")
+        self._show_details_error_state(
+            message
+            or tr(
+                "gamebanana.status.lookup_failed"
+            )
+        )
+
+        self._set_status(
+            "gamebanana.status.lookup_failed"
+        )
+
         self._show_operation_status(True)
         self.progress_bar.hide()
         self.cancel_button.hide()
-        QMessageBox.warning(
-            self,
-            tr("gamebanana.error.lookup.title"),
-            tr("gamebanana.error.lookup.message"),
+
+    # ========================================================
+    # Unified Browser States
+    # ========================================================
+
+    def _show_browse_content(
+        self,
+    ) -> None:
+        self._browse_state_mode = "content"
+        self._browse_state_message = ""
+
+        self.browse_state_panel.hide()
+        self.results_scroll.show()
+        self.pagination_frame.show()
+
+    def _show_browse_loading_state(
+        self,
+    ) -> None:
+        self._browse_state_mode = "loading"
+        self._browse_state_message = ""
+
+        self.results_scroll.hide()
+        self.pagination_frame.hide()
+
+        title_key = (
+            "gamebanana.status.searching"
+            if self._browse_query
+            else "gamebanana.status.loading_latest"
         )
+
+        self.browse_state_panel.show_loading(
+            title=tr(
+                title_key
+            ),
+            description=tr(
+                "gamebanana.search.hint"
+            ),
+        )
+
+        self.browse_state_panel.show()
+
+    def _show_browse_empty_state(
+        self,
+        empty_key: str,
+    ) -> None:
+        self._browse_state_mode = (
+            "empty_search"
+            if self._browse_query
+            else "empty_latest"
+        )
+
+        self._browse_state_message = ""
+
+        self.results_scroll.hide()
+        self.pagination_frame.hide()
+
+        if self._browse_query:
+            description = (
+                self._browse_query
+            )
+
+            primary_text = tr(
+                "gamebanana.latest"
+            )
+        else:
+            description = tr(
+                "gamebanana.browse.page",
+                page=self._browse_page,
+            )
+
+            primary_text = (
+                tr(
+                    "gamebanana.previous"
+                )
+                if self._browse_page > 1
+                else tr(
+                    "gamebanana.latest"
+                )
+            )
+
+        self.browse_state_panel.show_empty(
+            title=tr(
+                empty_key
+            ),
+            description=description,
+            primary_text=primary_text,
+        )
+
+        self.browse_state_panel.show()
+
+    def _show_browse_error_state(
+        self,
+        message: str,
+        *,
+        retry_available: bool = True,
+    ) -> None:
+        self._browse_state_mode = (
+            "error"
+            if retry_available
+            else "unsupported"
+        )
+
+        self._browse_state_message = str(
+            message
+        ).strip()
+
+        self.results_scroll.hide()
+        self.pagination_frame.hide()
+
+        primary_text = ""
+
+        if retry_available:
+            primary_text = (
+                tr(
+                    "gamebanana.search.button"
+                )
+                if self._browse_query
+                else tr(
+                    "gamebanana.latest"
+                )
+            )
+
+        self.browse_state_panel.show_error(
+            title=tr(
+                "gamebanana.error.browse.title"
+            ),
+            description=(
+                self._browse_state_message
+                or tr(
+                    "gamebanana.status.browse_failed"
+                )
+            ),
+            primary_text=primary_text,
+        )
+
+        self.browse_state_panel.show()
+
+    def _on_browse_state_primary(
+        self,
+    ) -> None:
+        mode = self._browse_state_mode
+
+        if mode == "empty_search":
+            self._load_latest()
+            return
+
+        if mode == "empty_latest":
+            if self._browse_page > 1:
+                self._load_previous_page()
+            else:
+                self._load_latest()
+            return
+
+        if mode == "error":
+            self._start_browse(
+                page=max(
+                    1,
+                    self._browse_page,
+                ),
+                query=self._browse_query,
+            )
+
+    # ========================================================
+    # Unified Details States
+    # ========================================================
+
+    def _show_details_content(
+        self,
+    ) -> None:
+        self._details_state_mode = "content"
+        self._details_state_message = ""
+
+        self.details_state_panel.hide()
+        self.mod_frame.show()
+
+    def _show_details_empty_state(
+        self,
+    ) -> None:
+        self._details_state_mode = "empty"
+        self._details_state_message = ""
+
+        self.mod_frame.hide()
+
+        self.details_state_panel.show_empty(
+            title=tr(
+                "gamebanana.details.empty"
+            ),
+            description=tr(
+                "gamebanana.reference.placeholder"
+            ),
+        )
+
+        self.details_state_panel.show()
+
+    def _show_details_loading_state(
+        self,
+    ) -> None:
+        self._details_state_mode = "loading"
+        self._details_state_message = ""
+
+        self.mod_frame.hide()
+
+        self.details_state_panel.show_loading(
+            title=tr(
+                "gamebanana.status.loading"
+            ),
+            description=tr(
+                "gamebanana.details.title"
+            ),
+        )
+
+        self.details_state_panel.show()
+
+    def _show_details_error_state(
+        self,
+        message: str,
+    ) -> None:
+        self._details_state_mode = "error"
+        self._details_state_message = str(
+            message
+        ).strip()
+
+        self.mod_frame.hide()
+
+        self.details_state_panel.show_error(
+            title=tr(
+                "gamebanana.error.lookup.title"
+            ),
+            description=(
+                self._details_state_message
+                or tr(
+                    "gamebanana.status.lookup_failed"
+                )
+            ),
+            primary_text=tr(
+                "gamebanana.lookup"
+            ),
+        )
+
+        self.details_state_panel.show()
+
+    def _retry_last_lookup(
+        self,
+    ) -> None:
+        if self._details_state_mode != "error":
+            return
+
+        reference = (
+            self._last_lookup_reference
+        )
+
+        if reference is None:
+            return
+
+        self._lookup_reference(
+            reference
+        )
+
+    def _refresh_unified_state_texts(
+        self,
+    ) -> None:
+        """
+        Aktualisiert sichtbare States beim Sprachwechsel.
+        """
+
+        browse_mode = self._browse_state_mode
+
+        if browse_mode == "loading":
+            self._show_browse_loading_state()
+
+        elif browse_mode == "empty_search":
+            self._show_browse_empty_state(
+                "gamebanana.status.search_empty"
+            )
+
+        elif browse_mode == "empty_latest":
+            self._show_browse_empty_state(
+                "gamebanana.status.latest_empty"
+            )
+
+        elif browse_mode in (
+            "error",
+            "unsupported",
+        ):
+            self._show_browse_error_state(
+                self._browse_state_message,
+                retry_available=(
+                    browse_mode
+                    == "error"
+                ),
+            )
+
+        details_mode = (
+            self._details_state_mode
+        )
+
+        if details_mode == "empty":
+            self._show_details_empty_state()
+
+        elif details_mode == "loading":
+            self._show_details_loading_state()
+
+        elif details_mode == "error":
+            self._show_details_error_state(
+                self._details_state_message
+            )
 
     # ========================================================
     # File + download
@@ -919,7 +1300,6 @@ class GameBananaPage(QWidget):
         self.reference_input.setPlaceholderText(tr("gamebanana.reference.placeholder"))
         self.lookup_button.setText(tr("gamebanana.lookup"))
         self.details_title_label.setText(tr("gamebanana.details.title"))
-        self.details_empty_label.setText(tr("gamebanana.details.empty"))
         self.file_label.setText(tr("gamebanana.files"))
         self.profile_button.setText(tr("gamebanana.open_page"))
         self.install_button.setText(tr("gamebanana.download_install"))
@@ -966,6 +1346,7 @@ class GameBananaPage(QWidget):
 
             self.file_combobox.blockSignals(False)
 
+        self._refresh_unified_state_texts()
         self._sync_busy_state()
 
     def shutdown(self) -> None:
