@@ -1456,6 +1456,32 @@ class ConflictsPage(
                 color: #e7e9ef;
             }
 
+            /*
+               Windows übernimmt für QLabel sonst teilweise die
+               native schwarze Textfarbe. Die Header-Texte bekommen
+               deshalb explizite Farben statt Palette-Vererbung.
+            */
+
+            QWidget#conflictsPage QLabel#pageTitle {
+                background: transparent;
+                color: #f4f6f8;
+                font-size: 26px;
+                font-weight: 800;
+            }
+
+            QWidget#conflictsPage QLabel#pageDescription {
+                background: transparent;
+                color: #929aa7;
+                font-size: 13px;
+            }
+
+            QWidget#conflictsPage QLabel#conflictCount {
+                background: transparent;
+                color: #c7cdd6;
+                font-size: 12px;
+                font-weight: 650;
+            }
+
             QStackedWidget#conflictsContentStack,
             QWidget#conflictsContent,
             QScrollArea#conflictsScrollArea,
