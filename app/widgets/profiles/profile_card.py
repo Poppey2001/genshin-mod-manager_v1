@@ -64,13 +64,19 @@ class ProfileCard(
             active,
         )
 
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Minimum,
+        # Kompakte Karten statt mit dem Grid mitzuwachsen.
+        self.setFixedWidth(
+            340
         )
-
         self.setMinimumHeight(
-            176
+            184
+        )
+        self.setMaximumHeight(
+            214
+        )
+        self.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Maximum,
         )
 
         self.name_label = QLabel(
@@ -78,9 +84,6 @@ class ProfileCard(
         )
         self.name_label.setObjectName(
             "profileCardName"
-        )
-        self.name_label.setWordWrap(
-            True
         )
 
         self.active_badge = QLabel(

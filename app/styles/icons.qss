@@ -1,0 +1,157 @@
+/* ============================================================
+   ICON MANAGER PAGE
+   ============================================================ */
+
+QWidget#iconsPage {
+    background-color: #101319;
+    color: #e7e9ef;
+}
+
+QWidget#iconsPage QLabel {
+    background-color: transparent;
+    color: #d9dee8;
+}
+
+QWidget#iconsPage QLabel#pageTitle {
+    color: #f5f6f8;
+    font-size: 27px;
+    font-weight: 850;
+}
+
+QWidget#iconsPage QLabel#pageDescription {
+    color: #838d9b;
+    font-size: 12px;
+}
+
+QPushButton#iconsHeaderSecondaryButton,
+QPushButton#iconsHeaderDangerButton {
+    min-height: 38px;
+    padding-left: 14px;
+    padding-right: 14px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QPushButton#iconsHeaderSecondaryButton {
+    background-color: #20262e;
+    color: #ccd2da;
+    border: 1px solid #303843;
+}
+
+QPushButton#iconsHeaderSecondaryButton:hover {
+    background-color: #29313a;
+    color: #ffffff;
+    border-color: #424c59;
+}
+
+QPushButton#iconsHeaderDangerButton {
+    background-color: #332026;
+    color: #ee929c;
+    border: 1px solid #5a3039;
+}
+
+QPushButton#iconsHeaderDangerButton:hover {
+    background-color: #47262e;
+    color: #ffadb6;
+    border-color: #733b46;
+}
+
+QScrollArea#iconsScrollArea,
+QWidget#iconsScrollContent,
+QWidget#iconsCardsContainer {
+    background-color: #101319;
+    border: none;
+}
+
+QFrame#iconsSection {
+    background-color: #14181e;
+    border: 1px solid #282e37;
+    border-radius: 12px;
+}
+
+QLabel#iconsSectionTitle {
+    color: #f0f2f5;
+    font-size: 15px;
+    font-weight: 850;
+}
+
+QFrame#iconManagerCard {
+    background-color: #181d24;
+    border: 1px solid #303641;
+    border-radius: 11px;
+}
+
+QFrame#iconManagerCard:hover {
+    background-color: #1c222a;
+    border-color: #4a5360;
+}
+
+QLabel#iconManagerPreview {
+    background-color: #101419;
+    border: 1px solid #303742;
+    border-radius: 11px;
+    padding: 5px;
+}
+
+QLabel#iconManagerCardTitle {
+    color: #f3f5f7;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+QLabel#iconManagerCardStatus {
+    color: #7f8997;
+    font-size: 9px;
+    font-weight: 700;
+}
+
+QLabel#iconManagerCardStatus[custom="true"] {
+    color: #b9adff;
+}
+
+QPushButton#iconManagerPrimaryButton,
+QPushButton#iconManagerSecondaryButton {
+    min-height: 31px;
+    padding-left: 11px;
+    padding-right: 11px;
+    border-radius: 7px;
+    font-size: 9px;
+    font-weight: 800;
+}
+
+QPushButton#iconManagerPrimaryButton {
+    background-color: #6651d7;
+    color: #ffffff;
+    border: 1px solid #7b66eb;
+}
+
+QPushButton#iconManagerPrimaryButton:hover {
+    background-color: #7560ea;
+    border-color: #9180f5;
+}
+
+QPushButton#iconManagerSecondaryButton {
+    background-color: #20262e;
+    color: #ccd2da;
+    border: 1px solid #303843;
+}
+
+QPushButton#iconManagerSecondaryButton:hover {
+    background-color: #29313a;
+    color: #ffffff;
+    border-color: #424c59;
+}
+
+QPushButton#iconManagerSecondaryButton:disabled {
+    background-color: #171c22;
+    color: #56606c;
+    border-color: #252c34;
+}
+
+QToolTip {
+    background-color: #1d222a;
+    color: #eef1f5;
+    border: 1px solid #3a424d;
+    padding: 6px;
+}

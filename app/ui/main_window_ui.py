@@ -46,8 +46,9 @@ from app.i18n import (
     translation_manager,
 )
 
-from app.platform_support import (
-    resource_path,
+from app.services.icon_manager import (
+    resolve_game_icon_path,
+    resolve_navigation_icon_path,
 )
 
 from app.version import (
@@ -56,52 +57,15 @@ from app.version import (
 
 
 # ============================================================
-# Game Icons
+# Icon fallbacks
 # ============================================================
-
-GAME_ICON_FILES = {
-    "genshin-impact": "genshin-impact.png",
-    "honkai-star-rail": "honkai-star-rail.png",
-    "zenless-zone-zero": "zenless-zone-zero.png",
-    "wuthering-waves": "wuthering-waves.png",
-    "honkai-impact-3rd": "honkai-impact-3rd.png",
-    "arknights-endfield": "arknights-endfield.png",
-}
-
-
-# ============================================================
-# Top Navigation Icons
-#
-# Hier kannst du später die Icons einfach austauschen.
-#
-# Lege eigene Icons optional hier ab:
-#
-#   assets/icons/navigation/library.svg
-#   assets/icons/navigation/gamebanana.svg
-#   assets/icons/navigation/profiles.svg
-#   assets/icons/navigation/conflicts.svg
-#   assets/icons/navigation/settings.svg
-#
-# PNG funktioniert ebenfalls.
-#
-# Wenn eine Datei fehlt, wird automatisch ein passendes
-# Qt-Standardicon verwendet.
-# ============================================================
-
-TOP_NAV_ICON_FILES = {
-    "library": "library.svg",
-    "gamebanana": "gamebanana.svg",
-    "profiles": "profiles.svg",
-    "conflicts": "conflicts.svg",
-    "settings": "settings.svg",
-}
-
 
 TOP_NAV_FALLBACK_ICONS = {
     "library": QStyle.StandardPixmap.SP_DirHomeIcon,
     "gamebanana": QStyle.StandardPixmap.SP_DriveNetIcon,
     "profiles": QStyle.StandardPixmap.SP_FileDialogInfoView,
     "conflicts": QStyle.StandardPixmap.SP_MessageBoxWarning,
+    "icons": QStyle.StandardPixmap.SP_FileDialogContentsView,
     "settings": QStyle.StandardPixmap.SP_FileDialogDetailedView,
 }
 
@@ -169,36 +133,15 @@ def game_importer_name(
 def load_game_icon(
     game_id: str,
 ) -> QIcon:
-    """
-    Lädt ausschließlich das echte Spiel-Icon.
-
-    Es gibt bewusst KEIN generisches Qt-Fallback-Icon mehr.
-    Wenn eine Bilddatei fehlt, bleibt der Button ohne Icon.
-    """
-
-    filename = GAME_ICON_FILES.get(
+    icon_path = resolve_game_icon_path(
         game_id
     )
 
-    if not filename:
-        return QIcon()
-
-    icon_path = resource_path(
-        "assets",
-        "icons",
-        "games",
-        filename,
-    )
-
-    if not Path(
-        icon_path
-    ).is_file():
+    if icon_path is None:
         return QIcon()
 
     return QIcon(
-        str(
-            icon_path
-        )
+        str(icon_path)
     )
 
 
@@ -206,44 +149,24 @@ def load_top_navigation_icon(
     icon_id: str,
     widget: QWidget,
 ) -> QIcon:
-    """
-    Lädt bevorzugt ein eigenes Navigation-Icon.
-
-    Falls keine Datei vorhanden ist, verwendet die UI
-    automatisch ein Qt-Standardicon.
-    """
-
-    filename = TOP_NAV_ICON_FILES.get(
+    icon_path = resolve_navigation_icon_path(
         icon_id
     )
 
-    if filename:
-        icon_path = resource_path(
-            "assets",
-            "icons",
-            "navigation",
-            filename,
+    if icon_path is not None:
+        icon = QIcon(
+            str(icon_path)
         )
-
-        if Path(
-            icon_path
-        ).is_file():
-            return QIcon(
-                str(
-                    icon_path
-                )
-            )
+        if not icon.isNull():
+            return icon
 
     fallback = TOP_NAV_FALLBACK_ICONS.get(
         icon_id
     )
 
     if fallback is not None:
-        return (
-            widget.style()
-            .standardIcon(
-                fallback
-            )
+        return widget.style().standardIcon(
+            fallback
         )
 
     return QIcon()
@@ -628,6 +551,16 @@ class GameSidebarButton(
             text
         )
 
+    def refresh_icon(
+        self,
+    ) -> None:
+        self.setIcon(
+            load_game_icon(
+                self.game_id
+            )
+        )
+
+
 
 # ============================================================
 # Navigation Button + Conflict Badge
@@ -651,8 +584,6 @@ class TopNavigationButton(
         )
 
         self.page_id = page_id
-        self._full_text = ""
-        self._icon_only = False
 
         self.setObjectName(
             "topNavigationButton"
@@ -704,58 +635,6 @@ class TopNavigationButton(
         )
 
         self.badge.hide()
-
-    def set_full_text(
-        self,
-        text: str,
-    ) -> None:
-        self._full_text = str(text)
-
-        self.setToolTip(
-            self._full_text
-        )
-
-        if not self._icon_only:
-            self.setText(
-                self._full_text
-            )
-
-    def set_icon_only(
-        self,
-        enabled: bool,
-    ) -> None:
-        enabled = bool(enabled)
-
-        if enabled == self._icon_only:
-            return
-
-        self._icon_only = enabled
-
-        if enabled:
-            self.setText("")
-            self.setFixedWidth(46)
-        else:
-            self.setMinimumWidth(0)
-            self.setMaximumWidth(16777215)
-            self.setText(
-                self._full_text
-            )
-
-        self._position_badge()
-
-    def set_compact_padding(
-        self,
-        compact: bool,
-    ) -> None:
-        self.setProperty(
-            "compact",
-            bool(compact),
-        )
-
-        style = self.style()
-        style.unpolish(self)
-        style.polish(self)
-        self.update()
 
     def set_badge_count(
         self,
@@ -835,6 +714,7 @@ class MainWindowUI(
     PAGE_GAMEBANANA = "gamebanana"
     PAGE_PROFILES = "profiles"
     PAGE_CONFLICTS = "conflicts"
+    PAGE_ICONS = "icons"
 
     def __init__(
         self,
@@ -890,14 +770,6 @@ class MainWindowUI(
 
         self.settings_button = QPushButton()
 
-        self._sidebar: QFrame | None = None
-        self._top_bar: QFrame | None = None
-        self._top_bar_layout: QHBoxLayout | None = None
-        self._current_game_card: QFrame | None = None
-
-        self._settings_full_text = ""
-        self._responsive_mode = ""
-
         self._build_ui()
 
         translation_manager.language_changed.connect(
@@ -912,10 +784,6 @@ class MainWindowUI(
 
         self.set_active_page(
             self.PAGE_LIBRARY
-        )
-
-        self._apply_responsive_layout(
-            force=True
         )
 
     # ========================================================
@@ -965,8 +833,6 @@ class MainWindowUI(
         sidebar.setObjectName(
             "gameSidebar"
         )
-
-        self._sidebar = sidebar
 
         sidebar.setFixedWidth(
             92
@@ -1128,8 +994,6 @@ class MainWindowUI(
             "topBar"
         )
 
-        self._top_bar = top_bar
-
         layout = QHBoxLayout(
             top_bar
         )
@@ -1145,8 +1009,6 @@ class MainWindowUI(
             12
         )
 
-        self._top_bar_layout = layout
-
         # ----------------------------------------------------
         # Current Game
         # ----------------------------------------------------
@@ -1158,8 +1020,6 @@ class MainWindowUI(
         game_info.setObjectName(
             "currentGameCard"
         )
-
-        self._current_game_card = game_info
 
         game_info.setMinimumWidth(
             190
@@ -1236,6 +1096,7 @@ class MainWindowUI(
             self.PAGE_GAMEBANANA,
             self.PAGE_PROFILES,
             self.PAGE_CONFLICTS,
+            self.PAGE_ICONS,
         ):
             button = TopNavigationButton(
                 page_id=page_id,
@@ -1385,6 +1246,31 @@ class MainWindowUI(
             )
 
     # ========================================================
+    # Runtime icon refresh
+    # ========================================================
+
+    def refresh_icons(
+        self,
+    ) -> None:
+        for button in self.game_buttons.values():
+            button.refresh_icon()
+
+        for page_id, button in self.navigation_buttons.items():
+            button.setIcon(
+                load_top_navigation_icon(
+                    page_id,
+                    button,
+                )
+            )
+
+        self.settings_button.setIcon(
+            load_top_navigation_icon(
+                "settings",
+                self.settings_button,
+            )
+        )
+
+    # ========================================================
     # Translation
     # ========================================================
 
@@ -1419,6 +1305,9 @@ class MainWindowUI(
             self.PAGE_CONFLICTS: tr(
                 "navigation.conflicts"
             ),
+            self.PAGE_ICONS: tr(
+                "navigation.icons"
+            ),
         }
 
         for page_id, text in labels.items():
@@ -1427,165 +1316,24 @@ class MainWindowUI(
             )
 
             if button is not None:
-                button.set_full_text(
+                button.setText(
                     text
                 )
 
-        self._settings_full_text = tr(
-            "navigation.settings"
-        )
-
         self.settings_button.setText(
-            self._settings_full_text
+            tr(
+                "navigation.settings"
+            )
         )
 
         self.settings_button.setToolTip(
-            self._settings_full_text
+            tr(
+                "navigation.settings"
+            )
         )
 
         for button in self.game_buttons.values():
             button.refresh_tooltip()
-
-        self._apply_responsive_layout(
-            force=True
-        )
-
-    # ========================================================
-    # Responsive Layout
-    # ========================================================
-
-    def resizeEvent(
-        self,
-        event: QResizeEvent,
-    ) -> None:
-        super().resizeEvent(
-            event
-        )
-
-        self._apply_responsive_layout()
-
-    def _apply_responsive_layout(
-        self,
-        *,
-        force: bool = False,
-    ) -> None:
-        width = self.width()
-
-        if width < 1040:
-            mode = "tight"
-        elif width < 1280:
-            mode = "compact"
-        else:
-            mode = "roomy"
-
-        if (
-            not force
-            and mode == self._responsive_mode
-        ):
-            return
-
-        self._responsive_mode = mode
-
-        sidebar = self._sidebar
-        top_layout = self._top_bar_layout
-        game_card = self._current_game_card
-
-        if mode == "roomy":
-            if sidebar is not None:
-                sidebar.setFixedWidth(92)
-
-            if top_layout is not None:
-                top_layout.setContentsMargins(
-                    22,
-                    10,
-                    16,
-                    10,
-                )
-                top_layout.setSpacing(12)
-
-            if game_card is not None:
-                game_card.show()
-                game_card.setMinimumWidth(190)
-                game_card.setMaximumWidth(290)
-
-            self.importer_label.show()
-
-            for button in self.navigation_buttons.values():
-                button.set_icon_only(False)
-                button.set_compact_padding(False)
-
-            self.settings_button.setText(
-                self._settings_full_text
-            )
-            self.settings_button.setFixedWidth(
-                0
-            )
-            self.settings_button.setMinimumWidth(
-                0
-            )
-            self.settings_button.setMaximumWidth(
-                16777215
-            )
-
-        elif mode == "compact":
-            if sidebar is not None:
-                sidebar.setFixedWidth(84)
-
-            if top_layout is not None:
-                top_layout.setContentsMargins(
-                    14,
-                    10,
-                    12,
-                    10,
-                )
-                top_layout.setSpacing(7)
-
-            if game_card is not None:
-                game_card.show()
-                game_card.setMinimumWidth(150)
-                game_card.setMaximumWidth(185)
-
-            self.importer_label.hide()
-
-            for button in self.navigation_buttons.values():
-                button.set_icon_only(False)
-                button.set_compact_padding(True)
-
-            self.settings_button.setText(
-                self._settings_full_text
-            )
-            self.settings_button.setMinimumWidth(
-                0
-            )
-            self.settings_button.setMaximumWidth(
-                16777215
-            )
-
-        else:
-            if sidebar is not None:
-                sidebar.setFixedWidth(78)
-
-            if top_layout is not None:
-                top_layout.setContentsMargins(
-                    10,
-                    10,
-                    10,
-                    10,
-                )
-                top_layout.setSpacing(5)
-
-            # Bei wirklich kleinen Fenstern verschwindet nur
-            # die redundante Game-Infokarte. Das aktive Spiel
-            # bleibt links über sein ausgewähltes Icon sichtbar.
-            if game_card is not None:
-                game_card.hide()
-
-            for button in self.navigation_buttons.values():
-                button.set_icon_only(True)
-                button.set_compact_padding(True)
-
-            self.settings_button.setText("")
-            self.settings_button.setFixedWidth(46)
 
     # ========================================================
     # Styles
@@ -1694,8 +1442,8 @@ class MainWindowUI(
             QPushButton#topNavigationButton {
                 min-width: 0px;
                 min-height: 40px;
-                padding-left: 12px;
-                padding-right: 14px;
+                padding-left: 10px;
+                padding-right: 11px;
 
                 background-color: transparent;
                 color: #87919f;
@@ -1705,11 +1453,6 @@ class MainWindowUI(
 
                 font-size: 10px;
                 font-weight: 750;
-            }
-
-            QPushButton#topNavigationButton[compact="true"] {
-                padding-left: 9px;
-                padding-right: 9px;
             }
 
             QPushButton#topNavigationButton:hover {
@@ -1741,8 +1484,8 @@ class MainWindowUI(
             QPushButton#settingsTopButton {
                 min-width: 0px;
                 min-height: 40px;
-                padding-left: 12px;
-                padding-right: 14px;
+                padding-left: 10px;
+                padding-right: 11px;
 
                 background-color: #1b2027;
                 color: #a7afbb;

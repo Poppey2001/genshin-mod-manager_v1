@@ -34,6 +34,12 @@ COMPONENTS = (
         "target": "styles/conflicts.qss",
     },
     {
+        "id": "qss-icons",
+        "kind": "qss",
+        "source": "app/styles/icons.qss",
+        "target": "styles/icons.qss",
+    },
+    {
         "id": "qss-update-agent",
         "kind": "qss",
         "source": "updater/styles/update_agent.qss",

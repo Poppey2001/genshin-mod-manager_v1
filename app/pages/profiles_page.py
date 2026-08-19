@@ -80,6 +80,10 @@ class ProfilesPage(
         bool
     )
 
+    CARD_WIDTH = 340
+    CARD_GAP = 12
+    MAX_COLUMNS = 6
+
     def __init__(
         self,
         *,
@@ -521,10 +525,14 @@ class ProfilesPage(
             12,
         )
         self.cards_grid.setHorizontalSpacing(
-            12
+            self.CARD_GAP
         )
         self.cards_grid.setVerticalSpacing(
-            12
+            self.CARD_GAP
+        )
+        self.cards_grid.setAlignment(
+            Qt.AlignmentFlag.AlignTop
+            | Qt.AlignmentFlag.AlignLeft
         )
 
         self.scroll_area.setWidget(
@@ -1237,15 +1245,23 @@ class ProfilesPage(
 
         width = max(
             self.scroll_area.viewport().width(),
-            1,
+            self.CARD_WIDTH,
         )
 
-        if width >= 1280:
-            columns = 3
-        elif width >= 760:
-            columns = 2
-        else:
-            columns = 1
+        columns = max(
+            1,
+            min(
+                self.MAX_COLUMNS,
+                (
+                    width
+                    + self.CARD_GAP
+                )
+                // (
+                    self.CARD_WIDTH
+                    + self.CARD_GAP
+                ),
+            ),
+        )
 
         if columns == self._current_columns:
             return
@@ -1265,14 +1281,18 @@ class ProfilesPage(
                 card,
                 row,
                 column,
+                alignment=(
+                    Qt.AlignmentFlag.AlignTop
+                    | Qt.AlignmentFlag.AlignLeft
+                ),
             )
 
         for column in range(
-            3
+            self.MAX_COLUMNS
         ):
             self.cards_grid.setColumnStretch(
                 column,
-                1 if column < columns else 0,
+                0,
             )
 
         self._current_columns = columns

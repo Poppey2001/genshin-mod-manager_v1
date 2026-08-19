@@ -15,9 +15,11 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QCloseEvent,
     QDesktopServices,
+    QIcon,
 )
 
 from PySide6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QMessageBox,
 )
@@ -47,12 +49,20 @@ from app.pages.library_page import (
     LibraryPage,
 )
 
+from app.pages.icons_page import (
+    IconsPage,
+)
+
 from app.pages.profiles_page import (
     ProfilesPage,
 )
 
 from app.services.profile_service import (
     ProfileService,
+)
+
+from app.services.icon_manager import (
+    resolve_application_icon_path,
 )
 
 from app.services.tool_paths import (
@@ -235,6 +245,12 @@ class MainWindow(
                 parent=self,
             )
         )
+
+        self.icons_page = (
+            IconsPage(
+                parent=self,
+            )
+        )
         # ====================================================
         # Seiten in den sichtbaren Stack
         #
@@ -242,6 +258,7 @@ class MainWindow(
         # 1 = GameBanana
         # 2 = Profiles
         # 3 = Conflicts
+        # 4 = Icons
         # ====================================================
 
         self.workspace_stack.addWidget(
@@ -258,6 +275,10 @@ class MainWindow(
 
         self.workspace_stack.addWidget(
             self.conflicts_page
+        )
+
+        self.workspace_stack.addWidget(
+            self.icons_page
         )
 
         # ====================================================
@@ -298,6 +319,7 @@ class MainWindow(
         )
 
         self.retranslate_ui()
+        self._refresh_custom_icons()
 
     # ========================================================
     # Interne Signale
@@ -328,6 +350,14 @@ class MainWindow(
 
         self.profiles_page.profile_activated.connect(
             self._on_profile_activated
+        )
+
+        # ----------------------------------------------------
+        # Icon Manager -> UI Shell / App Icon
+        # ----------------------------------------------------
+
+        self.icons_page.icons_changed.connect(
+            self._refresh_custom_icons
         )
 
         # ----------------------------------------------------
@@ -421,6 +451,7 @@ class MainWindow(
         gamebanana
         profiles
         conflicts
+        icons
         """
 
         if (
@@ -457,6 +488,12 @@ class MainWindow(
             == self.ui.PAGE_CONFLICTS
         ):
             self._show_conflicts()
+
+        elif (
+            page_id
+            == self.ui.PAGE_ICONS
+        ):
+            self._show_icons()
 
         else:
             logger.warning(
@@ -547,6 +584,49 @@ class MainWindow(
         self.ui.set_active_page(
             self.ui.PAGE_CONFLICTS
         )
+
+    # ========================================================
+    # Icons
+    # ========================================================
+
+    def _show_icons(
+        self,
+        *_args,
+    ) -> None:
+        self.icons_page.refresh()
+
+        self.workspace_stack.setCurrentWidget(
+            self.icons_page
+        )
+
+        self.ui.set_active_page(
+            self.ui.PAGE_ICONS
+        )
+
+    def _refresh_custom_icons(
+        self,
+    ) -> None:
+        self.ui.refresh_icons()
+
+        icon_path = resolve_application_icon_path()
+        if icon_path is None:
+            return
+
+        icon = QIcon(
+            str(icon_path)
+        )
+        if icon.isNull():
+            return
+
+        self.setWindowIcon(
+            icon
+        )
+
+        application = QApplication.instance()
+        if application is not None:
+            application.setWindowIcon(
+                icon
+            )
 
     # ========================================================
     # Game Change
