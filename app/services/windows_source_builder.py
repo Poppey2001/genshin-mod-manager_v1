@@ -22,7 +22,11 @@ from urllib.error import (
 
 from urllib.request import (
     Request,
-    urlopen,
+)
+
+from app.services.network_tls import (
+    certificate_verification_reason,
+    verified_urlopen,
 )
 
 from packaging.version import (
@@ -685,7 +689,7 @@ def build_windows_installer_from_source(
     received = 0
 
     try:
-        with urlopen(
+        with verified_urlopen(
             request,
             timeout=60,
         ) as response:
@@ -756,6 +760,20 @@ def build_windows_installer_from_source(
         partial.unlink(
             missing_ok=True
         )
+
+        certificate_reason = (
+            certificate_verification_reason(
+                error
+            )
+        )
+
+        if certificate_reason is not None:
+            raise WindowsSourceBuildError(
+                tr(
+                    "updates.error.tls.certificate",
+                    reason=certificate_reason,
+                )
+            ) from error
 
         reason = getattr(
             error,

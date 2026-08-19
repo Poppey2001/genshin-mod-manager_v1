@@ -290,6 +290,19 @@ else {
     )
 }
 
+Write-Host "Installing updater TLS dependencies..."
+
+python -m pip install `
+    "truststore>=0.10.4,<0.11" `
+    "certifi>=2026.7.22"
+
+if ($LASTEXITCODE -ne 0) {
+    throw (
+        "Updater TLS dependency installation failed with exit code " +
+        "$LASTEXITCODE"
+    )
+}
+
 Write-Host "Installing PyInstaller build dependency..."
 
 python -m pip install `

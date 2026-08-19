@@ -59,6 +59,11 @@ datas = collect_data_files(
     "app"
 )
 
+# certifi is a fallback CA bundle when native truststore is unavailable.
+datas += collect_data_files(
+    "certifi"
+)
+
 assets_dir = (
     project_root
     / "assets"
@@ -95,6 +100,14 @@ for root_file in (
 
 hiddenimports = collect_submodules(
     "app"
+)
+
+hiddenimports += collect_submodules(
+    "truststore"
+)
+
+hiddenimports += collect_submodules(
+    "certifi"
 )
 
 analysis = Analysis(

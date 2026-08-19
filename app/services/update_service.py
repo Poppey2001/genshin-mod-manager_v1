@@ -24,7 +24,11 @@ from urllib.parse import (
 
 from urllib.request import (
     Request,
-    urlopen,
+)
+
+from app.services.network_tls import (
+    certificate_verification_reason,
+    verified_urlopen,
 )
 
 from packaging.version import (
@@ -568,7 +572,7 @@ class UpdateService:
         )
 
         try:
-            with urlopen(
+            with verified_urlopen(
                 request,
                 timeout=self.timeout,
             ) as response:
@@ -583,6 +587,20 @@ class UpdateService:
             ) from error
 
         except URLError as error:
+            certificate_reason = (
+                certificate_verification_reason(
+                    error
+                )
+            )
+
+            if certificate_reason is not None:
+                raise UpdateServiceError(
+                    tr(
+                        "updates.error.tls.certificate",
+                        reason=certificate_reason,
+                    )
+                ) from error
+
             reason = getattr(
                 error,
                 "reason",
@@ -782,7 +800,7 @@ class UpdateService:
         )
 
         try:
-            with urlopen(
+            with verified_urlopen(
                 request,
                 timeout=self.timeout,
             ) as response:
@@ -800,6 +818,20 @@ class UpdateService:
             ) from error
 
         except URLError as error:
+            certificate_reason = (
+                certificate_verification_reason(
+                    error
+                )
+            )
+
+            if certificate_reason is not None:
+                raise UpdateServiceError(
+                    tr(
+                        "updates.error.tls.certificate",
+                        reason=certificate_reason,
+                    )
+                ) from error
+
             reason = getattr(
                 error,
                 "reason",
@@ -1462,7 +1494,7 @@ class UpdateService:
         )
 
         try:
-            with urlopen(
+            with verified_urlopen(
                 request,
                 timeout=self.timeout,
             ) as response:
@@ -1479,6 +1511,20 @@ class UpdateService:
             ) from error
 
         except URLError as error:
+            certificate_reason = (
+                certificate_verification_reason(
+                    error
+                )
+            )
+
+            if certificate_reason is not None:
+                raise UpdateServiceError(
+                    tr(
+                        "updates.error.tls.certificate",
+                        reason=certificate_reason,
+                    )
+                ) from error
+
             reason = getattr(
                 error,
                 "reason",

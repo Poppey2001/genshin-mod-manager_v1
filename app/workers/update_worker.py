@@ -13,7 +13,11 @@ from urllib.error import (
 
 from urllib.request import (
     Request,
-    urlopen,
+)
+
+from app.services.network_tls import (
+    certificate_verification_reason,
+    verified_urlopen,
 )
 
 from PySide6.QtCore import (
@@ -256,7 +260,7 @@ class UpdateDownloadWorker(QRunnable):
         received = 0
 
         try:
-            with urlopen(
+            with verified_urlopen(
                 request,
                 timeout=30,
             ) as response:
@@ -332,6 +336,20 @@ class UpdateDownloadWorker(QRunnable):
             partial_file.unlink(
                 missing_ok=True
             )
+
+            certificate_reason = (
+                certificate_verification_reason(
+                    error
+                )
+            )
+
+            if certificate_reason is not None:
+                raise RuntimeError(
+                    tr(
+                        "updates.error.tls.certificate",
+                        reason=certificate_reason,
+                    )
+                ) from error
 
             reason = getattr(
                 error,

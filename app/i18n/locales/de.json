@@ -615,5 +615,6 @@
     "updates.error.fallback.no_digest": "Der veröffentlichte Windows-Installer besitzt keinen verwendbaren SHA-256-Digest.",
     "updates.error.fallback.unavailable": "Das Release-Update konnte nicht verwendet werden:\n\n{release_error}\n\nEin lokaler Source-Build ist auf diesem System nicht verfügbar. Dafür werden Windows, PowerShell und Python 3.12 oder neuer benötigt.",
     "updates.error.fallback.both_failed": "Beide Update-Wege sind fehlgeschlagen.\n\nRelease-/Prerelease-Update:\n{release_error}\n\nLokaler Source-Build:\n{source_error}",
-    "updates.error.check.release_and_source_failed": "Die Update-Prüfung ist über beide Quellen fehlgeschlagen.\n\nGitHub Releases/Prereleases:\n{release_error}\n\nGitHub Source:\n{source_error}"
+    "updates.error.check.release_and_source_failed": "Die Update-Prüfung ist über beide Quellen fehlgeschlagen.\n\nGitHub Releases/Prereleases:\n{release_error}\n\nGitHub Source:\n{source_error}",
+    "updates.error.tls.certificate": "Die TLS-Zertifikatsprüfung für GitHub ist fehlgeschlagen. Der Updater verwendet weiterhin eine sichere Zertifikatsprüfung. Prüfe Windows-Datum/Uhrzeit, den Windows-Zertifikatsspeicher sowie gegebenenfalls Proxy- oder Antivirus-Zertifikate.\n\nDetails: {reason}"
 }
