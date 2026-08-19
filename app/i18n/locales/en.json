@@ -274,7 +274,7 @@
     "updates.dialog.install": "Install update",
     "updates.dialog.appimage_required": "Automatic installation is only available when Mod Manager is running as an AppImage.",
     "updates.status.downloading": "Downloading and verifying update …",
-    "updates.status.installing": "The update was verified. The application will close, update, and then restart …",
+    "updates.status.installing": "The update was verified. The Mod Manager will now close; the Windows installer will start automatically afterwards …",
     "updates.status.failed": "Update failed: {error}",
     "updates.status.cancelled": "The update download was cancelled.",
     "updates.error.repo_not_configured": "The GitHub repository for the auto-updater has not been configured yet.",
@@ -616,5 +616,6 @@
     "updates.error.fallback.unavailable": "The release update could not be used:\n\n{release_error}\n\nA local source build is not available on this system. Windows, PowerShell, and Python 3.12 or newer are required.",
     "updates.error.fallback.both_failed": "Both update paths failed.\n\nRelease/Prerelease update:\n{release_error}\n\nLocal source build:\n{source_error}",
     "updates.error.check.release_and_source_failed": "The update check failed through both sources.\n\nGitHub Releases/Prereleases:\n{release_error}\n\nGitHub source:\n{source_error}",
-    "updates.error.tls.certificate": "TLS certificate verification for GitHub failed. The updater is still using secure certificate verification. Check the Windows date/time, Windows certificate store, and any proxy or antivirus certificates.\n\nDetails: {reason}"
+    "updates.error.tls.certificate": "TLS certificate verification for GitHub failed. The updater is still using secure certificate verification. Check the Windows date/time, Windows certificate store, and any proxy or antivirus certificates.\n\nDetails: {reason}",
+    "updates.error.windows_installer.powershell_missing": "Windows PowerShell was not found for the update handoff."
 }

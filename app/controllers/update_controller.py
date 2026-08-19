@@ -732,6 +732,32 @@ class UpdateController(
 
         return source_error
 
+    def _quit_for_windows_update(
+        self,
+    ) -> None:
+        """
+        Close the UI immediately after the detached handoff process exists.
+
+        The helper process owns the remainder of the update. It waits for this
+        PID to disappear before starting Inno Setup, so there is no installer /
+        running-app deadlock.
+        """
+
+        try:
+            self.parent_window.close()
+
+        except Exception:
+            logger.exception(
+                "Hauptfenster konnte für Windows-Update nicht geschlossen werden."
+            )
+
+        application = (
+            QApplication.instance()
+        )
+
+        if application is not None:
+            application.quit()
+
     def _on_source_build_finished(
         self,
         installer_file: object,
@@ -782,15 +808,7 @@ class UpdateController(
 
             return
 
-        application = (
-            QApplication.instance()
-        )
-
-        if application is not None:
-            QTimer.singleShot(
-                250,
-                application.quit,
-            )
+        self._quit_for_windows_update()
 
     def _on_source_build_failed(
         self,
@@ -900,15 +918,19 @@ class UpdateController(
 
             return
 
-        application = (
-            QApplication.instance()
-        )
+        if self._is_windows():
+            self._quit_for_windows_update()
 
-        if application is not None:
-            QTimer.singleShot(
-                250,
-                application.quit,
+        else:
+            application = (
+                QApplication.instance()
             )
+
+            if application is not None:
+                QTimer.singleShot(
+                    250,
+                    application.quit,
+                )
 
     def _on_download_failed(
         self,

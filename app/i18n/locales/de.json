@@ -274,7 +274,7 @@
     "updates.dialog.install": "Update installieren",
     "updates.dialog.appimage_required": "Die automatische Installation ist nur verfügbar, wenn der Mod Manager als AppImage gestartet wurde.",
     "updates.status.downloading": "Update wird heruntergeladen und geprüft …",
-    "updates.status.installing": "Update wurde geprüft. Die Anwendung wird beendet, aktualisiert und anschließend neu gestartet …",
+    "updates.status.installing": "Update wurde geprüft. Der Mod Manager wird jetzt beendet; anschließend startet der Windows-Installer automatisch …",
     "updates.status.failed": "Update fehlgeschlagen: {error}",
     "updates.status.cancelled": "Der Update-Download wurde abgebrochen.",
     "updates.error.repo_not_configured": "Das GitHub-Repository für den Auto-Updater wurde noch nicht konfiguriert.",
@@ -616,5 +616,6 @@
     "updates.error.fallback.unavailable": "Das Release-Update konnte nicht verwendet werden:\n\n{release_error}\n\nEin lokaler Source-Build ist auf diesem System nicht verfügbar. Dafür werden Windows, PowerShell und Python 3.12 oder neuer benötigt.",
     "updates.error.fallback.both_failed": "Beide Update-Wege sind fehlgeschlagen.\n\nRelease-/Prerelease-Update:\n{release_error}\n\nLokaler Source-Build:\n{source_error}",
     "updates.error.check.release_and_source_failed": "Die Update-Prüfung ist über beide Quellen fehlgeschlagen.\n\nGitHub Releases/Prereleases:\n{release_error}\n\nGitHub Source:\n{source_error}",
-    "updates.error.tls.certificate": "Die TLS-Zertifikatsprüfung für GitHub ist fehlgeschlagen. Der Updater verwendet weiterhin eine sichere Zertifikatsprüfung. Prüfe Windows-Datum/Uhrzeit, den Windows-Zertifikatsspeicher sowie gegebenenfalls Proxy- oder Antivirus-Zertifikate.\n\nDetails: {reason}"
+    "updates.error.tls.certificate": "Die TLS-Zertifikatsprüfung für GitHub ist fehlgeschlagen. Der Updater verwendet weiterhin eine sichere Zertifikatsprüfung. Prüfe Windows-Datum/Uhrzeit, den Windows-Zertifikatsspeicher sowie gegebenenfalls Proxy- oder Antivirus-Zertifikate.\n\nDetails: {reason}",
+    "updates.error.windows_installer.powershell_missing": "Windows PowerShell wurde für die Update-Übergabe nicht gefunden."
 }

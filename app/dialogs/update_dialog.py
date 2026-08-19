@@ -775,6 +775,16 @@ class UpdateDialog(QDialog):
             )
         )
 
+        # The installer handoff already owns the update from this point.
+        # Prevent a second install click or cancelling halfway through.
+        self.install_button.setEnabled(
+            False
+        )
+
+        self.later_button.setEnabled(
+            False
+        )
+
     def _copy_error(
         self,
     ) -> None:

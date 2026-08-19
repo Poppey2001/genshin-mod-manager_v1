@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import logging
 import os
+import shutil
 import subprocess
 import sys
 
@@ -63,6 +65,7 @@ def _registry_install_directory(
 
     try:
         import winreg
+
     except ImportError:
         return None
 
@@ -77,6 +80,7 @@ def _registry_install_directory(
                     REGISTRY_INSTALL_DIR_VALUE,
                 )
             )
+
     except OSError:
         return None
 
@@ -97,6 +101,7 @@ def _registry_install_directory(
 
     try:
         return path.resolve()
+
     except OSError:
         return path.absolute()
 
@@ -132,6 +137,7 @@ def is_windows_installer_runtime(
             current_application_directory()
             .resolve()
         )
+
     except OSError:
         current = (
             current_application_directory()
@@ -142,6 +148,7 @@ def is_windows_installer_runtime(
         expected = (
             install_directory.resolve()
         )
+
     except OSError:
         expected = (
             install_directory.absolute()
@@ -153,9 +160,177 @@ def is_windows_installer_runtime(
     )
 
 
+def _powershell_executable(
+) -> Path | None:
+    candidate = shutil.which(
+        "powershell.exe"
+    )
+
+    if candidate:
+        return Path(
+            candidate
+        )
+
+    system_root = os.environ.get(
+        "SystemRoot",
+        r"C:\Windows",
+    )
+
+    fallback = (
+        Path(
+            system_root
+        )
+        / "System32"
+        / "WindowsPowerShell"
+        / "v1.0"
+        / "powershell.exe"
+    )
+
+    if fallback.is_file():
+        return fallback
+
+    return None
+
+
+def _ps_single_quote(
+    value: str | Path,
+) -> str:
+    return (
+        str(
+            value
+        )
+        .replace(
+            "'",
+            "''",
+        )
+    )
+
+
+def _encoded_powershell_command(
+    *,
+    installer: Path,
+    parent_pid: int,
+    setup_log: Path,
+    handoff_log: Path,
+) -> str:
+    installer_text = (
+        _ps_single_quote(
+            installer
+        )
+    )
+
+    setup_log_text = (
+        _ps_single_quote(
+            setup_log
+        )
+    )
+
+    handoff_log_text = (
+        _ps_single_quote(
+            handoff_log
+        )
+    )
+
+    # Windows PowerShell -EncodedCommand expects UTF-16LE.
+    script = f"""
+$ErrorActionPreference = 'Stop'
+
+$parentPid = {int(parent_pid)}
+$installer = '{installer_text}'
+$setupLog = '{setup_log_text}'
+$handoffLog = '{handoff_log_text}'
+
+function Write-HandoffLog([string]$Message) {{
+    try {{
+        $timestamp = [DateTime]::Now.ToString('yyyy-MM-dd HH:mm:ss.fff')
+        Add-Content -LiteralPath $handoffLog -Value "[$timestamp] $Message"
+    }}
+    catch {{
+    }}
+}}
+
+Write-HandoffLog "Handoff helper started."
+Write-HandoffLog "Waiting for GMM PID $parentPid to exit."
+
+$deadline = [DateTime]::UtcNow.AddSeconds(20)
+
+while ($true) {{
+    $process = Get-Process -Id $parentPid -ErrorAction SilentlyContinue
+
+    if ($null -eq $process) {{
+        break
+    }}
+
+    if ([DateTime]::UtcNow -ge $deadline) {{
+        Write-HandoffLog "GMM did not exit within 20 seconds. Forcing shutdown."
+
+        Stop-Process -Id $parentPid -Force -ErrorAction SilentlyContinue
+
+        Start-Sleep -Milliseconds 700
+
+        break
+    }}
+
+    Start-Sleep -Milliseconds 200
+}}
+
+Write-HandoffLog "Old GMM process is no longer running."
+Write-HandoffLog "Starting Windows installer."
+
+$arguments = @(
+    '/VERYSILENT',
+    '/SUPPRESSMSGBOXES',
+    '/NORESTART',
+    ('/LOG="' + $setupLog + '"')
+)
+
+try {{
+    $setup = Start-Process `
+        -FilePath $installer `
+        -ArgumentList $arguments `
+        -PassThru `
+        -Wait
+
+    Write-HandoffLog (
+        "Windows installer exited with code " +
+        $setup.ExitCode
+    )
+
+    exit $setup.ExitCode
+}}
+catch {{
+    Write-HandoffLog (
+        "Windows installer launch failed: " +
+        $_.Exception.Message
+    )
+
+    exit 1
+}}
+""".strip()
+
+    return base64.b64encode(
+        script.encode(
+            "utf-16-le"
+        )
+    ).decode(
+        "ascii"
+    )
+
+
 def launch_windows_installer_update(
     downloaded_file: Path,
 ) -> Path:
+    """
+    Schedule a detached updater handoff.
+
+    IMPORTANT:
+    The Inno Setup process is NOT started while GMM is still running.
+
+    A detached Windows PowerShell process waits until the current GMM PID
+    exits and only then starts the installer. This prevents a deadlock where
+    Inno Setup waits for GMM to release files while GMM waits in the update UI.
+    """
+
     if not (
         is_windows_installer_runtime()
     ):
@@ -170,20 +345,10 @@ def launch_windows_installer_update(
             downloaded_file
         )
         .expanduser()
+        .absolute()
     )
 
-    try:
-        installer = (
-            installer.resolve()
-        )
-    except OSError:
-        installer = (
-            installer.absolute()
-        )
-
-    if not (
-        installer.is_file()
-    ):
+    if not installer.is_file():
         raise WindowsInstallerUpdateError(
             tr(
                 "updates.error.windows_installer.missing"
@@ -191,12 +356,24 @@ def launch_windows_installer_update(
         )
 
     if (
-        installer.suffix.casefold()
+        installer.suffix
+        .casefold()
         != ".exe"
     ):
         raise WindowsInstallerUpdateError(
             tr(
                 "updates.error.windows_installer.invalid"
+            )
+        )
+
+    powershell = (
+        _powershell_executable()
+    )
+
+    if powershell is None:
+        raise WindowsInstallerUpdateError(
+            tr(
+                "updates.error.windows_installer.powershell_missing"
             )
         )
 
@@ -210,23 +387,52 @@ def launch_windows_installer_update(
         exist_ok=True,
     )
 
-    log_path = (
+    setup_log = (
         log_directory
         / "windows-installer-update.log"
     )
 
+    handoff_log = (
+        log_directory
+        / "windows-update-handoff.log"
+    )
+
+    try:
+        handoff_log.write_text(
+            (
+                "Genshin Mod Manager Windows update handoff\n"
+                f"Parent PID: {os.getpid()}\n"
+                f"Installer: {installer}\n"
+            ),
+            encoding="utf-8",
+        )
+
+    except OSError:
+        # Logging must never block an otherwise valid update handoff.
+        pass
+
+    encoded_command = (
+        _encoded_powershell_command(
+            installer=installer,
+            parent_pid=os.getpid(),
+            setup_log=setup_log,
+            handoff_log=handoff_log,
+        )
+    )
+
     command = [
         str(
-            installer
+            powershell
         ),
-        "/VERYSILENT",
-        "/SUPPRESSMSGBOXES",
-        "/NORESTART",
-        "/CLOSEAPPLICATIONS",
-        "/NORESTARTAPPLICATIONS",
-        (
-            f'/LOG="{log_path}"'
-        ),
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-WindowStyle",
+        "Hidden",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-EncodedCommand",
+        encoded_command,
     ]
 
     creation_flags = (
@@ -245,10 +451,11 @@ def launch_windows_installer_update(
 
     logger.info(
         (
-            "Windows Installer Update "
-            "wird gestartet: %s"
+            "Windows update handoff wird gestartet: "
+            "installer=%s, pid=%s"
         ),
         installer,
+        os.getpid(),
     )
 
     try:
@@ -265,6 +472,7 @@ def launch_windows_installer_update(
                 creation_flags
             ),
         )
+
     except OSError as error:
         raise WindowsInstallerUpdateError(
             tr(
