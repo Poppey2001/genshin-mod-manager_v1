@@ -13,6 +13,19 @@ GITHUB_REPOSITORY = (
 
 
 # ============================================================
+# Shared version backend
+# ============================================================
+
+# app/version.py is the single source of truth for BOTH
+# Linux and Windows.
+GITHUB_VERSION_REF = "main"
+
+GITHUB_VERSION_FILE = (
+    "app/version.py"
+)
+
+
+# ============================================================
 # GitHub API
 # ============================================================
 
@@ -84,6 +97,8 @@ __all__ = [
     "GITHUB_API_VERSION",
     "GITHUB_OWNER",
     "GITHUB_REPOSITORY",
+    "GITHUB_VERSION_FILE",
+    "GITHUB_VERSION_REF",
     "UPDATE_CHECK_TIMEOUT",
     "WINDOWS_INSTALLER_ARCHITECTURE",
     "WINDOWS_INSTALLER_NAME_TOKENS",

@@ -8,9 +8,23 @@ from PyInstaller.utils.hooks import (
 )
 
 
-project_root = Path(
-    SPECPATH
-).resolve().parent
+spec_file = Path(
+    SPEC
+).resolve()
+
+project_root = (
+    spec_file
+    .parent
+    .parent
+)
+
+print(
+    f"[GMM SPEC] Spec file: {spec_file}"
+)
+
+print(
+    f"[GMM SPEC] Project root: {project_root}"
+)
 
 main_py = (
     project_root
@@ -24,12 +38,20 @@ app_dir = (
 
 if not main_py.is_file():
     raise SystemExit(
-        f"main.py not found in project root: {project_root}"
+        (
+            "main.py not found. "
+            f"Resolved project root: {project_root}; "
+            f"expected: {main_py}"
+        )
     )
 
 if not app_dir.is_dir():
     raise SystemExit(
-        f"app directory not found in project root: {project_root}"
+        (
+            "app directory not found. "
+            f"Resolved project root: {project_root}; "
+            f"expected: {app_dir}"
+        )
     )
 
 

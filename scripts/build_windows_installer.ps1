@@ -78,27 +78,47 @@ Write-Host "  app          : $AppDirectory"
 Write-Host "  spec         : $SpecFile"
 Write-Host ""
 
-if ([string]::IsNullOrWhiteSpace($Version)) {
-    $VersionText = Get-Content `
-        -LiteralPath (
-            Join-Path $Root "app\version.py"
-        ) `
-        -Raw
+$RequestedVersion = $Version
 
-    $Match = [regex]::Match(
-        $VersionText,
-        '(?m)^APP_VERSION\s*=\s*["'']([^"'']+)["'']'
-    )
+$VersionText = Get-Content `
+    -LiteralPath (
+        Join-Path $Root "app\version.py"
+    ) `
+    -Raw
 
-    if (-not $Match.Success) {
-        throw "APP_VERSION was not found in app\version.py"
-    }
+$Match = [regex]::Match(
+    $VersionText,
+    '(?m)^APP_VERSION\s*(?::[^=]+)?=\s*["'']([^"'']+)["'']'
+)
 
-    $Version = $Match.Groups[1].Value
+if (-not $Match.Success) {
+    throw "APP_VERSION was not found in app\version.py"
 }
 
-$Version = $Version.TrimStart("v")
+$Version = $Match.Groups[1].Value.TrimStart("v")
 
+if (-not (
+    [string]::IsNullOrWhiteSpace(
+        $RequestedVersion
+    )
+)) {
+    $RequestedVersion = (
+        $RequestedVersion.TrimStart("v")
+    )
+
+    if (
+        $RequestedVersion -ne
+        $Version
+    ) {
+        throw (
+            "Build version does not match app\\version.py. " +
+            "Requested=$RequestedVersion; " +
+            "version.py=$Version"
+        )
+    }
+}
+
+Write-Host "Version source: app\\version.py"
 Write-Host "Building Windows installer version: $Version"
 
 # ============================================================

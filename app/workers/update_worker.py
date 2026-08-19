@@ -32,6 +32,10 @@ from app.services.update_service import (
     UpdateService,
 )
 
+from app.services.windows_source_builder import (
+    build_windows_installer_from_source,
+)
+
 
 class UpdateCheckSignals(QObject):
     finished = Signal(object)
@@ -381,3 +385,122 @@ class UpdateDownloadWorker(QRunnable):
         )
 
         return destination
+
+
+class WindowsSourceBuildSignals(
+    QObject
+):
+    status = Signal(
+        str
+    )
+
+    progress = Signal(
+        int,
+        int,
+    )
+
+    finished = Signal(
+        object
+    )
+
+    failed = Signal(
+        str
+    )
+
+    cancelled = Signal()
+
+
+class WindowsSourceBuildWorker(
+    QRunnable
+):
+    def __init__(
+        self,
+        *,
+        owner: str,
+        repository: str,
+        version: str,
+        source_commit: str,
+    ) -> None:
+        super().__init__()
+
+        self.owner = owner
+        self.repository = (
+            repository
+        )
+        self.version = version
+        self.source_commit = (
+            source_commit
+        )
+
+        self.signals = (
+            WindowsSourceBuildSignals()
+        )
+
+        self._cancel_event = (
+            threading.Event()
+        )
+
+        self.setAutoDelete(
+            True
+        )
+
+    def cancel(
+        self,
+    ) -> None:
+        self._cancel_event.set()
+
+    def is_cancelled(
+        self,
+    ) -> bool:
+        return (
+            self._cancel_event.is_set()
+        )
+
+    @Slot()
+    def run(
+        self,
+    ) -> None:
+        try:
+            installer = (
+                build_windows_installer_from_source(
+                    owner=self.owner,
+                    repository=(
+                        self.repository
+                    ),
+                    version=self.version,
+                    source_commit=(
+                        self.source_commit
+                    ),
+                    status_callback=(
+                        self.signals.status.emit
+                    ),
+                    progress_callback=(
+                        self.signals.progress.emit
+                    ),
+                    cancel_callback=(
+                        self.is_cancelled
+                    ),
+                )
+            )
+
+        except Exception as error:
+            if self.is_cancelled():
+                self.signals.cancelled.emit()
+                return
+
+            self.signals.failed.emit(
+                str(
+                    error
+                )
+            )
+
+            return
+
+        if self.is_cancelled():
+            self.signals.cancelled.emit()
+            return
+
+        self.signals.finished.emit(
+            installer
+        )
+

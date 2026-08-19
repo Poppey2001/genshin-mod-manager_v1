@@ -282,11 +282,22 @@ class UpdateDialog(QDialog):
             not self.install_supported
             and not self._busy
         ):
-            self.status_label.setText(
-                tr(
-                    "updates.dialog.install_unavailable"
+            if not (
+                self.update.release_ready
+            ):
+                self.status_label.setText(
+                    tr(
+                        "updates.dialog.release_not_ready",
+                        version=self.update.version,
+                    )
                 )
-            )
+
+            else:
+                self.status_label.setText(
+                    tr(
+                        "updates.dialog.install_unavailable"
+                    )
+                )
 
         self.install_button.setEnabled(
             self.install_supported
@@ -324,6 +335,82 @@ class UpdateDialog(QDialog):
         self.later_button.setEnabled(
             False
         )
+
+    def start_local_build(
+        self,
+    ) -> None:
+        self._busy = True
+
+        self.progress_bar.setVisible(
+            True
+        )
+
+        self.progress_bar.setRange(
+            0,
+            0,
+        )
+
+        self.status_label.setText(
+            tr(
+                "updates.status.local_build.preparing"
+            )
+        )
+
+        self.install_button.setEnabled(
+            False
+        )
+
+        self.later_button.setEnabled(
+            False
+        )
+
+    def update_local_build_stage(
+        self,
+        stage: str,
+    ) -> None:
+        key_by_stage = {
+            "download_source": (
+                "updates.status.local_build.download_source"
+            ),
+            "extract_source": (
+                "updates.status.local_build.extract_source"
+            ),
+            "build_windows": (
+                "updates.status.local_build.build_windows"
+            ),
+            "build_complete": (
+                "updates.status.local_build.complete"
+            ),
+        }
+
+        key = key_by_stage.get(
+            stage
+        )
+
+        if key is None:
+            return
+
+        self.status_label.setText(
+            tr(
+                key
+            )
+        )
+
+        if stage == "download_source":
+            self.progress_bar.setRange(
+                0,
+                0,
+            )
+
+        elif stage in {
+            "extract_source",
+            "build_windows",
+            "build_complete",
+        }:
+            self.progress_bar.setRange(
+                0,
+                0,
+            )
 
     def update_progress(
         self,

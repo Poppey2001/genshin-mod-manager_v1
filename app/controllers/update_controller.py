@@ -42,6 +42,10 @@ from app.services.windows_installer_updater import (
     launch_windows_installer_update,
 )
 
+from app.services.windows_source_builder import (
+    local_windows_build_available,
+)
+
 from app.update_config import (
     GITHUB_OWNER,
     GITHUB_REPOSITORY,
@@ -55,6 +59,7 @@ from app.version import (
 from app.workers.update_worker import (
     UpdateCheckWorker,
     UpdateDownloadWorker,
+    WindowsSourceBuildWorker,
 )
 
 
@@ -93,6 +98,11 @@ class UpdateController(
 
         self._download_worker: (
             UpdateDownloadWorker
+            | None
+        ) = None
+
+        self._source_build_worker: (
+            WindowsSourceBuildWorker
             | None
         ) = None
 
@@ -358,22 +368,36 @@ class UpdateController(
 
     def _automatic_install_supported(
         self,
+        update: UpdateInfo,
         asset: ReleaseAsset | None,
     ) -> bool:
-        if asset is None:
-            return False
-
-        if not asset.digest:
-            return False
-
         if self._is_windows():
-            return (
+            if not (
                 is_windows_installer_runtime()
+            ):
+                return False
+
+            # Preferred Windows path:
+            # Build the installer locally from the exact Git commit
+            # whose app/version.py triggered this update.
+            if (
+                update.source_commit
+                and local_windows_build_available()
+            ):
+                return True
+
+            # Fallback for machines where the user skipped the optional
+            # Python installation: use a prebuilt release installer.
+            return bool(
+                asset is not None
+                and asset.digest
             )
 
         if self._is_linux():
-            return (
-                is_appimage_runtime()
+            return bool(
+                asset is not None
+                and asset.digest
+                and is_appimage_runtime()
             )
 
         return False
@@ -394,7 +418,8 @@ class UpdateController(
 
         install_supported = (
             self._automatic_install_supported(
-                asset
+                update,
+                asset,
             )
         )
 
@@ -431,6 +456,8 @@ class UpdateController(
         if (
             self._download_worker
             is not None
+            or self._source_build_worker
+            is not None
         ):
             return
 
@@ -448,8 +475,14 @@ class UpdateController(
         if (
             self._download_worker
             is not None
+            or self._source_build_worker
+            is not None
         ):
             return
+
+        update = (
+            self._current_update
+        )
 
         asset = (
             self._current_asset
@@ -458,9 +491,77 @@ class UpdateController(
         dialog = self._dialog
 
         if (
-            asset is None
+            update is None
             or dialog is None
         ):
+            return
+
+        # ==================================================
+        # Windows: local source build
+        # ==================================================
+
+        if (
+            self._is_windows()
+            and is_windows_installer_runtime()
+            and update.source_commit
+            and local_windows_build_available()
+        ):
+            worker = WindowsSourceBuildWorker(
+                owner=GITHUB_OWNER,
+                repository=(
+                    GITHUB_REPOSITORY
+                ),
+                version=str(
+                    update.version
+                ),
+                source_commit=(
+                    update.source_commit
+                ),
+            )
+
+            self._source_build_worker = (
+                worker
+            )
+
+            worker.signals.status.connect(
+                dialog.update_local_build_stage
+            )
+
+            worker.signals.progress.connect(
+                dialog.update_progress
+            )
+
+            worker.signals.finished.connect(
+                self._on_source_build_finished
+            )
+
+            worker.signals.failed.connect(
+                self._on_source_build_failed
+            )
+
+            worker.signals.cancelled.connect(
+                self._on_source_build_cancelled
+            )
+
+            dialog.start_local_build()
+
+            self.thread_pool.start(
+                worker
+            )
+
+            return
+
+        # ==================================================
+        # Release asset fallback / Linux
+        # ==================================================
+
+        if asset is None:
+            dialog.show_error(
+                tr(
+                    "updates.error.install_unsupported"
+                )
+            )
+
             return
 
         if not asset.digest:
@@ -499,6 +600,82 @@ class UpdateController(
         self.thread_pool.start(
             worker
         )
+
+    def _on_source_build_finished(
+        self,
+        installer_file: object,
+    ) -> None:
+        self._source_build_worker = None
+
+        dialog = self._dialog
+
+        if dialog is None:
+            return
+
+        if not isinstance(
+            installer_file,
+            Path,
+        ):
+            dialog.show_error(
+                tr(
+                    "updates.error.invalid_download"
+                )
+            )
+
+            return
+
+        dialog.show_installing()
+
+        try:
+            launch_windows_installer_update(
+                installer_file
+            )
+
+        except Exception as error:
+            logger.exception(
+                "Lokaler Windows-Update-Build konnte nicht installiert werden."
+            )
+
+            dialog.show_error(
+                str(
+                    error
+                )
+            )
+
+            return
+
+        application = (
+            QApplication.instance()
+        )
+
+        if application is not None:
+            QTimer.singleShot(
+                250,
+                application.quit,
+            )
+
+    def _on_source_build_failed(
+        self,
+        message: str,
+    ) -> None:
+        self._source_build_worker = None
+
+        if self._dialog is not None:
+            self._dialog.show_error(
+                message
+            )
+
+    def _on_source_build_cancelled(
+        self,
+    ) -> None:
+        self._source_build_worker = None
+
+        if self._dialog is not None:
+            self._dialog.show_error(
+                tr(
+                    "updates.status.cancelled"
+                )
+            )
 
     def _on_download_finished(
         self,
@@ -623,3 +800,9 @@ class UpdateController(
             is not None
         ):
             self._download_worker.cancel()
+
+        if (
+            self._source_build_worker
+            is not None
+        ):
+            self._source_build_worker.cancel()

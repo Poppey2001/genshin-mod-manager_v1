@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import platform
+import re
 
 from dataclasses import dataclass
 
@@ -15,7 +17,10 @@ from urllib.error import (
     URLError,
 )
 
-from urllib.parse import urlencode
+from urllib.parse import (
+    quote,
+    urlencode,
+)
 
 from urllib.request import (
     Request,
@@ -33,6 +38,8 @@ from app.update_config import (
     APPIMAGE_ARCHITECTURE,
     APPIMAGE_SUFFIX,
     GITHUB_API_VERSION,
+    GITHUB_VERSION_FILE,
+    GITHUB_VERSION_REF,
     UPDATE_CHECK_TIMEOUT,
     WINDOWS_INSTALLER_ARCHITECTURE,
     WINDOWS_INSTALLER_NAME_TOKENS,
@@ -83,15 +90,11 @@ class ReleaseAsset:
 )
 class UpdateInfo:
     current_version: Version
-
     version: Version
 
     tag_name: str
-
     release_name: str
-
     release_notes: str
-
     release_url: str
 
     published_at: str | None
@@ -102,6 +105,16 @@ class UpdateInfo:
         ReleaseAsset,
         ...,
     ]
+
+    # Exact Git commit used for the remote app/version.py check.
+    # Windows source-build updates use this same commit so version
+    # detection and downloaded source can never race each other.
+    source_commit: str
+
+    # False means:
+    # app/version.py already contains a newer version,
+    # but a matching GitHub Release has not been published yet.
+    release_ready: bool = True
 
     def find_appimage_asset(
         self,
@@ -254,6 +267,20 @@ class UpdateInfo:
 
 
 class UpdateService:
+    """
+    Shared update backend for Linux and Windows.
+
+    Version source:
+        GitHub main/app/version.py -> APP_VERSION
+
+    Release source:
+        GitHub Releases
+
+    This separation is intentional:
+    app/version.py decides WHETHER an update exists.
+    The release only provides downloadable platform assets.
+    """
+
     def __init__(
         self,
         *,
@@ -286,8 +313,10 @@ class UpdateService:
             )
 
         try:
-            self.current_version = Version(
-                current_version
+            self.current_version = (
+                self._normalize_version(
+                    current_version
+                )
             )
 
         except InvalidVersion as error:
@@ -305,55 +334,481 @@ class UpdateService:
             1.0,
         )
 
+    # ========================================================
+    # Public update check
+    # ========================================================
+
     def check_for_update(
         self,
     ) -> UpdateInfo | None:
+        # IMPORTANT:
+        # Never derive "latest version" from a release tag.
+        # The remote app/version.py is always authoritative.
+        remote_commit = (
+            self._fetch_remote_commit()
+        )
+
+        remote_version = (
+            self._fetch_remote_version(
+                remote_commit
+            )
+        )
+
+        logger.info(
+            (
+                "Update-Version geprüft: "
+                "lokal=%s, GitHub-%s/%s=%s, commit=%s"
+            ),
+            self.current_version,
+            GITHUB_VERSION_REF,
+            GITHUB_VERSION_FILE,
+            remote_version,
+            remote_commit,
+        )
+
+        if (
+            remote_version
+            <= self.current_version
+        ):
+            return None
+
+        if not (
+            self._version_channel_allows(
+                remote_version
+            )
+        ):
+            logger.info(
+                (
+                    "Remote-Version %s ist neuer, "
+                    "wird aber vom Update-Kanal %s "
+                    "nicht erlaubt."
+                ),
+                remote_version,
+                self.channel.value,
+            )
+
+            return None
+
+        # A newer version definitely exists at this point.
+        # Releases are now used ONLY to locate binaries for exactly
+        # this version.
         releases = (
             self._fetch_releases()
         )
 
-        candidates: list[
-            UpdateInfo
-        ] = []
+        matching_release = (
+            self._find_release_for_version(
+                releases,
+                remote_version,
+            )
+        )
 
-        for release in releases:
+        if matching_release is not None:
             update = (
                 self._parse_release(
-                    release
+                    matching_release,
+                    source_commit=remote_commit,
                 )
             )
 
-            if update is None:
+            if update is not None:
+                logger.info(
+                    (
+                        "Passendes GitHub Release "
+                        "für %s gefunden: %s"
+                    ),
+                    remote_version,
+                    update.tag_name,
+                )
+
+                return update
+
+        # GitHub source is ahead of the published binaries.
+        # Do not incorrectly say "up to date".
+        logger.warning(
+            (
+                "app/version.py meldet Version %s, "
+                "aber es existiert noch kein "
+                "passendes veröffentlichtes Release."
+            ),
+            remote_version,
+        )
+
+        return self._version_only_update(
+            remote_version,
+            source_commit=remote_commit,
+        )
+
+    # ========================================================
+    # Version backend
+    # ========================================================
+
+    def _fetch_remote_commit(
+        self,
+    ) -> str:
+        ref = quote(
+            GITHUB_VERSION_REF,
+            safe="",
+        )
+
+        url = (
+            f"{GITHUB_API_BASE_URL}"
+            f"/repos/{self.owner}"
+            f"/{self.repository}"
+            f"/commits/{ref}"
+        )
+
+        request = Request(
+            url,
+            headers={
+                "Accept": (
+                    "application/vnd.github+json"
+                ),
+                "X-GitHub-Api-Version": (
+                    GITHUB_API_VERSION
+                ),
+                "User-Agent": (
+                    "Genshin-Mod-Manager-Updater"
+                ),
+                "Cache-Control": (
+                    "no-cache"
+                ),
+            },
+            method="GET",
+        )
+
+        try:
+            with urlopen(
+                request,
+                timeout=self.timeout,
+            ) as response:
+                raw_data = response.read()
+
+        except HTTPError as error:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.service.github_http",
+                    code=error.code,
+                )
+            ) from error
+
+        except URLError as error:
+            reason = getattr(
+                error,
+                "reason",
+                error,
+            )
+
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.service.github_unreachable",
+                    reason=reason,
+                )
+            ) from error
+
+        except TimeoutError as error:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.service.github_timeout"
+                )
+            ) from error
+
+        try:
+            data = json.loads(
+                raw_data.decode(
+                    "utf-8"
+                )
+            )
+
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ) as error:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.service.github_invalid_response"
+                )
+            ) from error
+
+        if not isinstance(
+            data,
+            dict,
+        ):
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.service.github_unexpected_response"
+                )
+            )
+
+        commit = data.get(
+            "sha"
+        )
+
+        if not isinstance(
+            commit,
+            str,
+        ):
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.source.commit_missing"
+                )
+            )
+
+        commit = commit.strip()
+
+        if not re.fullmatch(
+            r"[0-9a-fA-F]{40}",
+            commit,
+        ):
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.source.commit_invalid"
+                )
+            )
+
+        return commit.casefold()
+
+    def _fetch_remote_version(
+        self,
+        ref: str,
+    ) -> Version:
+        path = quote(
+            GITHUB_VERSION_FILE.strip(
+                "/"
+            ),
+            safe="/",
+        )
+
+        query = urlencode(
+            {
+                "ref": ref,
+            }
+        )
+
+        url = (
+            f"{GITHUB_API_BASE_URL}"
+            f"/repos/{self.owner}"
+            f"/{self.repository}"
+            f"/contents/{path}"
+            f"?{query}"
+        )
+
+        request = Request(
+            url,
+            headers={
+                # GitHub's raw media type returns the file
+                # contents directly instead of Base64 JSON.
+                "Accept": (
+                    "application/vnd.github.raw+json"
+                ),
+                "X-GitHub-Api-Version": (
+                    GITHUB_API_VERSION
+                ),
+                "User-Agent": (
+                    "Genshin-Mod-Manager-Updater"
+                ),
+                # We want current version.py, not a stale local/proxy
+                # cache answer.
+                "Cache-Control": (
+                    "no-cache"
+                ),
+            },
+            method="GET",
+        )
+
+        try:
+            with urlopen(
+                request,
+                timeout=self.timeout,
+            ) as response:
+                raw_data = (
+                    response.read()
+                )
+
+        except HTTPError as error:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.version_file.http",
+                    code=error.code,
+                    path=GITHUB_VERSION_FILE,
+                )
+            ) from error
+
+        except URLError as error:
+            reason = getattr(
+                error,
+                "reason",
+                error,
+            )
+
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.version_file.unreachable",
+                    reason=reason,
+                )
+            ) from error
+
+        except TimeoutError as error:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.version_file.timeout"
+                )
+            ) from error
+
+        try:
+            source = raw_data.decode(
+                "utf-8"
+            )
+
+        except UnicodeDecodeError as error:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.version_file.encoding"
+                )
+            ) from error
+
+        version_text = (
+            self._extract_app_version(
+                source
+            )
+        )
+
+        if version_text is None:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.version_file.missing",
+                    path=GITHUB_VERSION_FILE,
+                )
+            )
+
+        try:
+            return self._normalize_version(
+                version_text
+            )
+
+        except InvalidVersion as error:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.version_file.invalid",
+                    version=version_text,
+                )
+            ) from error
+
+    @staticmethod
+    def _extract_app_version(
+        source: str,
+    ) -> str | None:
+        """
+        Parse remote version.py without executing remote Python code.
+
+        Supported:
+            APP_VERSION = "0.5.8b1"
+            APP_VERSION: str = "0.5.8b1"
+        """
+
+        try:
+            tree = ast.parse(
+                source,
+                filename=GITHUB_VERSION_FILE,
+            )
+
+        except SyntaxError as error:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.version_file.syntax"
+                )
+            ) from error
+
+        for node in tree.body:
+            value_node: ast.AST | None = None
+
+            if isinstance(
+                node,
+                ast.Assign,
+            ):
+                if any(
+                    isinstance(
+                        target,
+                        ast.Name,
+                    )
+                    and target.id
+                    == "APP_VERSION"
+                    for target
+                    in node.targets
+                ):
+                    value_node = (
+                        node.value
+                    )
+
+            elif isinstance(
+                node,
+                ast.AnnAssign,
+            ):
+                if (
+                    isinstance(
+                        node.target,
+                        ast.Name,
+                    )
+                    and node.target.id
+                    == "APP_VERSION"
+                ):
+                    value_node = (
+                        node.value
+                    )
+
+            if value_node is None:
                 continue
 
             if (
-                update.version
-                <= self.current_version
+                isinstance(
+                    value_node,
+                    ast.Constant,
+                )
+                and isinstance(
+                    value_node.value,
+                    str,
+                )
             ):
-                continue
+                value = (
+                    value_node.value
+                    .strip()
+                )
 
-            if not self._channel_allows(
-                update
-            ):
-                continue
+                if value:
+                    return value
 
-            candidates.append(
-                update
+        return None
+
+    @staticmethod
+    def _normalize_version(
+        value: str,
+    ) -> Version:
+        text = (
+            str(
+                value
             )
-
-        if not candidates:
-            return None
-
-        return max(
-            candidates,
-            key=lambda update: (
-                update.version
-            ),
+            .strip()
         )
 
-    def _channel_allows(
+        if (
+            len(text) > 1
+            and text[0]
+            in {
+                "v",
+                "V",
+            }
+        ):
+            text = (
+                text[1:]
+            )
+
+        return Version(
+            text
+        )
+
+    def _version_channel_allows(
         self,
-        update: UpdateInfo,
+        version: Version,
     ) -> bool:
         if (
             self.channel
@@ -365,15 +820,127 @@ class UpdateService:
             self.channel
             == UpdateChannel.STABLE
         ):
-            return (
-                not update.prerelease
-                and not (
-                    update.version
-                    .is_prerelease
-                )
+            return not (
+                version.is_prerelease
             )
 
         return False
+
+    # ========================================================
+    # Matching release
+    # ========================================================
+
+    def _find_release_for_version(
+        self,
+        releases: list[
+            dict[str, Any]
+        ],
+        version: Version,
+    ) -> dict[
+        str,
+        Any,
+    ] | None:
+        for release in releases:
+            if bool(
+                release.get(
+                    "draft",
+                    False,
+                )
+            ):
+                continue
+
+            release_version = (
+                self._release_version(
+                    release
+                )
+            )
+
+            if (
+                release_version
+                == version
+            ):
+                return release
+
+        return None
+
+    def _release_version(
+        self,
+        release: dict[
+            str,
+            Any,
+        ],
+    ) -> Version | None:
+        tag_name = (
+            release.get(
+                "tag_name"
+            )
+        )
+
+        if not isinstance(
+            tag_name,
+            str,
+        ):
+            return None
+
+        tag_name = (
+            tag_name.strip()
+        )
+
+        if not tag_name:
+            return None
+
+        try:
+            return self._normalize_version(
+                tag_name
+            )
+
+        except InvalidVersion:
+            logger.warning(
+                (
+                    "Release mit ungültiger "
+                    "Version ignoriert: %s"
+                ),
+                tag_name,
+            )
+
+            return None
+
+    def _version_only_update(
+        self,
+        version: Version,
+        *,
+        source_commit: str,
+    ) -> UpdateInfo:
+        tag_name = (
+            f"v{version}"
+        )
+
+        return UpdateInfo(
+            current_version=(
+                self.current_version
+            ),
+            version=version,
+            tag_name=tag_name,
+            release_name=tag_name,
+            release_notes="",
+            release_url=(
+                f"https://github.com/"
+                f"{self.owner}/"
+                f"{self.repository}/"
+                f"releases"
+            ),
+            published_at=None,
+            prerelease=(
+                version.is_prerelease
+            ),
+            assets=(),
+            source_commit=source_commit,
+            release_ready=False,
+        )
+
+    # ========================================================
+    # Release parsing
+    # ========================================================
 
     def _parse_release(
         self,
@@ -381,6 +948,8 @@ class UpdateService:
             str,
             Any,
         ],
+        *,
+        source_commit: str,
     ) -> UpdateInfo | None:
         if bool(
             release.get(
@@ -407,26 +976,13 @@ class UpdateService:
         if not tag_name:
             return None
 
-        version_text = (
-            self._version_from_tag(
-                tag_name
+        version = (
+            self._release_version(
+                release
             )
         )
 
-        try:
-            version = Version(
-                version_text
-            )
-
-        except InvalidVersion:
-            logger.warning(
-                (
-                    "Release mit ungültiger "
-                    "Version ignoriert: %s"
-                ),
-                tag_name,
-            )
-
+        if version is None:
             return None
 
         release_name = (
@@ -502,31 +1058,19 @@ class UpdateService:
             release_notes=release_notes,
             release_url=release_url,
             published_at=published_at,
-            prerelease=bool(
-                release.get(
-                    "prerelease",
-                    False,
+            prerelease=(
+                bool(
+                    release.get(
+                        "prerelease",
+                        False,
+                    )
                 )
+                or version.is_prerelease
             ),
             assets=assets,
+            source_commit=source_commit,
+            release_ready=True,
         )
-
-    @staticmethod
-    def _version_from_tag(
-        tag_name: str,
-    ) -> str:
-        tag_name = (
-            tag_name.strip()
-        )
-
-        if (
-            len(tag_name) > 1
-            and tag_name[0]
-            in {"v", "V"}
-        ):
-            return tag_name[1:]
-
-        return tag_name
 
     @staticmethod
     def _parse_assets(
@@ -625,6 +1169,10 @@ class UpdateService:
             assets
         )
 
+    # ========================================================
+    # GitHub releases
+    # ========================================================
+
     def _fetch_releases(
         self,
     ) -> list[
@@ -656,6 +1204,9 @@ class UpdateService:
                 ),
                 "User-Agent": (
                     "Genshin-Mod-Manager-Updater"
+                ),
+                "Cache-Control": (
+                    "no-cache"
                 ),
             },
             method="GET",
@@ -734,3 +1285,12 @@ class UpdateService:
                 dict,
             )
         ]
+
+
+__all__ = [
+    "ReleaseAsset",
+    "UpdateChannel",
+    "UpdateInfo",
+    "UpdateService",
+    "UpdateServiceError",
+]

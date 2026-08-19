@@ -4,31 +4,59 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${1:-}"
+REQUESTED_VERSION="${1:-}"
 
-if [[ -z "$VERSION" ]]; then
-    VERSION="$(
-        python3 - <<'PY'
+VERSION="$(
+    python3 - <<'PY'
 from pathlib import Path
-import re
+import ast
 
-text = Path("app/version.py").read_text(encoding="utf-8")
+path = Path("app/version.py")
+source = path.read_text(encoding="utf-8")
+tree = ast.parse(source, filename=str(path))
 
-match = re.search(
-    r'(?m)^APP_VERSION\s*=\s*["\']([^"\']+)["\']',
-    text,
-)
+for node in tree.body:
+    if isinstance(node, ast.Assign):
+        if any(
+            isinstance(target, ast.Name)
+            and target.id == "APP_VERSION"
+            for target in node.targets
+        ):
+            if (
+                isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                print(node.value.value.strip())
+                raise SystemExit(0)
 
-if not match:
-    raise SystemExit("APP_VERSION not found in app/version.py")
+    if isinstance(node, ast.AnnAssign):
+        if (
+            isinstance(node.target, ast.Name)
+            and node.target.id == "APP_VERSION"
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            print(node.value.value.strip())
+            raise SystemExit(0)
 
-print(match.group(1))
+raise SystemExit("APP_VERSION not found in app/version.py")
 PY
-    )"
-fi
+)"
 
 VERSION="${VERSION#v}"
 
+if [[ -n "$REQUESTED_VERSION" ]]; then
+    REQUESTED_VERSION="${REQUESTED_VERSION#v}"
+
+    if [[ "$REQUESTED_VERSION" != "$VERSION" ]]; then
+        echo "ERROR: Build version does not match app/version.py." >&2
+        echo "Requested: $REQUESTED_VERSION" >&2
+        echo "version.py: $VERSION" >&2
+        exit 1
+    fi
+fi
+
+echo "Version source: app/version.py"
 echo "Building Linux AppImage version: $VERSION"
 
 python3 -m pip install --upgrade pip
