@@ -124,19 +124,20 @@ def python_files(
             main_py
         )
 
-    app_dir = (
-        root
-        / "app"
+    source_dirs = (
+        root / "app",
+        root / "updater",
     )
 
-    if app_dir.is_dir():
-        files.extend(
-            sorted(
-                app_dir.rglob(
-                    "*.py"
+    for source_dir in source_dirs:
+        if source_dir.is_dir():
+            files.extend(
+                sorted(
+                    source_dir.rglob(
+                        "*.py"
+                    )
                 )
             )
-        )
 
     return files
 

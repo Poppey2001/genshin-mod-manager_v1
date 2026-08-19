@@ -28,6 +28,12 @@ COMPONENTS = (
         "target": "styles/profiles.qss",
     },
     {
+        "id": "qss-conflicts",
+        "kind": "qss",
+        "source": "app/styles/conflicts.qss",
+        "target": "styles/conflicts.qss",
+    },
+    {
         "id": "qss-update-agent",
         "kind": "qss",
         "source": "updater/styles/update_agent.qss",

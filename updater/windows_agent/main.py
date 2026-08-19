@@ -1088,7 +1088,7 @@ class UpdateAgent(QObject):
             if manual:
                 self._message(
                     tr(
-                        "check.uptodate",
+                        "updates.agent.check.uptodate",
                         version=self.config.installed_version or APP_VERSION,
                     )
                 )

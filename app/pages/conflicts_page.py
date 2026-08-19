@@ -32,6 +32,10 @@ from app.i18n import (
     translation_manager,
 )
 
+from app.services.component_resources import (
+    resolve_component_path,
+)
+
 from app.services.conflict_scanner import (
     ConflictItem,
     ConflictKind,
@@ -41,10 +45,6 @@ from app.services.conflict_scanner import (
 from app.services.mod_duplicate_service import (
     DuplicateCheckResult,
     ModDuplicateService,
-)
-
-from app.services.tool_paths import (
-    apply_tool_paths_to_environment,
 )
 
 from app.workers.mod_duplicate_worker import (
@@ -817,6 +817,10 @@ class ConflictsPage(
             parent
         )
 
+        self.setObjectName(
+            "conflictsPage"
+        )
+
         self.library_paths_provider = (
             library_paths_provider
         )
@@ -873,8 +877,14 @@ class ConflictsPage(
         self.scroll_area = (
             QScrollArea()
         )
+        self.scroll_area.setObjectName(
+            "conflictsScroll"
+        )
 
         self.content = QWidget()
+        self.content.setObjectName(
+            "conflictsContent"
+        )
 
         self.content_layout = (
             QVBoxLayout(
@@ -883,6 +893,7 @@ class ConflictsPage(
         )
 
         self._build_ui()
+        self._apply_stylesheet()
 
         translation_manager.language_changed.connect(
             self.retranslate_ui
@@ -1041,6 +1052,36 @@ class ConflictsPage(
         )
 
     # ========================================================
+    # Stylesheet
+    # ========================================================
+
+    def _apply_stylesheet(
+        self,
+    ) -> None:
+        bundled_path = (
+            Path(__file__).resolve().parents[1]
+            / "styles"
+            / "conflicts.qss"
+        )
+        style_path = resolve_component_path(
+            "styles/conflicts.qss",
+            bundled_path,
+        )
+
+        try:
+            stylesheet = style_path.read_text(
+                encoding="utf-8"
+            )
+        except OSError as error:
+            raise RuntimeError(
+                f"Conflicts stylesheet could not be loaded: {style_path}"
+            ) from error
+
+        self.setStyleSheet(
+            stylesheet
+        )
+
+    # ========================================================
     # Report
     # ========================================================
 
@@ -1134,10 +1175,6 @@ class ConflictsPage(
         self,
         conflict: ConflictItem,
     ) -> None:
-        # Re-apply paths so a tool selected in Settings is available
-        # immediately without restarting the application.
-        apply_tool_paths_to_environment()
-
         card = (
             self._card_by_key.get(
                 conflict.key
