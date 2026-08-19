@@ -404,15 +404,8 @@ class UpdateSettingsGroup(
         ):
             interval = 20
 
-        self.agent_interval_spinbox.setValue(
-            max(
-                15,
-                min(
-                    1440,
-                    interval,
-                ),
-            )
-        )
+        self.agent_interval_spinbox.setMinimum(1)
+        self.agent_interval_spinbox.setMaximum(2_147_483_647)
 
         skipped = str(
             settings.get(
