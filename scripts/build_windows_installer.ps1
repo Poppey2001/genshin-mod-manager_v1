@@ -13,6 +13,31 @@ $Root = (
 
 Set-Location $Root
 
+Write-Host "Project root: $Root"
+Write-Host "Build script: $PSCommandPath"
+
+if (-not (
+    Test-Path -LiteralPath (
+        Join-Path $Root "main.py"
+    )
+)) {
+    throw (
+        "main.py was not found in the detected project root: " +
+        $Root
+    )
+}
+
+if (-not (
+    Test-Path -LiteralPath (
+        Join-Path $Root "app"
+    )
+)) {
+    throw (
+        "The app directory was not found in the detected project root: " +
+        $Root
+    )
+}
+
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $VersionText = Get-Content `
         -LiteralPath (
@@ -168,8 +193,54 @@ if ($NeedPythonDownload) {
 # Build environment
 # ============================================================
 
+# ============================================================
+# Python build dependencies
+# ============================================================
+
 python -m pip install --upgrade pip
-python -m pip install -r requirements-build.txt
+
+if ($LASTEXITCODE -ne 0) {
+    throw (
+        "pip upgrade failed with exit code " +
+        "$LASTEXITCODE"
+    )
+}
+
+$RequirementsFile = Join-Path `
+    $Root `
+    "requirements.txt"
+
+if (Test-Path -LiteralPath $RequirementsFile) {
+    Write-Host "Installing application requirements..."
+
+    python -m pip install `
+        -r $RequirementsFile
+
+    if ($LASTEXITCODE -ne 0) {
+        throw (
+            "Application requirements installation failed " +
+            "with exit code $LASTEXITCODE"
+        )
+    }
+}
+else {
+    Write-Warning (
+        "requirements.txt was not found. " +
+        "Continuing with the currently installed Python packages."
+    )
+}
+
+Write-Host "Installing PyInstaller build dependency..."
+
+python -m pip install `
+    "pyinstaller>=6.10,<7"
+
+if ($LASTEXITCODE -ne 0) {
+    throw (
+        "PyInstaller installation failed with exit code " +
+        "$LASTEXITCODE"
+    )
+}
 
 foreach ($Directory in @(
     "build",
