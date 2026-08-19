@@ -381,19 +381,65 @@ if (-not $ISCC) {
             -First 1
 
     if (-not $ISCC) {
+        # The JRSoftware download wrapper can return an HTML
+        # response to older PowerShell/IE web clients. Use the immutable
+        # GitHub release asset which the official JRSoftware download
+        # page points to instead.
+        $InnoVersion = "6.7.3"
+        $InnoReleaseTag = "is-6_7_3"
+
         $InnoDownloadUrl = (
-            "https://jrsoftware.org/" +
-            "download.php/is.exe?dontcount=1"
+            "https://github.com/jrsoftware/issrc/releases/download/" +
+            "$InnoReleaseTag/innosetup-$InnoVersion.exe"
         )
 
         Write-Host (
-            "Downloading official Inno Setup 6 installer..."
+            "Downloading official Inno Setup $InnoVersion installer..."
         )
 
-        Invoke-WebRequest `
-            -Uri $InnoDownloadUrl `
-            -OutFile $InnoBootstrap `
-            -UseBasicParsing
+        # Windows PowerShell 5.1 on older Windows images can otherwise
+        # negotiate an obsolete TLS version.
+        try {
+            [Net.ServicePointManager]::SecurityProtocol = `
+                [Net.SecurityProtocolType]::Tls12
+        }
+        catch {
+            Write-Warning (
+                "Could not force TLS 1.2. Continuing with the " +
+                "system default."
+            )
+        }
+
+        $DownloadHeaders = @{
+            "User-Agent" = "Genshin-Mod-Manager-Build"
+            "Accept" = "application/octet-stream"
+        }
+
+        try {
+            Invoke-WebRequest `
+                -Uri $InnoDownloadUrl `
+                -OutFile $InnoBootstrap `
+                -Headers $DownloadHeaders `
+                -UseBasicParsing
+        }
+        catch {
+            Write-Warning (
+                "Invoke-WebRequest failed. Trying BITS..."
+            )
+
+            if (
+                Get-Command `
+                    -Name "Start-BitsTransfer" `
+                    -ErrorAction SilentlyContinue
+            ) {
+                Start-BitsTransfer `
+                    -Source $InnoDownloadUrl `
+                    -Destination $InnoBootstrap
+            }
+            else {
+                throw
+            }
+        }
 
         if (-not (
             Test-Path -LiteralPath $InnoBootstrap
@@ -414,9 +460,34 @@ if (-not $ISCC) {
             $InnoFile.Length -lt
             $MinimumInnoInstallerBytes
         ) {
+            $PreviewText = ""
+
+            try {
+                $PreviewText = (
+                    Get-Content `
+                        -LiteralPath $InnoBootstrap `
+                        -Raw `
+                        -ErrorAction Stop
+                )
+
+                if ($PreviewText.Length -gt 200) {
+                    $PreviewText = (
+                        $PreviewText.Substring(
+                            0,
+                            200
+                        )
+                    )
+                }
+            }
+            catch {
+                $PreviewText = "<binary or unreadable>"
+            }
+
             throw (
-                "Downloaded Inno Setup bootstrap is unexpectedly small: " +
-                "$($InnoFile.Length) bytes"
+                "Downloaded Inno Setup file is unexpectedly small. " +
+                "Size=$($InnoFile.Length) bytes; " +
+                "URL=$InnoDownloadUrl; " +
+                "Preview=$PreviewText"
             )
         }
 
