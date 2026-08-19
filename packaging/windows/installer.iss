@@ -61,10 +61,13 @@ german.AgentAutoCheckTask=Automatisch im Hintergrund nach GMM-Updates suchen
 english.AgentLaunchTask=Start GMM Update Agent
 german.AgentLaunchTask=GMM Update Agent starten
 
+english.AgentTasksGroup=Update Agent
+german.AgentTasksGroup=Update Agent
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "agentautostart"; Description: "{cm:AgentAutostartTask}"; GroupDescription: "{cm:AdditionalTasks}"; Flags: checkedonce
-Name: "agentautocheck"; Description: "{cm:AgentAutoCheckTask}"; GroupDescription: "{cm:AdditionalTasks}"; Flags: checkedonce
+Name: "agentautostart"; Description: "{cm:AgentAutostartTask}"; GroupDescription: "{cm:AgentTasksGroup}"; Flags: checkedonce
+Name: "agentautocheck"; Description: "{cm:AgentAutoCheckTask}"; GroupDescription: "{cm:AgentTasksGroup}"; Flags: checkedonce
 
 ; Python is optional. If Python 3.12+ is already present, the task is
 ; not offered at all. Otherwise it is selected on the first install.

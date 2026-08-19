@@ -60,6 +60,11 @@ jobs:
             python3 -m py_compile main.py
           fi
 
+      - name: Validate Inno Setup custom messages
+        shell: bash
+        run: |
+          python3 tools/check_inno_custom_messages.py
+
       - name: Validate build scripts exist
         shell: bash
         run: |
