@@ -681,5 +681,8 @@
   "updates.agent.update.done": "Update {version} wurde installiert.",
   "updates.agent.error.no_appimage": "Das installierte GMM-AppImage wurde nicht gefunden: {path}",
   "updates.agent.error.replace": "Das AppImage konnte nicht ersetzt werden: {error}",
-  "updates.error.agent_start_failed": "Der Update Agent konnte nicht gestartet werden."
+  "updates.error.agent_start_failed": "Der Update Agent konnte nicht gestartet werden.",
+  "updates.agent.handoff.exit_code": "Inno-Setup-Exit-Code: {code}",
+  "updates.agent.handoff.log_excerpt": "Installer-Protokoll (letzte Zeilen):",
+  "updates.agent.handoff.log_missing": "Es wurde kein Installer-Protokoll erstellt. Erwartetes Protokoll: {path}"
 }

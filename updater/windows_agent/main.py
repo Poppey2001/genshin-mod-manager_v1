@@ -776,16 +776,32 @@ def run_installer_handoff(
     dialog.set_status(tr("updates.agent.handoff.install"))
     QApplication.processEvents()
 
+    try:
+        SETUP_LOG.unlink(missing_ok=True)
+    except OSError:
+        pass
+
     arguments = [
         str(installer),
         "/VERYSILENT",
-        "/SUPPRESSMSGBOXES",
         "/NORESTART",
-        f'/LOG="{SETUP_LOG}"',
+        "/SP-",
+        "/CLOSEAPPLICATIONS",
+        "/FORCECLOSEAPPLICATIONS",
+        "/LOGCLOSEAPPLICATIONS",
+        f"/LOG={SETUP_LOG}",
     ]
+
+    logging.info(
+        "Starting Inno Setup handoff: installer=%s log=%s",
+        installer,
+        SETUP_LOG,
+    )
+
     try:
         process = subprocess.Popen(
             arguments,
+            cwd=str(installer.parent),
             close_fds=True,
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         )
@@ -803,11 +819,54 @@ def run_installer_handoff(
 
     HANDOFF_READY.unlink(missing_ok=True)
     if process.returncode != 0:
+        log_excerpt = ""
+        try:
+            if SETUP_LOG.is_file():
+                lines = SETUP_LOG.read_text(
+                    encoding="utf-8",
+                    errors="replace",
+                ).splitlines()
+                nonempty = [line for line in lines if line.strip()]
+                log_excerpt = "\n".join(nonempty[-18:])
+        except OSError:
+            log_excerpt = ""
+
+        details = tr(
+            "updates.agent.handoff.exit_code",
+            code=process.returncode,
+        )
+
+        if log_excerpt:
+            details += (
+                "\n\n"
+                + tr("updates.agent.handoff.log_excerpt")
+                + "\n"
+                + log_excerpt
+            )
+        else:
+            details += (
+                "\n\n"
+                + tr(
+                    "updates.agent.handoff.log_missing",
+                    path=SETUP_LOG,
+                )
+            )
+
+        logging.error(
+            "Inno Setup failed with exit code %s. Log: %s",
+            process.returncode,
+            SETUP_LOG,
+        )
+        if log_excerpt:
+            logging.error("Inno Setup log tail:\n%s", log_excerpt)
+
         dialog.set_error(
             tr("updates.agent.handoff.failed")
-            + f"\n\nExit-Code: {process.returncode}"
+            + "\n\n"
+            + details
         )
-        QTimer.singleShot(10000, application.quit)
+        dialog.resize(720, 320)
+        QTimer.singleShot(20000, application.quit)
         return application.exec()
 
     dialog.progress.setRange(0, 100)

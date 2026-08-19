@@ -681,5 +681,8 @@
   "updates.agent.update.done": "Update {version} was installed.",
   "updates.agent.error.no_appimage": "The installed GMM AppImage was not found: {path}",
   "updates.agent.error.replace": "The AppImage could not be replaced: {error}",
-  "updates.error.agent_start_failed": "The Update Agent could not be started."
+  "updates.error.agent_start_failed": "The Update Agent could not be started.",
+  "updates.agent.handoff.exit_code": "Inno Setup exit code: {code}",
+  "updates.agent.handoff.log_excerpt": "Installer log (last lines):",
+  "updates.agent.handoff.log_missing": "No installer log was created. Expected log: {path}"
 }
