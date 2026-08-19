@@ -89,21 +89,13 @@ QCheckBox {
     spacing: 8px;
 }
 
-QCheckBox::indicator {
-    width: 17px;
-    height: 17px;
-    border-radius: 4px;
-    border: 1px solid #4a5261;
-    background: #191d25;
-}
-
-QCheckBox::indicator:hover {
-    border-color: #7967e8;
-}
-
-QCheckBox::indicator:checked {
-    background: #7967e8;
-    border-color: #806bff;
+/*
+   Deliberately do not override QCheckBox::indicator here.
+   Qt/Windows can therefore draw the platform checkbox including
+   the real check mark instead of the old solid purple square.
+*/
+QCheckBox:disabled {
+    color: #676f7c;
 }
 
 QPushButton {

@@ -7,6 +7,18 @@ QWidget#profilesPage {
     color: #e7e9ef;
 }
 
+/* Windows fallback: every label stays readable even if a specific
+   object-name rule is missing or a native palette leaks through. */
+QWidget#profilesPage QLabel {
+    background-color: transparent;
+    color: #d9dee8;
+}
+
+QFrame#profilesEmptyState QLabel {
+    background-color: transparent;
+    color: #d9dee8;
+}
+
 QWidget#profilesPage QLabel#pageTitle {
     background-color: transparent;
     color: #f5f6f8;
@@ -119,11 +131,41 @@ QWidget#profilesCardsContent {
 }
 
 /* ============================================================
+   EMPTY STATE
+   ============================================================ */
+
+QFrame#profilesEmptyState {
+    background-color: #14181e;
+    border: 1px solid #282e37;
+    border-radius: 12px;
+}
+
+QLabel#profilesEmptyIcon {
+    background-color: transparent;
+    color: #8067ff;
+    font-size: 42px;
+    font-weight: 900;
+}
+
+QLabel#profilesEmptyTitle {
+    background-color: transparent;
+    color: #edf1f4;
+    font-size: 17px;
+    font-weight: 850;
+}
+
+QLabel#profilesEmptyDescription {
+    background-color: transparent;
+    color: #7f8997;
+    font-size: 11px;
+}
+
+/* ============================================================
    PROFILE CARD
    ============================================================ */
 
 QFrame#profileCard {
-    min-height: 176px;
+    min-height: 164px;
     background-color: #181d24;
     border: 1px solid #303641;
     border-left: 3px solid #454d59;
@@ -300,40 +342,4 @@ QScrollBar::sub-line:vertical {
 QScrollBar::add-page:vertical,
 QScrollBar::sub-page:vertical {
     background: transparent;
-}
-
-
-/* ============================================================
-   UNIFIED PROFILE CONTENT STATE
-   ============================================================ */
-
-QStackedWidget#profilesContentStack,
-QWidget#profilesStatePanel {
-    background-color: transparent;
-    border: none;
-}
-
-
-/* ============================================================
-   RESPONSIVE POLISH V1
-   ============================================================ */
-
-QWidget#profilesPage[responsiveMode="compact"] QLabel#pageTitle {
-    font-size: 25px;
-}
-
-QWidget#profilesPage[responsiveMode="tight"] QLabel#pageTitle {
-    font-size: 23px;
-}
-
-QWidget#profilesPage[responsiveMode="tight"] QPushButton#profilesRefreshButton,
-QWidget#profilesPage[responsiveMode="tight"] QPushButton#profilesNewButton {
-    padding-left: 10px;
-    padding-right: 10px;
-}
-
-QWidget#profilesPage[responsiveMode="tight"] QLabel#profilesSummaryCount {
-    min-width: 58px;
-    padding-left: 7px;
-    padding-right: 7px;
 }
