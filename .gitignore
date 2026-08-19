@@ -1,44 +1,250 @@
-# Virtuelle Python-Umgebungen
-.venv/
-venv/
-env/
+# ============================================================
+# Genshin Mod Manager
+# .gitignore
+# ============================================================
 
+
+# ------------------------------------------------------------
 # Python
+# ------------------------------------------------------------
+
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
 
-# Umgebungsvariablen und Zugangsdaten
-.env
-.env.*
-!.env.example
-
-# Tests und Analyse
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 htmlcov/
 
-# Packaging
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+
+# ------------------------------------------------------------
+# Virtual environments
+# ------------------------------------------------------------
+
+.venv/
+.venv-*/
+venv/
+env/
+ENV/
+
+.venv-windows/
+.venv-linux/
+
+
+# ------------------------------------------------------------
+# Local environment / secrets
+# ------------------------------------------------------------
+
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.pfx
+*.p12
+
+
+# ------------------------------------------------------------
+# PyInstaller / application builds
+# ------------------------------------------------------------
+
 build/
 dist/
-*.egg-info/
-*.spec
+release/
+AppDir/
 
-# Logs
+*.AppImage
+*.AppImage.sha256
+
+# Keep the project PyInstaller spec in packaging/
+# packaging/GenshinModManager.spec must stay tracked.
+
+
+# ------------------------------------------------------------
+# Windows installer temporary/downloaded files
+# ------------------------------------------------------------
+
+# The official CPython installer is downloaded automatically
+# by scripts/build_windows_installer.ps1.
+packaging/windows/redist/
+
+*.exe.sha256
+
+# Do NOT ignore packaging/windows/installer.iss.
+# It is required by GitHub Actions and local builds.
+
+
+# ------------------------------------------------------------
+# Local build tools
+# ------------------------------------------------------------
+
+.build-tools/
+
+appimagetool-*.AppImage
+
+
+# ------------------------------------------------------------
+# Application runtime/cache data
+# ------------------------------------------------------------
+
+Cache/
+cache/
+logs/
+Logs/
+
 *.log
 
-# Entwicklungsumgebungen
-.idea/
-.vscode/
+# Updater runtime files
+update.log
+update-helper.py
+update-helper.json
+update-helper.ps1
 
-# Betriebssystem
-.DS_Store
-Thumbs.db
+.installed
+.failed
 
-# Temporäre Dateien
+*.update
+*.old
+
+
+# ------------------------------------------------------------
+# Local user settings / generated state
+# ------------------------------------------------------------
+
+config.json
+settings.json
+
+profiles.local.json
+
+# Local databases / caches if added later
+*.db
+*.sqlite
+*.sqlite3
+
+
+# ------------------------------------------------------------
+# Temporary files / archives
+# ------------------------------------------------------------
+
 *.tmp
+*.temp
 *.bak
+*.backup
+*.swp
+*.swo
+
+~$*
+
+*.part
+*.partial
+
+# Local test/build archives
+*.7z
+*.rar
+
+# ZIP files are often used as local build/test packages.
+# Remove this rule if you intentionally want to version ZIP assets.
+*.zip
+
+
+# ------------------------------------------------------------
+# IDE / editor
+# ------------------------------------------------------------
+
+.vscode/
+.idea/
+
+*.code-workspace
+
+.vs/
+
+*.sln.user
+*.user
+*.suo
+
+
+# ------------------------------------------------------------
+# Windows
+# ------------------------------------------------------------
+
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+
+Desktop.ini
+
+$RECYCLE.BIN/
+
+*.lnk
+
+
+# ------------------------------------------------------------
+# Linux
+# ------------------------------------------------------------
+
 *~
+.directory
+
+.Trash-*
+
+.fuse_hidden*
+
+
+# ------------------------------------------------------------
+# macOS
+# ------------------------------------------------------------
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+._*
+
+
+# ------------------------------------------------------------
+# Test / audit output
+# ------------------------------------------------------------
+
+hardcoded_text.txt
+hardcoded_text_after.txt
+hardcoded_all.txt
+
+coverage.xml
+junit.xml
+
+
+# ------------------------------------------------------------
+# Important project files that MUST remain tracked
+# ------------------------------------------------------------
+
+!packaging/
+!packaging/GenshinModManager.spec
+!packaging/linux/
+!packaging/linux/AppRun
+!packaging/linux/genshin-mod-manager.desktop
+!packaging/windows/
+!packaging/windows/installer.iss
+
+!scripts/
+!scripts/build_linux_appimage.sh
+!scripts/build_windows_installer.ps1
+
+!.github/
+!.github/workflows/
+
+!app/i18n/
+!app/i18n/locales/
+!app/i18n/locales/de.json
+!app/i18n/locales/en.json
+
+!requirements.txt
+!requirements-build.txt
