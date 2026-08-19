@@ -608,6 +608,8 @@ class UpdateDialog(QDialog):
 
     def start_local_build(
         self,
+        *,
+        fallback_reason: str | None = None,
     ) -> None:
         self._busy = True
         self._hide_error()
@@ -621,11 +623,19 @@ class UpdateDialog(QDialog):
             0,
         )
 
-        self.status_label.setText(
-            tr(
-                "updates.status.local_build.preparing"
+        if fallback_reason:
+            self.status_label.setText(
+                tr(
+                    "updates.status.fallback.local_build"
+                )
             )
-        )
+
+        else:
+            self.status_label.setText(
+                tr(
+                    "updates.status.local_build.preparing"
+                )
+            )
 
         self.install_button.setEnabled(
             False

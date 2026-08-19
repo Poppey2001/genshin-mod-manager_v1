@@ -609,5 +609,11 @@
     "settings.global.tools.invalid.message": "The file for “{tool}” could not be found.\n\nPath:\n{path}",
     "updates.dialog.error_details": "Error details",
     "updates.dialog.copy_error": "Copy error",
-    "updates.status.failed_short": "Update failed."
+    "updates.status.failed_short": "Update failed.",
+    "updates.status.fallback.local_build": "The release update is unavailable or failed. Downloading source and building locally …",
+    "updates.error.fallback.no_release_asset": "No matching Windows installer was found for this version on the Release/Prerelease page.",
+    "updates.error.fallback.no_digest": "The published Windows installer does not provide a usable SHA-256 digest.",
+    "updates.error.fallback.unavailable": "The release update could not be used:\n\n{release_error}\n\nA local source build is not available on this system. Windows, PowerShell, and Python 3.12 or newer are required.",
+    "updates.error.fallback.both_failed": "Both update paths failed.\n\nRelease/Prerelease update:\n{release_error}\n\nLocal source build:\n{source_error}",
+    "updates.error.check.release_and_source_failed": "The update check failed through both sources.\n\nGitHub Releases/Prereleases:\n{release_error}\n\nGitHub source:\n{source_error}"
 }

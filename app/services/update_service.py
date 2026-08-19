@@ -270,15 +270,18 @@ class UpdateService:
     """
     Shared update backend for Linux and Windows.
 
-    Version source:
-        GitHub main/app/version.py -> APP_VERSION
+    Primary update source:
+        GitHub Releases / Prereleases
 
-    Release source:
-        GitHub Releases
+    Fallback update source:
+        GitHub source (main/app/version.py)
 
-    This separation is intentional:
-    app/version.py decides WHETHER an update exists.
-    The release only provides downloadable platform assets.
+    The selected update channel controls which releases are allowed:
+        stable      -> stable releases only
+        prerelease  -> stable releases and prereleases
+
+    If no usable published update is available, the source version is
+    checked so Windows can fall back to an exact local source build.
     """
 
     def __init__(
@@ -341,22 +344,134 @@ class UpdateService:
     def check_for_update(
         self,
     ) -> UpdateInfo | None:
-        # IMPORTANT:
-        # Never derive "latest version" from a release tag.
-        # The remote app/version.py is always authoritative.
-        remote_commit = (
-            self._fetch_remote_commit()
-        )
+        """
+        Prefer GitHub Releases / Prereleases.
 
-        remote_version = (
-            self._fetch_remote_version(
-                remote_commit
+        Only when the release endpoint cannot provide a newer allowed
+        version do we inspect main/app/version.py. This keeps normal
+        updates on the published binary path while still allowing the
+        Windows source-build fallback when release assets are missing.
+        """
+
+        release_error: (
+            UpdateServiceError
+            | None
+        ) = None
+
+        try:
+            releases = (
+                self._fetch_releases()
             )
-        )
+
+        except UpdateServiceError as error:
+            release_error = error
+
+            logger.warning(
+                (
+                    "GitHub Releases konnten nicht "
+                    "abgerufen werden: %s"
+                ),
+                error,
+            )
+
+        else:
+            latest_release = (
+                self._find_latest_allowed_release(
+                    releases
+                )
+            )
+
+            if latest_release is not None:
+                release_version = (
+                    self._release_version(
+                        latest_release
+                    )
+                )
+
+                if (
+                    release_version
+                    is not None
+                    and release_version
+                    > self.current_version
+                ):
+                    source_commit = (
+                        self._resolve_release_source_commit(
+                            latest_release
+                        )
+                    )
+
+                    update = (
+                        self._parse_release(
+                            latest_release,
+                            source_commit=(
+                                source_commit
+                                or ""
+                            ),
+                        )
+                    )
+
+                    if update is not None:
+                        logger.info(
+                            (
+                                "Update aus GitHub Release gewählt: "
+                                "lokal=%s, remote=%s, tag=%s, "
+                                "prerelease=%s, commit=%s"
+                            ),
+                            self.current_version,
+                            update.version,
+                            update.tag_name,
+                            update.prerelease,
+                            (
+                                update.source_commit
+                                or "<unresolved>"
+                            ),
+                        )
+
+                        return update
+
+        # ----------------------------------------------------
+        # Source fallback
+        # ----------------------------------------------------
+        #
+        # This is intentionally secondary. A source-only version may
+        # exist before its release assets have finished publishing.
+        # Windows can then build the exact commit locally.
+        # ----------------------------------------------------
+
+        try:
+            remote_commit = (
+                self._fetch_remote_commit()
+            )
+
+            remote_version = (
+                self._fetch_remote_version(
+                    remote_commit
+                )
+            )
+
+        except UpdateServiceError as source_error:
+            if release_error is not None:
+                raise UpdateServiceError(
+                    tr(
+                        "updates.error.check.release_and_source_failed",
+                        release_error=(
+                            str(
+                                release_error
+                            )
+                        ),
+                        source_error=(
+                            str(
+                                source_error
+                            )
+                        ),
+                    )
+                ) from source_error
+
+            raise
 
         logger.info(
             (
-                "Update-Version geprüft: "
+                "Source-Fallback geprüft: "
                 "lokal=%s, GitHub-%s/%s=%s, commit=%s"
             ),
             self.current_version,
@@ -377,59 +492,12 @@ class UpdateService:
                 remote_version
             )
         ):
-            logger.info(
-                (
-                    "Remote-Version %s ist neuer, "
-                    "wird aber vom Update-Kanal %s "
-                    "nicht erlaubt."
-                ),
-                remote_version,
-                self.channel.value,
-            )
-
             return None
 
-        # A newer version definitely exists at this point.
-        # Releases are now used ONLY to locate binaries for exactly
-        # this version.
-        releases = (
-            self._fetch_releases()
-        )
-
-        matching_release = (
-            self._find_release_for_version(
-                releases,
-                remote_version,
-            )
-        )
-
-        if matching_release is not None:
-            update = (
-                self._parse_release(
-                    matching_release,
-                    source_commit=remote_commit,
-                )
-            )
-
-            if update is not None:
-                logger.info(
-                    (
-                        "Passendes GitHub Release "
-                        "für %s gefunden: %s"
-                    ),
-                    remote_version,
-                    update.tag_name,
-                )
-
-                return update
-
-        # GitHub source is ahead of the published binaries.
-        # Do not incorrectly say "up to date".
         logger.warning(
             (
-                "app/version.py meldet Version %s, "
-                "aber es existiert noch kein "
-                "passendes veröffentlichtes Release."
+                "Kein neueres passendes veröffentlichtes "
+                "Release verfügbar; Source-Fallback auf %s."
             ),
             remote_version,
         )
@@ -446,8 +514,30 @@ class UpdateService:
     def _fetch_remote_commit(
         self,
     ) -> str:
+        return self._fetch_commit_for_ref(
+            GITHUB_VERSION_REF
+        )
+
+    def _fetch_commit_for_ref(
+        self,
+        ref_value: str,
+    ) -> str:
+        ref_text = (
+            str(
+                ref_value
+            )
+            .strip()
+        )
+
+        if not ref_text:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.source.commit_missing"
+                )
+            )
+
         ref = quote(
-            GITHUB_VERSION_REF,
+            ref_text,
             safe="",
         )
 
@@ -567,6 +657,81 @@ class UpdateService:
             )
 
         return commit.casefold()
+
+    def _resolve_release_source_commit(
+        self,
+        release: dict[
+            str,
+            Any,
+        ],
+    ) -> str | None:
+        """
+        Resolve the release tag to an exact 40-character Git commit.
+
+        The release asset path does not depend on this. It is only needed
+        if the updater has to fall back to a local source build.
+        """
+
+        candidates: list[
+            str
+        ] = []
+
+        tag_name = release.get(
+            "tag_name"
+        )
+
+        if isinstance(
+            tag_name,
+            str,
+        ):
+            tag_name = tag_name.strip()
+
+            if tag_name:
+                candidates.append(
+                    tag_name
+                )
+
+        target_commitish = (
+            release.get(
+                "target_commitish"
+            )
+        )
+
+        if isinstance(
+            target_commitish,
+            str,
+        ):
+            target_commitish = (
+                target_commitish.strip()
+            )
+
+            if (
+                target_commitish
+                and target_commitish
+                not in candidates
+            ):
+                candidates.append(
+                    target_commitish
+                )
+
+        for candidate in candidates:
+            try:
+                return self._fetch_commit_for_ref(
+                    candidate
+                )
+
+            except UpdateServiceError as error:
+                logger.warning(
+                    (
+                        "Source-Commit für Release-Ref "
+                        "%s konnte nicht aufgelöst "
+                        "werden: %s"
+                    ),
+                    candidate,
+                    error,
+                )
+
+        return None
 
     def _fetch_remote_version(
         self,
@@ -829,6 +994,90 @@ class UpdateService:
     # ========================================================
     # Matching release
     # ========================================================
+
+    def _find_latest_allowed_release(
+        self,
+        releases: list[
+            dict[str, Any]
+        ],
+    ) -> dict[
+        str,
+        Any,
+    ] | None:
+        candidates: list[
+            tuple[
+                Version,
+                dict[
+                    str,
+                    Any,
+                ],
+            ]
+        ] = []
+
+        for release in releases:
+            if bool(
+                release.get(
+                    "draft",
+                    False,
+                )
+            ):
+                continue
+
+            version = (
+                self._release_version(
+                    release
+                )
+            )
+
+            if version is None:
+                continue
+
+            is_prerelease = (
+                bool(
+                    release.get(
+                        "prerelease",
+                        False,
+                    )
+                )
+                or version.is_prerelease
+            )
+
+            if (
+                self.channel
+                == UpdateChannel.STABLE
+                and is_prerelease
+            ):
+                continue
+
+            if not (
+                self._version_channel_allows(
+                    version
+                )
+            ):
+                continue
+
+            if (
+                version
+                <= self.current_version
+            ):
+                continue
+
+            candidates.append(
+                (
+                    version,
+                    release,
+                )
+            )
+
+        if not candidates:
+            return None
+
+        candidates.sort(
+            key=lambda item: item[0],
+            reverse=True,
+        )
+
+        return candidates[0][1]
 
     def _find_release_for_version(
         self,

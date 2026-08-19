@@ -123,6 +123,14 @@ class UpdateController(
 
         self._manual_check = False
 
+        # Release-first / source-build fallback state.
+        self._release_failure_message: (
+            str
+            | None
+        ) = None
+
+        self._source_fallback_started = False
+
     # ==================================================
     # Start
     # ==================================================
@@ -377,20 +385,19 @@ class UpdateController(
             ):
                 return False
 
-            # Preferred Windows path:
-            # Build the installer locally from the exact Git commit
-            # whose app/version.py triggered this update.
-            if (
-                update.source_commit
-                and local_windows_build_available()
-            ):
-                return True
-
-            # Fallback for machines where the user skipped the optional
-            # Python installation: use a prebuilt release installer.
-            return bool(
+            release_available = bool(
                 asset is not None
                 and asset.digest
+            )
+
+            source_fallback_available = bool(
+                update.source_commit
+                and local_windows_build_available()
+            )
+
+            return bool(
+                release_available
+                or source_fallback_available
             )
 
         if self._is_linux():
@@ -425,6 +432,9 @@ class UpdateController(
 
         self._current_update = update
         self._current_asset = asset
+
+        self._release_failure_message = None
+        self._source_fallback_started = False
 
         dialog = UpdateDialog(
             update=update,
@@ -464,9 +474,11 @@ class UpdateController(
         self._dialog = None
         self._current_update = None
         self._current_asset = None
+        self._release_failure_message = None
+        self._source_fallback_started = False
 
     # ==================================================
-    # Download
+    # Download / fallback chain
     # ==================================================
 
     def _start_download(
@@ -496,65 +508,52 @@ class UpdateController(
         ):
             return
 
-        # ==================================================
-        # Windows: local source build
-        # ==================================================
+        self._release_failure_message = None
+        self._source_fallback_started = False
+
+        # --------------------------------------------------
+        # Preferred path:
+        # published Release / Prerelease asset
+        # --------------------------------------------------
 
         if (
-            self._is_windows()
-            and is_windows_installer_runtime()
-            and update.source_commit
-            and local_windows_build_available()
+            asset is not None
+            and asset.digest
         ):
-            worker = WindowsSourceBuildWorker(
-                owner=GITHUB_OWNER,
-                repository=(
-                    GITHUB_REPOSITORY
-                ),
-                version=str(
-                    update.version
-                ),
-                source_commit=(
-                    update.source_commit
-                ),
-            )
-
-            self._source_build_worker = (
-                worker
-            )
-
-            worker.signals.status.connect(
-                dialog.update_local_build_stage
-            )
-
-            worker.signals.progress.connect(
-                dialog.update_progress
-            )
-
-            worker.signals.finished.connect(
-                self._on_source_build_finished
-            )
-
-            worker.signals.failed.connect(
-                self._on_source_build_failed
-            )
-
-            worker.signals.cancelled.connect(
-                self._on_source_build_cancelled
-            )
-
-            dialog.start_local_build()
-
-            self.thread_pool.start(
-                worker
+            self._start_release_asset_download(
+                asset
             )
 
             return
 
-        # ==================================================
-        # Release asset fallback / Linux
-        # ==================================================
+        # --------------------------------------------------
+        # Windows fallback:
+        # no usable published installer -> exact source build
+        # --------------------------------------------------
 
+        if self._is_windows():
+            if asset is None:
+                reason = tr(
+                    "updates.error.fallback.no_release_asset"
+                )
+            else:
+                reason = tr(
+                    "updates.error.fallback.no_digest"
+                )
+
+            if self._start_windows_source_fallback(
+                reason=reason
+            ):
+                return
+
+            dialog.show_error(
+                self._release_failure_message
+                or reason
+            )
+
+            return
+
+        # Linux currently requires a published AppImage asset.
         if asset is None:
             dialog.show_error(
                 tr(
@@ -564,13 +563,19 @@ class UpdateController(
 
             return
 
-        if not asset.digest:
-            dialog.show_error(
-                tr(
-                    "updates.error.no_digest"
-                )
+        dialog.show_error(
+            tr(
+                "updates.error.no_digest"
             )
+        )
 
+    def _start_release_asset_download(
+        self,
+        asset: ReleaseAsset,
+    ) -> None:
+        dialog = self._dialog
+
+        if dialog is None:
             return
 
         worker = UpdateDownloadWorker(
@@ -601,6 +606,132 @@ class UpdateController(
             worker
         )
 
+    def _can_start_windows_source_fallback(
+        self,
+    ) -> bool:
+        update = (
+            self._current_update
+        )
+
+        if update is None:
+            return False
+
+        return bool(
+            self._is_windows()
+            and is_windows_installer_runtime()
+            and update.source_commit
+            and local_windows_build_available()
+            and self._source_build_worker
+            is None
+        )
+
+    def _start_windows_source_fallback(
+        self,
+        *,
+        reason: str,
+    ) -> bool:
+        dialog = self._dialog
+        update = self._current_update
+
+        if (
+            dialog is None
+            or update is None
+        ):
+            return False
+
+        reason = str(
+            reason
+        ).strip()
+
+        if reason:
+            self._release_failure_message = (
+                reason
+            )
+
+        if self._source_fallback_started:
+            return False
+
+        if not (
+            self._can_start_windows_source_fallback()
+        ):
+            if self._release_failure_message:
+                self._release_failure_message = (
+                    tr(
+                        "updates.error.fallback.unavailable",
+                        release_error=(
+                            self._release_failure_message
+                        ),
+                    )
+                )
+
+            return False
+
+        self._source_fallback_started = True
+
+        worker = WindowsSourceBuildWorker(
+            owner=GITHUB_OWNER,
+            repository=(
+                GITHUB_REPOSITORY
+            ),
+            version=str(
+                update.version
+            ),
+            source_commit=(
+                update.source_commit
+            ),
+        )
+
+        self._source_build_worker = worker
+
+        worker.signals.status.connect(
+            dialog.update_local_build_stage
+        )
+
+        worker.signals.progress.connect(
+            dialog.update_progress
+        )
+
+        worker.signals.finished.connect(
+            self._on_source_build_finished
+        )
+
+        worker.signals.failed.connect(
+            self._on_source_build_failed
+        )
+
+        worker.signals.cancelled.connect(
+            self._on_source_build_cancelled
+        )
+
+        dialog.start_local_build(
+            fallback_reason=(
+                self._release_failure_message
+            )
+        )
+
+        self.thread_pool.start(
+            worker
+        )
+
+        return True
+
+    def _combined_fallback_error(
+        self,
+        source_error: str,
+    ) -> str:
+        release_error = (
+            self._release_failure_message
+        )
+
+        if release_error:
+            return tr(
+                "updates.error.fallback.both_failed",
+                release_error=release_error,
+                source_error=source_error,
+            )
+
+        return source_error
+
     def _on_source_build_finished(
         self,
         installer_file: object,
@@ -617,8 +748,10 @@ class UpdateController(
             Path,
         ):
             dialog.show_error(
-                tr(
-                    "updates.error.invalid_download"
+                self._combined_fallback_error(
+                    tr(
+                        "updates.error.invalid_download"
+                    )
                 )
             )
 
@@ -633,12 +766,17 @@ class UpdateController(
 
         except Exception as error:
             logger.exception(
-                "Lokaler Windows-Update-Build konnte nicht installiert werden."
+                (
+                    "Lokaler Windows-Source-Build "
+                    "konnte nicht installiert werden."
+                )
             )
 
             dialog.show_error(
-                str(
-                    error
+                self._combined_fallback_error(
+                    str(
+                        error
+                    )
                 )
             )
 
@@ -662,7 +800,9 @@ class UpdateController(
 
         if self._dialog is not None:
             self._dialog.show_error(
-                message
+                self._combined_fallback_error(
+                    message
+                )
             )
 
     def _on_source_build_cancelled(
@@ -692,10 +832,19 @@ class UpdateController(
             downloaded_file,
             Path,
         ):
-            dialog.show_error(
-                tr(
-                    "updates.error.invalid_download"
+            reason = tr(
+                "updates.error.invalid_download"
+            )
+
+            if self._is_windows() and (
+                self._start_windows_source_fallback(
+                    reason=reason
                 )
+            ):
+                return
+
+            dialog.show_error(
+                reason
             )
 
             return
@@ -713,8 +862,7 @@ class UpdateController(
 
             elif (
                 self._is_windows()
-                and
-                is_windows_installer_runtime()
+                and is_windows_installer_runtime()
             ):
                 launch_windows_installer_update(
                     downloaded_file
@@ -730,15 +878,24 @@ class UpdateController(
         except Exception as error:
             logger.exception(
                 (
-                    "Automatische Installation "
-                    "konnte nicht vorbereitet werden."
+                    "Release-Update konnte nicht "
+                    "installiert werden."
                 )
             )
 
-            dialog.show_error(
-                str(
-                    error
+            reason = str(
+                error
+            )
+
+            if self._is_windows() and (
+                self._start_windows_source_fallback(
+                    reason=reason
                 )
+            ):
+                return
+
+            dialog.show_error(
+                reason
             )
 
             return
@@ -748,18 +905,6 @@ class UpdateController(
         )
 
         if application is not None:
-            # Beide Updater laufen außerhalb des
-            # Mod-Managers weiter:
-            #
-            # Linux:
-            #   Shell-Helper wartet auf diesen Prozess,
-            #   ersetzt das AppImage und startet es neu.
-            #
-            # Windows:
-            #   Inno Setup wird detached gestartet.
-            #   Setup darf die installierte EXE ersetzen
-            #   und startet sie nach erfolgreichem
-            #   Silent-Update neu.
             QTimer.singleShot(
                 250,
                 application.quit,
@@ -771,10 +916,21 @@ class UpdateController(
     ) -> None:
         self._download_worker = None
 
-        if self._dialog is not None:
-            self._dialog.show_error(
-                message
+        dialog = self._dialog
+
+        if dialog is None:
+            return
+
+        if self._is_windows() and (
+            self._start_windows_source_fallback(
+                reason=message
             )
+        ):
+            return
+
+        dialog.show_error(
+            message
+        )
 
     def _on_download_cancelled(
         self,
