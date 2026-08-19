@@ -1,6 +1,7 @@
 #define MyAppName "Genshin Mod Manager"
 #define MyAppPublisher "Poppey2001"
 #define MyAppExeName "GenshinModManager.exe"
+#define MyAgentExeName "GMMUpdateAgent.exe"
 
 #define PythonVersion "3.12.10"
 #define PythonInstallerName "python-3.12.10-amd64.exe"
@@ -30,7 +31,7 @@ LZMAUseSeparateProcess=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-CloseApplications=no
+CloseApplications=force
 CloseApplicationsFilter=*.exe,*.dll,*.pyd
 RestartApplications=no
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -51,8 +52,19 @@ german.PythonStatus=Python 3.12 wird für den aktuellen Benutzer installiert...
 english.PythonDetected=Python 3.12 or newer is already installed. The bundled Python installation will be skipped.
 german.PythonDetected=Python 3.12 oder neuer ist bereits installiert. Die mitgelieferte Python-Installation wird übersprungen.
 
+english.AgentAutostartTask=Start GMM Update Agent automatically with Windows
+german.AgentAutostartTask=GMM Update Agent automatisch mit Windows starten
+
+english.AgentAutoCheckTask=Automatically check for GMM updates in the background
+german.AgentAutoCheckTask=Automatisch im Hintergrund nach GMM-Updates suchen
+
+english.AgentLaunchTask=Start GMM Update Agent
+german.AgentLaunchTask=GMM Update Agent starten
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "agentautostart"; Description: "{cm:AgentAutostartTask}"; GroupDescription: "{cm:AdditionalTasks}"; Flags: checkedonce
+Name: "agentautocheck"; Description: "{cm:AgentAutoCheckTask}"; GroupDescription: "{cm:AdditionalTasks}"; Flags: checkedonce
 
 ; Python is optional. If Python 3.12+ is already present, the task is
 ; not offered at all. Otherwise it is selected on the first install.
@@ -61,6 +73,7 @@ Name: "python"; Description: "{cm:PythonTask}"; Flags: checkedonce; Check: not I
 
 [Files]
 Source: "..\..\dist\GenshinModManager\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\dist\GMMUpdateAgent.exe"; DestDir: "{app}"; DestName: "{#MyAgentExeName}"; Flags: ignoreversion
 
 ; The official CPython installer is downloaded and signature-checked by
 ; scripts\build_windows_installer.ps1 before Inno Setup is compiled.
@@ -72,6 +85,7 @@ Name: "{autodesktop}\Genshin Mod Manager"; Filename: "{app}\{#MyAppExeName}"; Ta
 
 [Registry]
 Root: HKCU; Subkey: "Software\Poppey2001\GenshinModManager"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Poppey2001\GenshinModManager"; ValueType: string; ValueName: "InstalledVersion"; ValueData: "{#MyAppVersion}"
 
 [Run]
 ; Python is deliberately installed per-user and silently. The Mod Manager
@@ -79,16 +93,81 @@ Root: HKCU; Subkey: "Software\Poppey2001\GenshinModManager"; ValueType: string; 
 ; interpreter; Python is an optional convenience/runtime for scripts.
 Filename: "{tmp}\{#PythonInstallerName}"; Parameters: "/quiet InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_test=0 Include_launcher=1 InstallLauncherAllUsers=0 Shortcuts=0"; StatusMsg: "{cm:PythonStatus}"; Flags: waituntilterminated runhidden; Tasks: python; Check: not IsPython312OrNewerInstalled
 
+; Always refresh Update Agent installation paths/version without overwriting the
+; user's existing autostart/automatic-check decisions on upgrades.
+Filename: "{app}\{#MyAgentExeName}"; Parameters: "--write-config --gmm-path ""{app}\{#MyAppExeName}"" --agent-path ""{app}\{#MyAgentExeName}"" --installed-version ""{#MyAppVersion}"""; Flags: waituntilterminated runhidden runasoriginaluser
+
+; When the Update Agent is introduced for the first time, apply the choices
+; made on the Tasks page. Later upgrades preserve the Agent configuration.
+Filename: "{app}\{#MyAgentExeName}"; Parameters: "--write-config --autostart yes"; Flags: waituntilterminated runhidden runasoriginaluser; Tasks: agentautostart; Check: IsFreshAgentInstall
+Filename: "{app}\{#MyAgentExeName}"; Parameters: "--write-config --autostart no"; Flags: waituntilterminated runhidden runasoriginaluser; Check: FreshInstallWithoutAgentAutostart
+Filename: "{app}\{#MyAgentExeName}"; Parameters: "--write-config --auto-check yes --interval 20"; Flags: waituntilterminated runhidden runasoriginaluser; Tasks: agentautocheck; Check: IsFreshAgentInstall
+Filename: "{app}\{#MyAgentExeName}"; Parameters: "--write-config --auto-check no --interval 20"; Flags: waituntilterminated runhidden runasoriginaluser; Check: FreshInstallWithoutAgentAutoCheck
+
 ; Normal interactive install: offer start on Finish page.
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,Genshin Mod Manager}"; Flags: nowait postinstall runasoriginaluser skipifsilent
+Filename: "{app}\{#MyAgentExeName}"; Parameters: "--background"; Description: "{cm:AgentLaunchTask}"; Flags: nowait postinstall runasoriginaluser skipifsilent; Check: IsAgentAutostartEnabled
 
-; Silent auto-update: restart automatically after Setup completed.
+; Silent auto-update: restart Agent and GMM automatically after Setup completed.
+Filename: "{app}\{#MyAgentExeName}"; Parameters: "--background"; Flags: nowait runasoriginaluser skipifnotsilent
 Filename: "{app}\{#MyAppExeName}"; Flags: nowait runasoriginaluser skipifnotsilent
+
+[UninstallRun]
+Filename: "{app}\{#MyAgentExeName}"; Parameters: "--write-config --autostart no"; Flags: waituntilterminated runhidden; RunOnceId: "DisableAgentAutostart"
+Filename: "{app}\{#MyAgentExeName}"; Parameters: "--shutdown"; Flags: waituntilterminated runhidden; RunOnceId: "ShutdownAgent"
+Filename: "{cmd}"; Parameters: "/C timeout /T 1 /NOBREAK >NUL & taskkill /IM {#MyAgentExeName} /F >NUL 2>&1"; Flags: waituntilterminated runhidden; RunOnceId: "ForceStopAgent"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\__pycache__"
 
 [Code]
+
+var
+  HadExistingAgentConfig: Boolean;
+
+function InitializeSetup: Boolean;
+begin
+  HadExistingAgentConfig := FileExists(
+    ExpandConstant(
+      '{localappdata}\Genshin Mod Manager\UpdateAgent\update-agent.json'
+    )
+  );
+  Result := True;
+end;
+
+function IsFreshAgentInstall: Boolean;
+begin
+  Result := not HadExistingAgentConfig;
+end;
+
+function FreshInstallWithoutAgentAutostart: Boolean;
+begin
+  Result :=
+    (not HadExistingAgentConfig)
+    and
+    (not WizardIsTaskSelected('agentautostart'));
+end;
+
+function FreshInstallWithoutAgentAutoCheck: Boolean;
+begin
+  Result :=
+    (not HadExistingAgentConfig)
+    and
+    (not WizardIsTaskSelected('agentautocheck'));
+end;
+
+function IsAgentAutostartEnabled: Boolean;
+var
+  CommandLine: String;
+begin
+  Result := RegQueryStringValue(
+    HKCU,
+    'Software\Microsoft\Windows\CurrentVersion\Run',
+    'GMMUpdateAgent',
+    CommandLine
+  );
+end;
+
 
 function ParsePythonVersion(
   VersionName: String;

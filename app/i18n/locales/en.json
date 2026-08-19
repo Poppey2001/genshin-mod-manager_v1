@@ -251,7 +251,7 @@
     "app.error.unexpected.message": "Genshin Mod Manager had to close because of an error.\n\n{error_type}: {error}",
     "library.details.action.unavailable": "Unavailable",
     "updates.settings.title": "Updates",
-    "updates.settings.auto_check": "Automatically check for updates when the application starts",
+    "updates.settings.auto_check": "Automatically check for updates in the background",
     "updates.settings.channel": "Update channel",
     "updates.settings.version": "Current version",
     "updates.settings.check_now": "Check for updates now",
@@ -617,5 +617,12 @@
     "updates.error.fallback.both_failed": "Both update paths failed.\n\nRelease/Prerelease update:\n{release_error}\n\nLocal source build:\n{source_error}",
     "updates.error.check.release_and_source_failed": "The update check failed through both sources.\n\nGitHub Releases/Prereleases:\n{release_error}\n\nGitHub source:\n{source_error}",
     "updates.error.tls.certificate": "TLS certificate verification for GitHub failed. The updater is still using secure certificate verification. Check the Windows date/time, Windows certificate store, and any proxy or antivirus certificates.\n\nDetails: {reason}",
-    "updates.error.windows_installer.powershell_missing": "Windows PowerShell was not found for the update handoff."
+    "updates.error.windows_installer.powershell_missing": "Windows PowerShell was not found for the update handoff.",
+    "updates.settings.runtime.linux_agent": "The standalone Linux Update Agent is installed. Update checks and installations are handled by the agent.",
+    "updates.settings.agent_autostart": "Start Update Agent automatically when signing in",
+    "updates.settings.agent_interval": "Check interval",
+    "updates.settings.skipped_version": "Skipped version: {version}",
+    "updates.settings.no_skipped_version": "No version is currently skipped.",
+    "updates.settings.reset_skipped": "Reset skipped version",
+    "updates.settings.runtime.agent": "The standalone Update Agent is installed. Update checks and installations run independently from the Mod Manager."
 }

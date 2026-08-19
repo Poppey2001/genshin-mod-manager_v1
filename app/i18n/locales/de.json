@@ -251,7 +251,7 @@
     "app.error.unexpected.message": "Der Genshin Mod Manager musste wegen eines Fehlers beendet werden.\n\n{error_type}: {error}",
     "library.details.action.unavailable": "Nicht verfügbar",
     "updates.settings.title": "Updates",
-    "updates.settings.auto_check": "Beim Programmstart automatisch nach Updates suchen",
+    "updates.settings.auto_check": "Automatisch im Hintergrund nach Updates suchen",
     "updates.settings.channel": "Update-Kanal",
     "updates.settings.version": "Aktuelle Version",
     "updates.settings.check_now": "Jetzt nach Updates suchen",
@@ -617,5 +617,12 @@
     "updates.error.fallback.both_failed": "Beide Update-Wege sind fehlgeschlagen.\n\nRelease-/Prerelease-Update:\n{release_error}\n\nLokaler Source-Build:\n{source_error}",
     "updates.error.check.release_and_source_failed": "Die Update-Prüfung ist über beide Quellen fehlgeschlagen.\n\nGitHub Releases/Prereleases:\n{release_error}\n\nGitHub Source:\n{source_error}",
     "updates.error.tls.certificate": "Die TLS-Zertifikatsprüfung für GitHub ist fehlgeschlagen. Der Updater verwendet weiterhin eine sichere Zertifikatsprüfung. Prüfe Windows-Datum/Uhrzeit, den Windows-Zertifikatsspeicher sowie gegebenenfalls Proxy- oder Antivirus-Zertifikate.\n\nDetails: {reason}",
-    "updates.error.windows_installer.powershell_missing": "Windows PowerShell wurde für die Update-Übergabe nicht gefunden."
+    "updates.error.windows_installer.powershell_missing": "Windows PowerShell wurde für die Update-Übergabe nicht gefunden.",
+    "updates.settings.runtime.linux_agent": "Der eigenständige Linux Update Agent ist installiert. Update-Prüfungen und Installationen werden vom Agent ausgeführt.",
+    "updates.settings.agent_autostart": "Update Agent bei der Anmeldung automatisch starten",
+    "updates.settings.agent_interval": "Prüfintervall",
+    "updates.settings.skipped_version": "Übersprungene Version: {version}",
+    "updates.settings.no_skipped_version": "Keine Version wird derzeit übersprungen.",
+    "updates.settings.reset_skipped": "Überspringen zurücksetzen",
+    "updates.settings.runtime.agent": "Der eigenständige Update Agent ist installiert. Update-Prüfungen und Installationen werden unabhängig vom Mod Manager ausgeführt."
 }

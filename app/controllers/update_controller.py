@@ -37,6 +37,12 @@ from app.services.update_service import (
     UpdateInfo,
 )
 
+from app.services.update_agent_client import (
+    is_update_agent_installed,
+    request_update_agent_check,
+    sync_update_agent_settings,
+)
+
 from app.services.windows_installer_updater import (
     is_windows_installer_runtime,
     launch_windows_installer_update,
@@ -138,17 +144,18 @@ class UpdateController(
     def start_auto_check(
         self,
     ) -> None:
-        if (
-            sys.platform
-            .casefold()
-            .startswith(
-                "linux"
-            )
-        ):
+        if self._is_linux():
             QTimer.singleShot(
                 30_000,
                 cleanup_previous_update_backup,
             )
+
+        # Installed Windows and Linux builds delegate update checks to
+        # the independent GMM Update Agent. GMM itself therefore no
+        # longer owns the update lifecycle or installer handover.
+        if is_update_agent_installed():
+            self.sync_external_agent_settings()
+            return
 
         if not getattr(
             self.config,
@@ -172,8 +179,48 @@ class UpdateController(
     def check_now(
         self,
     ) -> None:
+        if is_update_agent_installed():
+            if request_update_agent_check():
+                return
+
+            QMessageBox.warning(
+                self.parent_window,
+                tr("updates.check.failed_title"),
+                tr(
+                    "updates.check.failed",
+                    error=(
+                        "Der Update Agent konnte "
+                        "nicht gestartet werden."
+                    ),
+                ),
+            )
+            return
+
         self.check_for_updates(
             manual=True
+        )
+
+    def sync_external_agent_settings(
+        self,
+    ) -> None:
+        if not is_update_agent_installed():
+            return
+
+        sync_update_agent_settings(
+            auto_check=bool(
+                getattr(
+                    self.config,
+                    "auto_check_updates",
+                    True,
+                )
+            ),
+            channel=str(
+                getattr(
+                    self.config,
+                    "update_channel",
+                    "prerelease",
+                )
+            ),
         )
 
     # ==================================================

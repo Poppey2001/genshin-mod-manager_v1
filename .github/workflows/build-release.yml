@@ -48,6 +48,14 @@ jobs:
         run: |
           python3 -m compileall -q app
 
+          if [[ -d "updater" ]]; then
+            python3 -m compileall -q updater
+          fi
+
+          bash -n scripts/build_linux_release.sh
+          bash -n packaging/linux/install-gmm-linux.sh
+          bash -n packaging/linux/uninstall-gmm-linux.sh
+
           if [[ -f "main.py" ]]; then
             python3 -m py_compile main.py
           fi
@@ -56,8 +64,15 @@ jobs:
         shell: bash
         run: |
           test -f scripts/build_linux_appimage.sh
+          test -f scripts/build_linux_release.sh
           test -f scripts/build_windows_installer.ps1
           test -f packaging/GenshinModManager.spec
+          test -f packaging/GMMUpdateAgent.spec
+          test -f packaging/GMMUpdateAgent-Windows.spec
+          test -f updater/linux_agent/main.py
+          test -f updater/windows_agent/main.py
+          test -f packaging/linux/install-gmm-linux.sh
+          test -f packaging/linux/uninstall-gmm-linux.sh
           test -f packaging/linux/AppRun
           test -f packaging/linux/genshin-mod-manager.desktop
           test -f packaging/windows/installer.iss
@@ -226,10 +241,10 @@ jobs:
             requirements.txt
             requirements-build.txt
 
-      - name: Build Linux AppImage
+      - name: Build Linux AppImage, Update Agent and installer bundle
         shell: bash
         run: |
-          bash scripts/build_linux_appimage.sh \
+          bash scripts/build_linux_release.sh \
             "${{ needs.prepare.outputs.version }}"
 
       - name: Upload Linux build artifact
@@ -239,11 +254,17 @@ jobs:
           path: |
             release/*.AppImage
             release/*.AppImage.sha256
+            release/GMMUpdateAgent-*
+            release/GMMUpdateAgent-*.sha256
+            release/Genshin-Mod-Manager-*-Linux-x86_64.tar.gz
+            release/Genshin-Mod-Manager-*-Linux-x86_64.tar.gz.sha256
+            release/install-gmm-linux.sh
+            release/uninstall-gmm-linux.sh
           if-no-files-found: error
           retention-days: 14
 
   windows:
-    name: Windows Installer
+    name: Windows Installer + Update Agent
     runs-on: windows-latest
     needs:
       - validate
@@ -264,7 +285,7 @@ jobs:
             requirements.txt
             requirements-build.txt
 
-      - name: Build Windows EXE and installer
+      - name: Build Windows GMM, Update Agent and installer
         shell: pwsh
         run: |
           .\scripts\build_windows_installer.ps1 `

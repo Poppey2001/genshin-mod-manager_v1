@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
-    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -34,6 +33,10 @@ from app.models.profile import (
     ModProfile,
     ProfileApplyResult,
 )
+from app.services.component_resources import (
+    resolve_component_path,
+)
+
 from app.services.mod_manager import (
     ModManager,
     ModState,
@@ -45,9 +48,6 @@ from app.services.profile_service import (
 )
 from app.widgets.profiles.profile_card import (
     ProfileCard,
-)
-from app.widgets.common.state_panel import (
-    StatePanel,
 )
 from app.workers.profile_apply_worker import (
     ProfileApplyWorker,
@@ -131,8 +131,6 @@ class ProfilesPage(
         ) = None
         self._busy = False
         self._current_columns = 0
-        self._responsive_mode = ""
-        self._root_layout: QVBoxLayout | None = None
 
         # ====================================================
         # Header
@@ -170,26 +168,24 @@ class ProfilesPage(
         )
 
         # ====================================================
-        # Unified Content State
+        # Empty state
         # ====================================================
 
-        self.content_stack = QStackedWidget(
+        self.empty_frame = QFrame(
             self
         )
-        self.content_stack.setObjectName(
-            "profilesContentStack"
+        self.empty_icon_label = QLabel(
+            self.empty_frame
         )
-
-        self.state_panel = StatePanel(
-            self.content_stack
+        self.empty_title_label = QLabel(
+            self.empty_frame
         )
-        self.state_panel.setObjectName(
-            "profilesStatePanel"
+        self.empty_description_label = QLabel(
+            self.empty_frame
         )
-
-        self._content_state_mode = "loading"
-        self._content_state_message = ""
-        self._refresh_scheduled = False
+        self.empty_new_button = QPushButton(
+            self.empty_frame
+        )
 
         # ====================================================
         # Cards
@@ -230,9 +226,6 @@ class ProfilesPage(
 
         self.retranslate_ui()
         self.refresh()
-        self._update_responsive_layout(
-            force=True
-        )
 
     # ========================================================
     # UI
@@ -244,8 +237,6 @@ class ProfilesPage(
         root = QVBoxLayout(
             self
         )
-        self._root_layout = root
-
         root.setContentsMargins(
             22,
             20,
@@ -421,6 +412,89 @@ class ProfilesPage(
         )
 
         # ----------------------------------------------------
+        # Empty state
+        # ----------------------------------------------------
+
+        self.empty_frame.setObjectName(
+            "profilesEmptyState"
+        )
+        empty_layout = QVBoxLayout(
+            self.empty_frame
+        )
+        empty_layout.setContentsMargins(
+            32,
+            42,
+            32,
+            42,
+        )
+        empty_layout.setSpacing(
+            8
+        )
+
+        empty_layout.addStretch(
+            1
+        )
+
+        self.empty_icon_label.setObjectName(
+            "profilesEmptyIcon"
+        )
+        self.empty_icon_label.setText(
+            "◇"
+        )
+        self.empty_icon_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        self.empty_title_label.setObjectName(
+            "profilesEmptyTitle"
+        )
+        self.empty_title_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+
+        self.empty_description_label.setObjectName(
+            "profilesEmptyDescription"
+        )
+        self.empty_description_label.setAlignment(
+            Qt.AlignmentFlag.AlignCenter
+        )
+        self.empty_description_label.setWordWrap(
+            True
+        )
+
+        self.empty_new_button.setObjectName(
+            "profilesNewButton"
+        )
+        self.empty_new_button.setMinimumHeight(
+            38
+        )
+
+        empty_layout.addWidget(
+            self.empty_icon_label
+        )
+        empty_layout.addWidget(
+            self.empty_title_label
+        )
+        empty_layout.addWidget(
+            self.empty_description_label
+        )
+        empty_layout.addSpacing(
+            8
+        )
+        empty_layout.addWidget(
+            self.empty_new_button,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
+        empty_layout.addStretch(
+            1
+        )
+
+        root.addWidget(
+            self.empty_frame,
+            stretch=1,
+        )
+
+        # ----------------------------------------------------
         # Profile cards
         # ----------------------------------------------------
 
@@ -452,23 +526,13 @@ class ProfilesPage(
         self.cards_grid.setVerticalSpacing(
             12
         )
-        self.cards_grid.setAlignment(
-            Qt.AlignmentFlag.AlignTop
-        )
 
         self.scroll_area.setWidget(
             self.cards_content
         )
 
-        self.content_stack.addWidget(
-            self.scroll_area
-        )
-        self.content_stack.addWidget(
-            self.state_panel
-        )
-
         root.addWidget(
-            self.content_stack,
+            self.scroll_area,
             stretch=1,
         )
 
@@ -532,11 +596,11 @@ class ProfilesPage(
         self.new_button.clicked.connect(
             self._create_profile
         )
+        self.empty_new_button.clicked.connect(
+            self._create_profile
+        )
         self.refresh_button.clicked.connect(
             self.refresh
-        )
-        self.state_panel.primary_requested.connect(
-            self._on_state_primary_requested
         )
         self.cancel_button.clicked.connect(
             self.cancel_apply
@@ -567,54 +631,32 @@ class ProfilesPage(
 
     def refresh(
         self,
-        _checked: bool = False,
     ) -> None:
-        if self.is_applying():
-            return
-
-        if self._refresh_scheduled:
-            return
-
-        self._show_loading_state()
-        self._refresh_scheduled = True
-
-        # Der State kann zuerst gezeichnet werden; danach werden
-        # die lokalen Profil-Dateien gelesen.
-        QTimer.singleShot(
-            0,
-            self._load_profiles,
-        )
-
-    def _load_profiles(
-        self,
-    ) -> None:
-        self._refresh_scheduled = False
-
         if self.is_applying():
             return
 
         game_id = self._game_id()
 
         try:
-            profiles = (
+            self._profiles = (
                 self.profile_service
                 .list_profiles(
                     game_id
                 )
             )
         except ProfileError as error:
-            self._profiles = ()
-            self._rebuild_cards()
-            self._refresh_summary()
-            self._show_error_state(
-                str(error)
+            QMessageBox.critical(
+                self,
+                tr(
+                    "profiles.error.title"
+                ),
+                str(error),
             )
-            return
+            self._profiles = ()
 
-        self._profiles = profiles
         self._rebuild_cards()
         self._refresh_summary()
-        self._sync_content_state()
+        self._refresh_empty_state()
 
     def cancel_apply(
         self,
@@ -1187,114 +1229,10 @@ class ProfilesPage(
             self._reflow_cards,
         )
 
-    def _update_responsive_layout(
-        self,
-        *,
-        force: bool = False,
-    ) -> None:
-        width = self.width()
-
-        if width < 700:
-            mode = "tight"
-        elif width < 1100:
-            mode = "compact"
-        else:
-            mode = "wide"
-
-        if (
-            not force
-            and mode == self._responsive_mode
-        ):
-            return
-
-        self._responsive_mode = mode
-
-        self.setProperty(
-            "responsiveMode",
-            mode,
-        )
-
-        root = self._root_layout
-
-        if root is not None:
-            if mode == "wide":
-                root.setContentsMargins(
-                    22,
-                    20,
-                    22,
-                    16,
-                )
-                root.setSpacing(
-                    14
-                )
-            elif mode == "compact":
-                root.setContentsMargins(
-                    16,
-                    16,
-                    16,
-                    14,
-                )
-                root.setSpacing(
-                    12
-                )
-            else:
-                root.setContentsMargins(
-                    10,
-                    12,
-                    10,
-                    10,
-                )
-                root.setSpacing(
-                    10
-                )
-
-        if mode == "wide":
-            self.new_button.setMinimumWidth(
-                126
-            )
-            self.operation_progress.setMinimumWidth(
-                260
-            )
-        elif mode == "compact":
-            self.new_button.setMinimumWidth(
-                110
-            )
-            self.operation_progress.setMinimumWidth(
-                190
-            )
-        else:
-            self.new_button.setMinimumWidth(
-                0
-            )
-            self.operation_progress.setMinimumWidth(
-                0
-            )
-
-        self.cards_grid.setHorizontalSpacing(
-            12 if mode == "wide" else 10
-        )
-        self.cards_grid.setVerticalSpacing(
-            12 if mode != "tight" else 10
-        )
-
-        style = self.style()
-        style.unpolish(
-            self
-        )
-        style.polish(
-            self
-        )
-
-        QTimer.singleShot(
-            0,
-            self._reflow_cards,
-        )
-
     def _reflow_cards(
         self,
     ) -> None:
         if not self._cards:
-            self._current_columns = 0
             return
 
         width = max(
@@ -1302,9 +1240,9 @@ class ProfilesPage(
             1,
         )
 
-        if width >= 1200:
+        if width >= 1280:
             columns = 3
-        elif width >= 700:
+        elif width >= 760:
             columns = 2
         else:
             columns = 1
@@ -1327,7 +1265,6 @@ class ProfilesPage(
                 card,
                 row,
                 column,
-                alignment=Qt.AlignmentFlag.AlignTop,
             )
 
         for column in range(
@@ -1348,8 +1285,6 @@ class ProfilesPage(
             event
         )
 
-        self._update_responsive_layout()
-
         QTimer.singleShot(
             0,
             self._reflow_cards,
@@ -1369,6 +1304,9 @@ class ProfilesPage(
         self._busy = busy
 
         self.new_button.setEnabled(
+            not busy
+        )
+        self.empty_new_button.setEnabled(
             not busy
         )
         self.refresh_button.setEnabled(
@@ -1493,119 +1431,19 @@ class ProfilesPage(
             )
         )
 
-    def _sync_content_state(
+    def _refresh_empty_state(
         self,
     ) -> None:
-        if self._profiles:
-            self._show_content()
-        else:
-            self._show_empty_state()
-
-    def _show_content(
-        self,
-    ) -> None:
-        self._content_state_mode = "content"
-        self._content_state_message = ""
-
-        self.content_stack.setCurrentWidget(
-            self.scroll_area
+        has_profiles = bool(
+            self._profiles
         )
 
-    def _show_loading_state(
-        self,
-    ) -> None:
-        self._content_state_mode = "loading"
-        self._content_state_message = ""
-
-        self.state_panel.show_loading(
-            title=tr(
-                "profiles.action.refresh"
-            ),
-            description=tr(
-                "profiles.description"
-            ),
+        self.scroll_area.setVisible(
+            has_profiles
         )
-
-        self.content_stack.setCurrentWidget(
-            self.state_panel
+        self.empty_frame.setVisible(
+            not has_profiles
         )
-
-    def _show_empty_state(
-        self,
-    ) -> None:
-        self._content_state_mode = "empty"
-        self._content_state_message = ""
-
-        self.state_panel.show_empty(
-            title=tr(
-                "profiles.empty.title"
-            ),
-            description=tr(
-                "profiles.empty.description"
-            ),
-            primary_text=(
-                "＋  "
-                + tr(
-                    "profiles.action.new"
-                )
-            ),
-        )
-
-        self.content_stack.setCurrentWidget(
-            self.state_panel
-        )
-
-    def _show_error_state(
-        self,
-        message: str,
-    ) -> None:
-        self._content_state_mode = "error"
-        self._content_state_message = str(
-            message
-        ).strip()
-
-        self.state_panel.show_error(
-            title=tr(
-                "profiles.error.title"
-            ),
-            description=(
-                self._content_state_message
-                or tr(
-                    "profiles.description"
-                )
-            ),
-            primary_text=tr(
-                "profiles.action.refresh"
-            ),
-        )
-
-        self.content_stack.setCurrentWidget(
-            self.state_panel
-        )
-
-    def _on_state_primary_requested(
-        self,
-    ) -> None:
-        if self._content_state_mode == "empty":
-            self._create_profile()
-            return
-
-        if self._content_state_mode == "error":
-            self.refresh()
-
-    def _refresh_unified_state_texts(
-        self,
-    ) -> None:
-        mode = self._content_state_mode
-
-        if mode == "loading":
-            self._show_loading_state()
-        elif mode == "empty":
-            self._show_empty_state()
-        elif mode == "error":
-            self._show_error_state(
-                self._content_state_message
-            )
 
     # ========================================================
     # Dialog helpers
@@ -1687,6 +1525,23 @@ class ProfilesPage(
             )
         )
 
+        self.empty_title_label.setText(
+            tr(
+                "profiles.empty.title"
+            )
+        )
+        self.empty_description_label.setText(
+            tr(
+                "profiles.empty.description"
+            )
+        )
+        self.empty_new_button.setText(
+            "＋  "
+            + tr(
+                "profiles.action.new"
+            )
+        )
+
         self.cancel_button.setText(
             tr(
                 "common.cancel"
@@ -1699,7 +1554,6 @@ class ProfilesPage(
             )
 
         self._refresh_summary()
-        self._refresh_unified_state_texts()
 
     # ========================================================
     # Stylesheet
@@ -1708,26 +1562,25 @@ class ProfilesPage(
     def _apply_stylesheet(
         self,
     ) -> None:
-        style_path = (
-            Path(__file__)
-            .resolve()
-            .parents[1]
+        bundled_path = (
+            Path(__file__).resolve().parents[1]
             / "styles"
             / "profiles.qss"
         )
+        style_path = resolve_component_path(
+            "styles/profiles.qss",
+            bundled_path,
+        )
 
         try:
-            stylesheet = style_path.read_text(
-                encoding="utf-8"
-            )
+            stylesheet = style_path.read_text(encoding="utf-8")
         except OSError as error:
             raise RuntimeError(
                 f"Profiles stylesheet could not be loaded: {style_path}"
             ) from error
 
-        self.setStyleSheet(
-            stylesheet
-        )
+        self.setStyleSheet(stylesheet)
+
 
 
 __all__ = [

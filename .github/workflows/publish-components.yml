@@ -1,0 +1,62 @@
+name: Publish small update components
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/styles/*.qss"
+      - "scripts/build_component_feed.py"
+      - ".github/workflows/publish-components.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gmm-component-feed
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build component feed
+        shell: bash
+        run: |
+          python scripts/build_component_feed.py --output component-feed
+
+      - name: Validate manifest
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("component-feed/manifest.json").read_text(encoding="utf-8"))
+          assert data["schema"] == 1
+          assert data["components"]
+          print("Validated", len(data["components"]), "component(s)")
+          PY
+
+      - name: Publish gmm-components branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd component-feed
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B gmm-components
+          git add --all
+          git commit -m "Publish GMM component feed $GITHUB_SHA"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin gmm-components

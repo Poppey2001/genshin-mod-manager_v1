@@ -357,6 +357,49 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ============================================================
+# Standalone Windows Update Agent
+# ============================================================
+
+$AgentSpecFile = Join-Path `
+    $Root `
+    "packaging\GMMUpdateAgent-Windows.spec"
+
+if (-not (Test-Path -LiteralPath $AgentSpecFile)) {
+    throw (
+        "Windows Update Agent PyInstaller spec was not found: " +
+        $AgentSpecFile
+    )
+}
+
+Write-Host "Building standalone Windows Update Agent..."
+
+python -m PyInstaller `
+    --noconfirm `
+    --clean `
+    "$AgentSpecFile"
+
+if ($LASTEXITCODE -ne 0) {
+    throw (
+        "Windows Update Agent PyInstaller build failed with exit code " +
+        "$LASTEXITCODE"
+    )
+}
+
+$AgentExecutable = Join-Path `
+    $Root `
+    "dist\GMMUpdateAgent.exe"
+
+if (-not (Test-Path -LiteralPath $AgentExecutable -PathType Leaf)) {
+    throw (
+        "Windows Update Agent output was not created: " +
+        $AgentExecutable
+    )
+}
+
+Write-Host "Update Agent built: $AgentExecutable"
+Write-Host ""
+
+# ============================================================
 # Inno Setup
 # ============================================================
 
@@ -661,10 +704,22 @@ if (-not (
     )
 }
 
+if (-not (
+    Test-Path `
+        -LiteralPath $AgentExecutable `
+        -PathType Leaf
+)) {
+    throw (
+        "Windows Update Agent executable not found: " +
+        $AgentExecutable
+    )
+}
+
 Write-Host "Inno preflight:"
 Write-Host "  Project root : $Root"
 Write-Host "  Script       : $InstallerScript"
 Write-Host "  Dist         : $DistRoot"
+Write-Host "  Update Agent : $AgentExecutable"
 Write-Host "  Python redist: $PythonInstaller"
 
 Write-Host "Compiling installer with VM-safe LZMA2 settings..."

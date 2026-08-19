@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QLabel,
     QPushButton,
+    QSpinBox,
     QWidget,
 )
 
@@ -24,6 +25,16 @@ from app.i18n import (
 
 from app.services.appimage_updater import (
     is_appimage_runtime,
+)
+
+from app.services.windows_installer_updater import (
+    is_windows_installer_runtime,
+)
+
+from app.services.update_agent_client import (
+    configure_update_agent,
+    is_update_agent_installed,
+    update_agent_settings,
 )
 
 from app.version import (
@@ -88,6 +99,45 @@ class UpdateSettingsGroup(
         self.runtime_label = QLabel(
             self
         )
+        self.runtime_label.setWordWrap(
+            True
+        )
+
+        self.agent_autostart_checkbox = (
+            QCheckBox(
+                self
+            )
+        )
+
+        self.agent_interval_label = QLabel(
+            self
+        )
+
+        self.agent_interval_spinbox = (
+            QSpinBox(
+                self
+            )
+        )
+        self.agent_interval_spinbox.setRange(
+            15,
+            1440,
+        )
+        self.agent_interval_spinbox.setSuffix(
+            " min"
+        )
+
+        self.skipped_version_label = QLabel(
+            self
+        )
+        self.skipped_version_label.setWordWrap(
+            True
+        )
+
+        self.reset_skipped_button = (
+            QPushButton(
+                self
+            )
+        )
 
         self.check_button = (
             QPushButton(
@@ -141,6 +191,10 @@ class UpdateSettingsGroup(
             self.check_requested.emit
         )
 
+        self.reset_skipped_button.clicked.connect(
+            self._reset_skipped_version
+        )
+
         layout.addWidget(
             self.auto_check_checkbox,
             0,
@@ -182,8 +236,40 @@ class UpdateSettingsGroup(
         )
 
         layout.addWidget(
-            self.check_button,
+            self.agent_autostart_checkbox,
             4,
+            0,
+            1,
+            2,
+        )
+
+        layout.addWidget(
+            self.agent_interval_label,
+            5,
+            0,
+        )
+
+        layout.addWidget(
+            self.agent_interval_spinbox,
+            5,
+            1,
+        )
+
+        layout.addWidget(
+            self.skipped_version_label,
+            6,
+            0,
+        )
+
+        layout.addWidget(
+            self.reset_skipped_button,
+            6,
+            1,
+        )
+
+        layout.addWidget(
+            self.check_button,
+            7,
             1,
         )
 
@@ -227,6 +313,78 @@ class UpdateSettingsGroup(
                 index
             )
 
+        agent_installed = (
+            is_update_agent_installed()
+        )
+
+        self.agent_autostart_checkbox.setVisible(
+            agent_installed
+        )
+        self.agent_interval_label.setVisible(
+            agent_installed
+        )
+        self.agent_interval_spinbox.setVisible(
+            agent_installed
+        )
+        self.skipped_version_label.setVisible(
+            agent_installed
+        )
+        self.reset_skipped_button.setVisible(
+            agent_installed
+        )
+
+        if not agent_installed:
+            return
+
+        settings = update_agent_settings()
+
+        self.agent_autostart_checkbox.setChecked(
+            bool(
+                settings.get(
+                    "autostart_enabled",
+                    False,
+                )
+            )
+        )
+
+        try:
+            interval = int(
+                settings.get(
+                    "interval_minutes",
+                    20,
+                )
+            )
+        except (
+            TypeError,
+            ValueError,
+        ):
+            interval = 20
+
+        self.agent_interval_spinbox.setValue(
+            max(
+                15,
+                min(
+                    1440,
+                    interval,
+                ),
+            )
+        )
+
+        skipped = str(
+            settings.get(
+                "skipped_version",
+                "",
+            )
+            or ""
+        )
+
+        self.skipped_version_label.setProperty(
+            "skippedVersion",
+            skipped,
+        )
+
+        self._refresh_skipped_label()
+
     def apply_to_config(
         self,
     ) -> None:
@@ -247,6 +405,69 @@ class UpdateSettingsGroup(
             self.config.update_channel = (
                 channel
             )
+
+        if is_update_agent_installed():
+            configure_update_agent(
+                autostart=(
+                    self.agent_autostart_checkbox
+                    .isChecked()
+                ),
+                interval_minutes=(
+                    self.agent_interval_spinbox
+                    .value()
+                ),
+            )
+
+    def _reset_skipped_version(
+        self,
+    ) -> None:
+        if not is_update_agent_installed():
+            return
+
+        if configure_update_agent(
+            reset_skipped_version=True
+        ):
+            self.skipped_version_label.setProperty(
+                "skippedVersion",
+                "",
+            )
+
+            self._refresh_skipped_label()
+
+    def _refresh_skipped_label(
+        self,
+    ) -> None:
+        skipped = str(
+            self.skipped_version_label
+            .property(
+                "skippedVersion"
+            )
+            or ""
+        )
+
+        if skipped:
+            self.skipped_version_label.setText(
+                tr(
+                    "updates.settings.skipped_version",
+                    version=skipped,
+                )
+            )
+
+            self.reset_skipped_button.setEnabled(
+                True
+            )
+
+            return
+
+        self.skipped_version_label.setText(
+            tr(
+                "updates.settings.no_skipped_version"
+            )
+        )
+
+        self.reset_skipped_button.setEnabled(
+            False
+        )
 
     def retranslate_ui(
         self,
@@ -309,7 +530,17 @@ class UpdateSettingsGroup(
             APP_VERSION_DISPLAY
         )
 
-        if is_appimage_runtime():
+        if is_update_agent_installed():
+            runtime_text = tr(
+                "updates.settings.runtime.agent"
+            )
+
+        elif is_windows_installer_runtime():
+            runtime_text = tr(
+                "updates.settings.runtime.windows_installer"
+            )
+
+        elif is_appimage_runtime():
             runtime_text = tr(
                 "updates.settings.runtime.appimage"
             )
@@ -323,8 +554,29 @@ class UpdateSettingsGroup(
             runtime_text
         )
 
+        self.agent_autostart_checkbox.setText(
+            tr(
+                "updates.settings.agent_autostart"
+            )
+        )
+
+        self.agent_interval_label.setText(
+            tr(
+                "updates.settings.agent_interval"
+            )
+        )
+
+        self.reset_skipped_button.setText(
+            tr(
+                "updates.settings.reset_skipped"
+            )
+        )
+
         self.check_button.setText(
             tr(
                 "updates.settings.check_now"
             )
         )
+
+        if is_update_agent_installed():
+            self._refresh_skipped_label()

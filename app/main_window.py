@@ -1182,6 +1182,11 @@ class MainWindow(
         geändert haben.
         """
 
+        # Keep the independent Linux Update Agent in sync with
+        # the update channel / automatic-check setting from GMM.
+        if self.update_controller is not None:
+            self.update_controller.sync_external_agent_settings()
+
         # ----------------------------------------------------
         # Library neu scannen
         # ----------------------------------------------------
