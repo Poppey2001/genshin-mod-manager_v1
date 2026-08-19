@@ -38,6 +38,46 @@ if (-not (
     )
 }
 
+$SpecFile = Join-Path `
+    $Root `
+    "packaging\GenshinModManager.spec"
+
+if (-not (
+    Test-Path -LiteralPath $SpecFile
+)) {
+    throw (
+        "PyInstaller spec file was not found: " +
+        $SpecFile
+    )
+}
+
+$SpecFile = (
+    Resolve-Path `
+        -LiteralPath $SpecFile
+).Path
+
+$MainPy = (
+    Resolve-Path `
+        -LiteralPath (
+            Join-Path $Root "main.py"
+        )
+).Path
+
+$AppDirectory = (
+    Resolve-Path `
+        -LiteralPath (
+            Join-Path $Root "app"
+        )
+).Path
+
+Write-Host ""
+Write-Host "Resolved build paths:"
+Write-Host "  Project root : $Root"
+Write-Host "  main.py      : $MainPy"
+Write-Host "  app          : $AppDirectory"
+Write-Host "  spec         : $SpecFile"
+Write-Host ""
+
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $VersionText = Get-Content `
         -LiteralPath (
@@ -269,10 +309,12 @@ New-Item `
 # Frozen application
 # ============================================================
 
+Write-Host "Starting PyInstaller with ABSOLUTE spec path..."
+
 python -m PyInstaller `
     --noconfirm `
     --clean `
-    "packaging\GenshinModManager.spec"
+    "$SpecFile"
 
 if ($LASTEXITCODE -ne 0) {
     throw (
@@ -283,6 +325,10 @@ if ($LASTEXITCODE -ne 0) {
 
 # ============================================================
 # Inno Setup
+# ============================================================
+
+# ============================================================
+# Inno Setup compiler
 # ============================================================
 
 $ISCCCandidates = @(
@@ -301,16 +347,188 @@ $ISCC = (
 )
 
 if (-not $ISCC) {
-    throw (
-        "Inno Setup 6 was not found. " +
-        "Install it first, for example with: " +
-        "choco install innosetup -y"
+    Write-Host (
+        "Inno Setup 6 is not installed. " +
+        "Preparing a local portable build copy..."
+    )
+
+    $BuildToolsDirectory = Join-Path `
+        $Root `
+        ".build-tools"
+
+    $InnoDirectory = Join-Path `
+        $BuildToolsDirectory `
+        "InnoSetup6"
+
+    $InnoBootstrap = Join-Path `
+        $BuildToolsDirectory `
+        "innosetup-6-bootstrap.exe"
+
+    New-Item `
+        -ItemType Directory `
+        -Path $BuildToolsDirectory `
+        -Force |
+        Out-Null
+
+    $ISCC = Get-ChildItem `
+        -LiteralPath $InnoDirectory `
+        -Filter "ISCC.exe" `
+        -File `
+        -Recurse `
+        -ErrorAction SilentlyContinue |
+        Select-Object `
+            -ExpandProperty FullName `
+            -First 1
+
+    if (-not $ISCC) {
+        $InnoDownloadUrl = (
+            "https://jrsoftware.org/" +
+            "download.php/is.exe?dontcount=1"
+        )
+
+        Write-Host (
+            "Downloading official Inno Setup 6 installer..."
+        )
+
+        Invoke-WebRequest `
+            -Uri $InnoDownloadUrl `
+            -OutFile $InnoBootstrap `
+            -UseBasicParsing
+
+        if (-not (
+            Test-Path -LiteralPath $InnoBootstrap
+        )) {
+            throw (
+                "Inno Setup bootstrap download failed."
+            )
+        }
+
+        $InnoFile = Get-Item `
+            -LiteralPath $InnoBootstrap
+
+        if (
+            $InnoFile.Length
+            -lt 5MB
+        ) {
+            throw (
+                "Downloaded Inno Setup bootstrap is unexpectedly small: " +
+                "$($InnoFile.Length) bytes"
+            )
+        }
+
+        $InnoSignature = Get-AuthenticodeSignature `
+            -LiteralPath $InnoBootstrap
+
+        if (
+            $InnoSignature.Status
+            -ne "Valid"
+        ) {
+            throw (
+                "Inno Setup Authenticode signature is not valid. " +
+                "Status=$($InnoSignature.Status)"
+            )
+        }
+
+        if (-not $InnoSignature.SignerCertificate) {
+            throw (
+                "Inno Setup installer has no signer certificate."
+            )
+        }
+
+        $InnoSigner = (
+            $InnoSignature
+            .SignerCertificate
+            .Subject
+        )
+
+        if (
+            $InnoSigner
+            -notmatch
+            "Pyrsys B\.V\."
+        ) {
+            throw (
+                "Unexpected Inno Setup signer: " +
+                $InnoSigner
+            )
+        }
+
+        Write-Host "Inno Setup signature: VALID"
+        Write-Host "Signer: $InnoSigner"
+
+        if (
+            Test-Path -LiteralPath $InnoDirectory
+        ) {
+            Remove-Item `
+                -LiteralPath $InnoDirectory `
+                -Recurse `
+                -Force
+        }
+
+        New-Item `
+            -ItemType Directory `
+            -Path $InnoDirectory `
+            -Force |
+            Out-Null
+
+        Write-Host (
+            "Installing portable Inno Setup build tools..."
+        )
+
+        $InnoProcess = Start-Process `
+            -FilePath $InnoBootstrap `
+            -ArgumentList @(
+                "/VERYSILENT",
+                "/SUPPRESSMSGBOXES",
+                "/NORESTART",
+                "/SP-",
+                "/PORTABLE=1",
+                "/CURRENTUSER",
+                "/DIR=$InnoDirectory"
+            ) `
+            -Wait `
+            -PassThru
+
+        if (
+            $InnoProcess.ExitCode
+            -ne 0
+        ) {
+            throw (
+                "Portable Inno Setup installation failed with exit code " +
+                "$($InnoProcess.ExitCode)"
+            )
+        }
+
+        $ISCC = Get-ChildItem `
+            -LiteralPath $InnoDirectory `
+            -Filter "ISCC.exe" `
+            -File `
+            -Recurse |
+            Select-Object `
+                -ExpandProperty FullName `
+                -First 1
+
+        if (-not $ISCC) {
+            throw (
+                "Portable Inno Setup completed, but ISCC.exe was not found."
+            )
+        }
+    }
+
+    Write-Host (
+        "Using local Inno Setup compiler: " +
+        $ISCC
+    )
+}
+else {
+    Write-Host (
+        "Using installed Inno Setup compiler: " +
+        $ISCC
     )
 }
 
 & $ISCC `
     "/DMyAppVersion=$Version" `
-    "packaging\windows\installer.iss"
+    "$Root\packaging\windows\installer.iss"
 
 if ($LASTEXITCODE -ne 0) {
     throw (
