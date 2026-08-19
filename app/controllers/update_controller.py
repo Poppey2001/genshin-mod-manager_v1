@@ -188,9 +188,8 @@ class UpdateController(
                 tr("updates.check.failed_title"),
                 tr(
                     "updates.check.failed",
-                    error=(
-                        "Der Update Agent konnte "
-                        "nicht gestartet werden."
+                    error=tr(
+                        "updates.error.agent_start_failed"
                     ),
                 ),
             )
@@ -219,6 +218,13 @@ class UpdateController(
                     self.config,
                     "update_channel",
                     "prerelease",
+                )
+            ),
+            language=str(
+                getattr(
+                    self.config,
+                    "language",
+                    "en",
                 )
             ),
         )

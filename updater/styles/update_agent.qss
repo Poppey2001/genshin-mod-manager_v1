@@ -1,0 +1,195 @@
+/* ============================================================
+   GMM Update Agent
+   Matches the current Genshin Mod Manager dark shell.
+   ============================================================ */
+
+QWidget {
+    background: #12151b;
+    color: #d9dee8;
+    font-family: "Segoe UI", "Inter", sans-serif;
+    font-size: 13px;
+}
+
+QDialog,
+QMessageBox {
+    background: #12151b;
+    color: #d9dee8;
+}
+
+QLabel {
+    background: transparent;
+    color: #d9dee8;
+}
+
+QLabel#agentTitle {
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+QLabel#agentSubtitle {
+    color: #8d95a5;
+    font-size: 12px;
+}
+
+QLabel#agentStatus {
+    color: #aab1bf;
+    padding: 7px 0px;
+}
+
+QLabel#agentStatus[error="true"] {
+    color: #ff7d8e;
+}
+
+QFrame#agentCard {
+    background: #191d25;
+    border: 1px solid #2b303b;
+    border-radius: 10px;
+}
+
+QTextBrowser,
+QTextEdit,
+QPlainTextEdit {
+    background: #191d25;
+    color: #d9dee8;
+    border: 1px solid #2b303b;
+    border-radius: 9px;
+    padding: 9px;
+    selection-background-color: #6f5ee8;
+    selection-color: #ffffff;
+}
+
+QLineEdit,
+QComboBox,
+QSpinBox {
+    min-height: 32px;
+    background: #191d25;
+    color: #f0f2f6;
+    border: 1px solid #343a46;
+    border-radius: 7px;
+    padding: 0px 9px;
+}
+
+QLineEdit:focus,
+QComboBox:focus,
+QSpinBox:focus {
+    border-color: #7967e8;
+}
+
+QComboBox QAbstractItemView {
+    background: #191d25;
+    color: #f0f2f6;
+    border: 1px solid #343a46;
+    selection-background-color: #29243f;
+    selection-color: #ffffff;
+}
+
+QCheckBox {
+    color: #d9dee8;
+    spacing: 8px;
+}
+
+QCheckBox::indicator {
+    width: 17px;
+    height: 17px;
+    border-radius: 4px;
+    border: 1px solid #4a5261;
+    background: #191d25;
+}
+
+QCheckBox::indicator:hover {
+    border-color: #7967e8;
+}
+
+QCheckBox::indicator:checked {
+    background: #7967e8;
+    border-color: #806bff;
+}
+
+QPushButton {
+    min-height: 34px;
+    background: #232933;
+    color: #dfe3eb;
+    border: 1px solid #353c49;
+    border-radius: 8px;
+    padding: 0px 14px;
+}
+
+QPushButton:hover {
+    background: #2b323e;
+    border-color: #495260;
+    color: #ffffff;
+}
+
+QPushButton:pressed {
+    background: #1e232c;
+}
+
+QPushButton:disabled {
+    background: #191d25;
+    color: #676f7c;
+    border-color: #292f39;
+}
+
+QPushButton[role="primary"] {
+    background: #6f5ee8;
+    color: #ffffff;
+    border: 1px solid #806bff;
+    font-weight: 600;
+}
+
+QPushButton[role="primary"]:hover {
+    background: #7a68f0;
+    border-color: #927fff;
+}
+
+QPushButton[role="quiet"] {
+    background: transparent;
+    border-color: transparent;
+    color: #aab1bf;
+}
+
+QPushButton[role="quiet"]:hover {
+    background: #232933;
+    border-color: #303744;
+    color: #ffffff;
+}
+
+QProgressBar {
+    min-height: 18px;
+    max-height: 18px;
+    background: #191d25;
+    color: #ffffff;
+    border: 1px solid #343a46;
+    border-radius: 8px;
+    text-align: center;
+}
+
+QProgressBar::chunk {
+    background: #7967e8;
+    border-radius: 7px;
+}
+
+QMenu {
+    background: #191d25;
+    color: #d9dee8;
+    border: 1px solid #303744;
+    padding: 5px;
+}
+
+QMenu::item {
+    padding: 7px 24px 7px 10px;
+    border-radius: 6px;
+}
+
+QMenu::item:selected {
+    background: #29243f;
+    color: #ffffff;
+}
+
+QToolTip {
+    background: #191d25;
+    color: #ffffff;
+    border: 1px solid #353c49;
+    padding: 6px;
+}

@@ -109,6 +109,19 @@ class UpdateSettingsGroup(
             )
         )
 
+        self.agent_components_checkbox = (
+            QCheckBox(
+                self
+            )
+        )
+
+        self.agent_language_label = QLabel(
+            self
+        )
+        self.agent_language_label.setWordWrap(
+            True
+        )
+
         self.agent_interval_label = QLabel(
             self
         )
@@ -244,32 +257,48 @@ class UpdateSettingsGroup(
         )
 
         layout.addWidget(
-            self.agent_interval_label,
+            self.agent_components_checkbox,
             5,
+            0,
+            1,
+            2,
+        )
+
+        layout.addWidget(
+            self.agent_language_label,
+            6,
+            0,
+            1,
+            2,
+        )
+
+        layout.addWidget(
+            self.agent_interval_label,
+            7,
             0,
         )
 
         layout.addWidget(
             self.agent_interval_spinbox,
-            5,
+            7,
             1,
         )
 
         layout.addWidget(
             self.skipped_version_label,
-            6,
+            8,
             0,
         )
 
         layout.addWidget(
             self.reset_skipped_button,
-            6,
+            8,
             1,
         )
 
         layout.addWidget(
             self.check_button,
-            7,
+            9,
             1,
         )
 
@@ -320,6 +349,12 @@ class UpdateSettingsGroup(
         self.agent_autostart_checkbox.setVisible(
             agent_installed
         )
+        self.agent_components_checkbox.setVisible(
+            agent_installed
+        )
+        self.agent_language_label.setVisible(
+            agent_installed
+        )
         self.agent_interval_label.setVisible(
             agent_installed
         )
@@ -343,6 +378,15 @@ class UpdateSettingsGroup(
                 settings.get(
                     "autostart_enabled",
                     False,
+                )
+            )
+        )
+
+        self.agent_components_checkbox.setChecked(
+            bool(
+                settings.get(
+                    "component_updates_enabled",
+                    True,
                 )
             )
         )
@@ -415,6 +459,17 @@ class UpdateSettingsGroup(
                 interval_minutes=(
                     self.agent_interval_spinbox
                     .value()
+                ),
+                component_updates=(
+                    self.agent_components_checkbox
+                    .isChecked()
+                ),
+                language=str(
+                    getattr(
+                        self.config,
+                        "language",
+                        "en",
+                    )
                 ),
             )
 
@@ -557,6 +612,33 @@ class UpdateSettingsGroup(
         self.agent_autostart_checkbox.setText(
             tr(
                 "updates.settings.agent_autostart"
+            )
+        )
+
+        self.agent_components_checkbox.setText(
+            tr(
+                "updates.settings.agent_components"
+            )
+        )
+
+        language_value = str(
+            getattr(
+                self.config,
+                "language",
+                "en",
+            )
+        )
+        language_name = (
+            "Deutsch"
+            if language_value.casefold().startswith(
+                "de"
+            )
+            else "English"
+        )
+        self.agent_language_label.setText(
+            tr(
+                "updates.settings.agent_language",
+                language=language_name,
             )
         )
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import locale
 import logging
 import os
 import re
@@ -12,14 +11,14 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
 
 from packaging.version import InvalidVersion, Version
-from PySide6.QtCore import QObject, QLockFile, QRunnable, QThreadPool, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QLockFile, QRunnable, QThreadPool, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
@@ -27,6 +26,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -49,6 +49,12 @@ from updater.services.component_update_service import (
     ComponentUpdateService,
 )
 from updater.services.component_worker import ComponentUpdateWorker
+from updater.services.agent_i18n import (
+    set_language,
+    system_language,
+    tr,
+)
+from updater.services.agent_style import apply_agent_style
 
 
 APP_NAME = "Genshin Mod Manager"
@@ -78,9 +84,7 @@ CONFIG_FILE = CONFIG_DIR / "update-agent.json"
 COMMAND_FILE = CONFIG_DIR / "update-agent-command.json"
 LOCK_FILE = CONFIG_DIR / "update-agent.lock"
 LOG_FILE = CACHE_DIR / "update-agent.log"
-HANDOFF_SCRIPT = CACHE_DIR / "windows-update-handoff.ps1"
 HANDOFF_READY = CACHE_DIR / "windows-update-handoff.ready"
-HANDOFF_LOG = CACHE_DIR / "windows-update-handoff.log"
 SETUP_LOG = CACHE_DIR / "windows-installer-update.log"
 COMPONENT_ROOT = LOCAL_APPDATA / "Genshin Mod Manager" / "Components"
 COMPONENT_MANIFEST_URL = (
@@ -114,129 +118,14 @@ DEFAULT_GMM = DEFAULT_INSTALL_DIR / "GenshinModManager.exe"
 DEFAULT_AGENT = DEFAULT_INSTALL_DIR / "GMMUpdateAgent.exe"
 
 
-def _language() -> str:
-    for value in (
-        os.environ.get("LANGUAGE", ""),
-        os.environ.get("LC_ALL", ""),
-        os.environ.get("LC_MESSAGES", ""),
-        os.environ.get("LANG", ""),
-    ):
-        if value.lower().startswith("de"):
-            return "de"
-    try:
-        loc = locale.getlocale()[0] or ""
-    except Exception:
-        loc = ""
-    return "de" if loc.lower().startswith("de") else "en"
-
-
-LANG = _language()
-
-
-TEXT = {
-    "de": {
-        "tray.check": "Jetzt nach Updates suchen",
-        "tray.auto": "Automatisch nach Updates suchen",
-        "tray.autostart": "Update Agent automatisch starten",
-        "tray.launch": "Genshin Mod Manager starten",
-        "tray.settings": "Update-Agent-Einstellungen …",
-        "tray.quit": "Update Agent beenden",
-        "tray.title": "GMM Update Agent",
-        "check.running": "Eine Update-Prüfung läuft bereits.",
-        "check.uptodate": "Du verwendest bereits die aktuelle Version {version}.",
-        "check.failed": "Die Update-Prüfung ist fehlgeschlagen.\n\n{error}",
-        "component.updated": "{count} kleine Update-Komponente(n) wurden installiert.",
-        "component.restart": "Die Änderungen werden beim nächsten Start des Mod Managers aktiv.",
-        "update.title": "Genshin Mod Manager Update",
-        "update.available": "Eine neue Version ist verfügbar",
-        "update.versions": "Installiert: {current}\nVerfügbar: {new}",
-        "update.notes": "Änderungen",
-        "update.install": "Update installieren",
-        "update.later": "Später",
-        "update.skip": "Diese Version überspringen",
-        "update.download": "Update wird heruntergeladen und geprüft …",
-        "update.handoff": "Windows-Updater wird vorbereitet …",
-        "update.failed": "Update fehlgeschlagen.\n\n{error}",
-        "setup.title": "Windows Update Agent einrichten",
-        "setup.info": "Der GMM Update Agent läuft unabhängig vom Mod Manager und kann im Hintergrund nach Updates suchen.",
-        "setup.autostart": "Update Agent mit Windows automatisch starten",
-        "setup.auto": "Automatisch nach Updates suchen",
-        "setup.interval": "Prüfintervall (Minuten)",
-        "setup.skipped": "Übersprungene Version: {version}",
-        "setup.no_skipped": "Keine Version wird übersprungen.",
-        "setup.reset_skip": "Übersprungene Version zurücksetzen",
-        "setup.saved": "Die Update-Agent-Einstellungen wurden gespeichert.",
-        "error.no_gmm": "Die installierte GMM-Anwendung wurde nicht gefunden: {path}",
-        "error.no_asset": "Dieses Release enthält keinen passenden Windows-Installer.",
-        "error.digest": "Für {name} konnte keine gültige SHA-256-Prüfsumme gefunden werden.",
-        "error.hash": "Die SHA-256-Prüfsumme von {name} stimmt nicht überein.",
-        "error.download": "Download von {name} fehlgeschlagen: {error}",
-        "error.powershell": "Windows PowerShell wurde nicht gefunden.",
-        "error.handoff": "Der Windows Update Helper konnte nicht gestartet werden.",
-        "handoff.title": "Genshin Mod Manager Update",
-        "handoff.wait": "Update wird vorbereitet …",
-        "handoff.stop": "Genshin Mod Manager wird beendet …",
-        "handoff.install": "Update wird installiert …",
-        "handoff.failed": "Das Update konnte nicht installiert werden.",
-    },
-    "en": {
-        "tray.check": "Check for updates now",
-        "tray.auto": "Automatically check for updates",
-        "tray.autostart": "Start Update Agent automatically",
-        "tray.launch": "Launch Genshin Mod Manager",
-        "tray.settings": "Update Agent settings …",
-        "tray.quit": "Quit Update Agent",
-        "tray.title": "GMM Update Agent",
-        "check.running": "An update check is already running.",
-        "check.uptodate": "You are already using the current version {version}.",
-        "check.failed": "The update check failed.\n\n{error}",
-        "component.updated": "{count} small update component(s) were installed.",
-        "component.restart": "The changes will become active the next time the Mod Manager starts.",
-        "update.title": "Genshin Mod Manager Update",
-        "update.available": "A new version is available",
-        "update.versions": "Installed: {current}\nAvailable: {new}",
-        "update.notes": "What's new",
-        "update.install": "Install update",
-        "update.later": "Later",
-        "update.skip": "Skip this version",
-        "update.download": "Downloading and verifying the update …",
-        "update.handoff": "Preparing Windows updater …",
-        "update.failed": "Update failed.\n\n{error}",
-        "setup.title": "Configure Windows Update Agent",
-        "setup.info": "The GMM Update Agent runs independently from the Mod Manager and can check for updates in the background.",
-        "setup.autostart": "Start Update Agent automatically with Windows",
-        "setup.auto": "Automatically check for updates",
-        "setup.interval": "Check interval (minutes)",
-        "setup.skipped": "Skipped version: {version}",
-        "setup.no_skipped": "No version is currently skipped.",
-        "setup.reset_skip": "Reset skipped version",
-        "setup.saved": "Update Agent settings were saved.",
-        "error.no_gmm": "The installed GMM application was not found: {path}",
-        "error.no_asset": "This release does not contain a matching Windows installer.",
-        "error.digest": "No valid SHA-256 checksum could be found for {name}.",
-        "error.hash": "The SHA-256 checksum for {name} does not match.",
-        "error.download": "Download of {name} failed: {error}",
-        "error.powershell": "Windows PowerShell was not found.",
-        "error.handoff": "The Windows update helper could not be started.",
-        "handoff.title": "Genshin Mod Manager Update",
-        "handoff.wait": "Preparing update …",
-        "handoff.stop": "Closing Genshin Mod Manager …",
-        "handoff.install": "Installing update …",
-        "handoff.failed": "The update could not be installed.",
-    },
-}
-
-
-def tr(key: str, **kwargs: object) -> str:
-    template = TEXT.get(LANG, TEXT["en"]).get(key, TEXT["en"].get(key, key))
-    return template.format(**kwargs)
-
 
 @dataclass(slots=True)
 class AgentConfig:
     auto_check_enabled: bool = True
+    component_updates_enabled: bool = True
     interval_minutes: int = DEFAULT_INTERVAL_MINUTES
     skipped_version: str = ""
+    language: str = field(default_factory=system_language)
     channel: str = "prerelease"
     gmm_path: str = str(DEFAULT_GMM)
     agent_path: str = str(DEFAULT_AGENT)
@@ -255,8 +144,10 @@ class AgentConfig:
                 raise TypeError("update-agent.json is not an object")
             config = cls(
                 auto_check_enabled=bool(data.get("auto_check_enabled", True)),
+                component_updates_enabled=bool(data.get("component_updates_enabled", True)),
                 interval_minutes=int(data.get("interval_minutes", DEFAULT_INTERVAL_MINUTES)),
                 skipped_version=str(data.get("skipped_version", "") or ""),
+                language=str(data.get("language", system_language()) or system_language()),
                 channel=str(data.get("channel", "prerelease") or "prerelease"),
                 gmm_path=str(data.get("gmm_path", DEFAULT_GMM)),
                 agent_path=str(data.get("agent_path", DEFAULT_AGENT)),
@@ -271,6 +162,7 @@ class AgentConfig:
         )
         if config.channel not in {"stable", "prerelease"}:
             config.channel = "prerelease"
+        config.language = set_language(config.language)
         return config
 
     def save(self) -> None:
@@ -441,7 +333,7 @@ def _pick_release(current_version: str, channel: str) -> RemoteRelease | None:
         break
 
     if installer_item is None:
-        raise RuntimeError(tr("error.no_asset"))
+        raise RuntimeError(tr("updates.agent.error.no_asset"))
 
     digest, checksum_url = _asset_digest(installer_item, checksum_assets)
     installer = RemoteAsset(
@@ -464,13 +356,13 @@ def _pick_release(current_version: str, channel: str) -> RemoteRelease | None:
 
 def _checksum_from_url(url: str, asset_name: str) -> str:
     if not url:
-        raise RuntimeError(tr("error.digest", name=asset_name))
+        raise RuntimeError(tr("updates.agent.error.digest", name=asset_name))
     request = Request(url, headers={"User-Agent": USER_AGENT})
     with verified_urlopen(request, timeout=CHECK_TIMEOUT) as response:
         text = response.read().decode("utf-8", errors="replace")
     match = re.search(r"\b([0-9a-fA-F]{64})\b", text)
     if not match:
-        raise RuntimeError(tr("error.digest", name=asset_name))
+        raise RuntimeError(tr("updates.agent.error.digest", name=asset_name))
     return match.group(1).lower()
 
 
@@ -532,7 +424,7 @@ class DownloadWorker(QRunnable):
                 self.release.installer.url,
                 headers={"User-Agent": USER_AGENT},
             )
-            self.signals.status.emit(tr("update.download"))
+            self.signals.status.emit(tr("updates.agent.update.download"))
             with verified_urlopen(request, timeout=DOWNLOAD_TIMEOUT) as response, temporary.open("wb") as output:
                 while True:
                     chunk = response.read(1024 * 1024)
@@ -543,14 +435,14 @@ class DownloadWorker(QRunnable):
                     received += len(chunk)
                     self.signals.progress.emit(received, total)
             if hasher.hexdigest().lower() != expected:
-                raise RuntimeError(tr("error.hash", name=self.release.installer.name))
+                raise RuntimeError(tr("updates.agent.error.hash", name=self.release.installer.name))
             temporary.replace(destination)
         except (HTTPError, URLError, TimeoutError, OSError, RuntimeError) as error:
             shutil.rmtree(work, ignore_errors=True)
             self.signals.failed.emit(
                 str(error)
                 if isinstance(error, RuntimeError)
-                else tr("error.download", name=self.release.installer.name, error=error)
+                else tr("updates.agent.error.download", name=self.release.installer.name, error=error)
             )
             return
         self.signals.progress.emit(total, total)
@@ -569,42 +461,86 @@ class UpdateDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.release = release
-        self.setWindowTitle(tr("update.title"))
-        self.resize(620, 480)
+        self.current_version = current_version
+        self.setObjectName("agentUpdateDialog")
+        self.resize(690, 540)
+
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"<b>{tr('update.available')}</b>"))
-        layout.addWidget(
-            QLabel(tr("update.versions", current=current_version, new=release.version))
-        )
-        layout.addWidget(QLabel(tr("update.notes")))
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(12)
+
+        self.title_label = QLabel(self)
+        self.title_label.setObjectName("agentTitle")
+        layout.addWidget(self.title_label)
+
+        self.version_label = QLabel(self)
+        self.version_label.setObjectName("agentSubtitle")
+        self.version_label.setWordWrap(True)
+        layout.addWidget(self.version_label)
+
+        self.notes_label = QLabel(self)
+        layout.addWidget(self.notes_label)
+
         self.notes = QTextBrowser(self)
         self.notes.setOpenExternalLinks(True)
-        self.notes.setPlainText(release.notes.strip() or "—")
+        self.notes.document().setDefaultStyleSheet(
+            "a { color: #8f7cff; } "
+            "code { color: #c9bfff; }"
+        )
+        self.notes.setMarkdown(
+            release.notes.strip()
+            or tr("updates.agent.update.no_notes")
+        )
         layout.addWidget(self.notes, 1)
+
         self.status = QLabel(self)
+        self.status.setObjectName("agentStatus")
         self.status.setWordWrap(True)
         self.status.hide()
         layout.addWidget(self.status)
+
         self.progress = QProgressBar(self)
         self.progress.setRange(0, 100)
         self.progress.hide()
         layout.addWidget(self.progress)
+
         buttons = QHBoxLayout()
-        self.skip_button = QPushButton(tr("update.skip"), self)
-        self.later_button = QPushButton(tr("update.later"), self)
-        self.install_button = QPushButton(tr("update.install"), self)
+        buttons.setSpacing(8)
+        self.skip_button = QPushButton(self)
+        self.skip_button.setProperty("role", "quiet")
+        self.later_button = QPushButton(self)
+        self.install_button = QPushButton(self)
+        self.install_button.setProperty("role", "primary")
         self.install_button.setDefault(True)
         buttons.addWidget(self.skip_button)
         buttons.addStretch(1)
         buttons.addWidget(self.later_button)
         buttons.addWidget(self.install_button)
         layout.addLayout(buttons)
+
         self.skip_button.clicked.connect(self.skip_requested.emit)
         self.later_button.clicked.connect(self.reject)
         self.install_button.clicked.connect(self.install_requested.emit)
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.setWindowTitle(tr("updates.agent.update.title"))
+        self.title_label.setText(tr("updates.agent.update.available"))
+        self.version_label.setText(
+            tr(
+                "updates.agent.update.versions",
+                current=self.current_version,
+                new=self.release.version,
+            )
+        )
+        self.notes_label.setText(tr("updates.agent.update.notes"))
+        self.skip_button.setText(tr("updates.agent.update.skip"))
+        self.later_button.setText(tr("updates.agent.update.later"))
+        self.install_button.setText(tr("updates.agent.update.install"))
 
     def begin_download(self) -> None:
-        self.status.setText(tr("update.download"))
+        self.status.setProperty("error", False)
+        self.status.setText(tr("updates.agent.update.download"))
         self.status.show()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
@@ -614,6 +550,9 @@ class UpdateDialog(QDialog):
         self.skip_button.setEnabled(False)
 
     def set_status(self, text: str) -> None:
+        self.status.setProperty("error", False)
+        self.status.style().unpolish(self.status)
+        self.status.style().polish(self.status)
         self.status.setText(text)
         self.status.show()
 
@@ -630,7 +569,11 @@ class UpdateDialog(QDialog):
         self.progress.show()
 
     def set_failed(self, message: str) -> None:
-        self.set_status(tr("update.failed", error=message))
+        self.status.setProperty("error", True)
+        self.status.style().unpolish(self.status)
+        self.status.style().polish(self.status)
+        self.status.setText(tr("updates.agent.update.failed", error=message))
+        self.status.show()
         self.progress.hide()
         self.install_button.setEnabled(True)
         self.later_button.setEnabled(True)
@@ -641,47 +584,82 @@ class SetupDialog(QDialog):
     def __init__(self, config: AgentConfig, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
-        self.setWindowTitle(tr("setup.title"))
-        self.resize(520, 260)
+        self.setObjectName("agentSetupDialog")
+        self.resize(580, 390)
+
         layout = QVBoxLayout(self)
-        info = QLabel(tr("setup.info"), self)
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(12)
+
+        self.title_label = QLabel(tr("updates.agent.setup.title"), self)
+        self.title_label.setObjectName("agentTitle")
+        layout.addWidget(self.title_label)
+
+        info = QLabel(tr("updates.agent.setup.info"), self)
+        info.setObjectName("agentSubtitle")
         info.setWordWrap(True)
         layout.addWidget(info)
-        self.autostart = QCheckBox(tr("setup.autostart"), self)
+
+        self.autostart = QCheckBox(tr("updates.agent.setup.autostart"), self)
         self.autostart.setChecked(autostart_enabled())
-        self.auto = QCheckBox(tr("setup.auto"), self)
+        self.auto = QCheckBox(tr("updates.agent.setup.auto"), self)
         self.auto.setChecked(config.auto_check_enabled)
+        self.components = QCheckBox(tr("updates.agent.setup.components"), self)
+        self.components.setChecked(config.component_updates_enabled)
         layout.addWidget(self.autostart)
         layout.addWidget(self.auto)
+        layout.addWidget(self.components)
+
         form = QFormLayout()
         self.interval = QSpinBox(self)
         self.interval.setRange(MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES)
         self.interval.setValue(config.interval_minutes)
-        form.addRow(tr("setup.interval"), self.interval)
+        form.addRow(tr("updates.agent.setup.interval"), self.interval)
         layout.addLayout(form)
+
+        language_name = "Deutsch" if config.language == "de" else "English"
+        self.language_label = QLabel(
+            tr("updates.agent.setup.language", language=language_name),
+            self,
+        )
+        self.language_label.setObjectName("agentSubtitle")
+        layout.addWidget(self.language_label)
+
         self.skipped_label = QLabel(self)
         self.skipped_label.setWordWrap(True)
-        self.reset_skip_button = QPushButton(tr("setup.reset_skip"), self)
+        self.reset_skip_button = QPushButton(
+            tr("updates.agent.setup.reset_skip"), self
+        )
+        self.reset_skip_button.setProperty("role", "quiet")
         self.reset_skip_button.clicked.connect(self._reset_skip)
         layout.addWidget(self.skipped_label)
         layout.addWidget(self.reset_skip_button)
         self._refresh_skip_label()
+
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel,
             parent=self,
         )
+        ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        if ok_button is not None:
+            ok_button.setProperty("role", "primary")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        self.setWindowTitle(tr("updates.agent.setup.title"))
 
     def _refresh_skip_label(self) -> None:
         if self.config.skipped_version:
             self.skipped_label.setText(
-                tr("setup.skipped", version=self.config.skipped_version)
+                tr(
+                    "updates.agent.setup.skipped",
+                    version=self.config.skipped_version,
+                )
             )
             self.reset_skip_button.setEnabled(True)
         else:
-            self.skipped_label.setText(tr("setup.no_skipped"))
+            self.skipped_label.setText(tr("updates.agent.setup.no_skipped"))
             self.reset_skip_button.setEnabled(False)
 
     def _reset_skip(self) -> None:
@@ -689,203 +667,215 @@ class SetupDialog(QDialog):
         self._refresh_skip_label()
 
 
-def _powershell_executable() -> Path | None:
-    candidate = shutil.which("powershell.exe")
-    if candidate:
-        return Path(candidate)
-    system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
-    fallback = (
-        system_root
-        / "System32"
-        / "WindowsPowerShell"
-        / "v1.0"
-        / "powershell.exe"
-    )
-    return fallback if fallback.is_file() else None
+HANDOFF_HELPER = CACHE_DIR / "GMMUpdateAgent-Handoff.exe"
 
 
-def _ps_quote(value: str | Path) -> str:
-    return str(value).replace("'", "''")
+def _process_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        SYNCHRONIZE = 0x00100000
+        handle = kernel32.OpenProcess(SYNCHRONIZE, False, int(pid))
+        if not handle:
+            return False
+        try:
+            WAIT_TIMEOUT = 0x00000102
+            return kernel32.WaitForSingleObject(handle, 0) == WAIT_TIMEOUT
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return False
 
 
-def _write_handoff_script(
+def _stop_gmm_processes() -> None:
+    try:
+        subprocess.run(
+            ["taskkill", "/IM", "GenshinModManager.exe", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except OSError:
+        pass
+
+
+class HandoffDialog(QDialog):
+    def __init__(self) -> None:
+        super().__init__(None)
+        self.setObjectName("agentHandoffDialog")
+        self.setWindowTitle(tr("updates.agent.handoff.title"))
+        self.setFixedSize(560, 170)
+        self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(14)
+
+        self.title_label = QLabel(tr("updates.agent.handoff.title"), self)
+        self.title_label.setObjectName("agentTitle")
+        layout.addWidget(self.title_label)
+
+        self.status_label = QLabel(tr("updates.agent.handoff.wait"), self)
+        self.status_label.setObjectName("agentStatus")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        self.progress = QProgressBar(self)
+        self.progress.setRange(0, 0)
+        layout.addWidget(self.progress)
+
+    def set_status(self, text: str) -> None:
+        self.status_label.setProperty("error", False)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+        self.status_label.setText(text)
+
+    def set_error(self, text: str) -> None:
+        self.status_label.setProperty("error", True)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+        self.status_label.setText(text)
+        self.progress.hide()
+
+
+def run_installer_handoff(
     *,
     installer: Path,
     parent_pid: int,
     gmm_path: Path,
-) -> None:
+    language: str,
+) -> int:
+    set_language(language)
+    application = QApplication(sys.argv)
+    application.setApplicationName(AGENT_NAME)
+    apply_agent_style(application, component_root=COMPONENT_ROOT)
+
+    dialog = HandoffDialog()
+    dialog.show()
+    dialog.raise_()
+    dialog.activateWindow()
+    QApplication.processEvents()
+
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    script = f"""
-$ErrorActionPreference = 'Stop'
-$installer = '{_ps_quote(installer)}'
-$parentPid = {int(parent_pid)}
-$gmmPath = '{_ps_quote(gmm_path)}'
-$ready = '{_ps_quote(HANDOFF_READY)}'
-$handoffLog = '{_ps_quote(HANDOFF_LOG)}'
-$setupLog = '{_ps_quote(SETUP_LOG)}'
+    HANDOFF_READY.unlink(missing_ok=True)
+    HANDOFF_READY.write_text("ready\n", encoding="ascii")
 
-function Write-HandoffLog([string]$message) {{
-    try {{
-        $line = ('{{0:o}} | {{1}}' -f (Get-Date), $message)
-        Add-Content -LiteralPath $handoffLog -Value $line -Encoding UTF8
-    }} catch {{}}
-}}
+    deadline = time.monotonic() + 30.0
+    while _process_alive(parent_pid) and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.08)
 
-$form = $null
-try {{
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
+    dialog.set_status(tr("updates.agent.handoff.stop"))
+    QApplication.processEvents()
+    _stop_gmm_processes()
+    time.sleep(0.5)
 
-    $form = New-Object System.Windows.Forms.Form
-    $form.Text = '{_ps_quote(tr("handoff.title"))}'
-    $form.StartPosition = 'CenterScreen'
-    $form.FormBorderStyle = 'FixedDialog'
-    $form.MaximizeBox = $false
-    $form.MinimizeBox = $false
-    $form.ControlBox = $false
-    $form.TopMost = $true
-    $form.ClientSize = New-Object System.Drawing.Size(520, 120)
+    dialog.set_status(tr("updates.agent.handoff.install"))
+    QApplication.processEvents()
 
-    $label = New-Object System.Windows.Forms.Label
-    $label.AutoSize = $false
-    $label.Location = New-Object System.Drawing.Point(20, 18)
-    $label.Size = New-Object System.Drawing.Size(480, 38)
-    $label.Text = '{_ps_quote(tr("handoff.wait"))}'
-    $form.Controls.Add($label)
+    arguments = [
+        str(installer),
+        "/VERYSILENT",
+        "/SUPPRESSMSGBOXES",
+        "/NORESTART",
+        f'/LOG="{SETUP_LOG}"',
+    ]
+    try:
+        process = subprocess.Popen(
+            arguments,
+            close_fds=True,
+            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        )
+    except OSError as error:
+        HANDOFF_READY.unlink(missing_ok=True)
+        dialog.set_error(
+            tr("updates.agent.handoff.failed") + "\n\n" + str(error)
+        )
+        QTimer.singleShot(8000, application.quit)
+        return application.exec()
 
-    $bar = New-Object System.Windows.Forms.ProgressBar
-    $bar.Location = New-Object System.Drawing.Point(20, 67)
-    $bar.Size = New-Object System.Drawing.Size(480, 24)
-    $bar.Style = 'Marquee'
-    $bar.MarqueeAnimationSpeed = 28
-    $form.Controls.Add($bar)
-
-    $form.Show()
-    [System.Windows.Forms.Application]::DoEvents()
-    Set-Content -LiteralPath $ready -Value 'ready' -Encoding ASCII
-    Write-HandoffLog 'Helper ready.'
-
-    try {{
-        Wait-Process -Id $parentPid -ErrorAction SilentlyContinue
-    }} catch {{}}
-
-    $label.Text = '{_ps_quote(tr("handoff.stop"))}'
-    [System.Windows.Forms.Application]::DoEvents()
-
-    try {{
-        Get-CimInstance Win32_Process -Filter "Name='GenshinModManager.exe'" -ErrorAction SilentlyContinue |
-            Where-Object {{ $_.ExecutablePath -and ($_.ExecutablePath -ieq $gmmPath) }} |
-            ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}
-    }} catch {{}}
-
-    # Fallback for systems where ExecutablePath is unavailable through CIM.
-    Get-Process -Name 'GenshinModManager' -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
-
-    Start-Sleep -Milliseconds 500
-    $label.Text = '{_ps_quote(tr("handoff.install"))}'
-    [System.Windows.Forms.Application]::DoEvents()
-
-    $arguments = @(
-        '/VERYSILENT',
-        '/SUPPRESSMSGBOXES',
-        '/NORESTART',
-        ('/LOG="' + $setupLog + '"')
-    )
-    $process = Start-Process -FilePath $installer -ArgumentList $arguments -PassThru
-    while (-not $process.HasExited) {{
-        [System.Windows.Forms.Application]::DoEvents()
-        Start-Sleep -Milliseconds 120
-        $process.Refresh()
-    }}
-    if ($process.ExitCode -ne 0) {{
-        throw ('Installer exit code: ' + $process.ExitCode)
-    }}
-
-    $bar.Style = 'Continuous'
-    $bar.Value = 100
-    [System.Windows.Forms.Application]::DoEvents()
-    Start-Sleep -Milliseconds 700
-    Write-HandoffLog 'Installer completed successfully.'
-    Remove-Item -LiteralPath $ready -Force -ErrorAction SilentlyContinue
-    try {{
-        $workDir = Split-Path -Parent $installer
-        if ($workDir -and (Test-Path -LiteralPath $workDir)) {{
-            Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue
-        }}
-    }} catch {{}}
-    $form.Close()
-    exit 0
-}}
-catch {{
-    Write-HandoffLog ('ERROR: ' + $_.Exception.ToString())
-    Remove-Item -LiteralPath $ready -Force -ErrorAction SilentlyContinue
-    try {{
-        [System.Windows.Forms.MessageBox]::Show(
-            ('{_ps_quote(tr("handoff.failed"))}' + [Environment]::NewLine + [Environment]::NewLine + $_.Exception.Message),
-            '{_ps_quote(tr("handoff.title"))}',
-            [System.Windows.Forms.MessageBoxButtons]::OK,
-            [System.Windows.Forms.MessageBoxIcon]::Error
-        ) | Out-Null
-    }} catch {{}}
-    if ($form -ne $null) {{ try {{ $form.Close() }} catch {{}} }}
-    exit 1
-}}
-"""
-    HANDOFF_SCRIPT.write_text(script.strip() + "\n", encoding="utf-8-sig")
-
-
-def launch_installer_handoff(installer: Path, gmm_path: Path) -> None:
-    powershell = _powershell_executable()
-    if powershell is None:
-        raise RuntimeError(tr("error.powershell"))
+    while process.poll() is None:
+        QApplication.processEvents()
+        time.sleep(0.1)
 
     HANDOFF_READY.unlink(missing_ok=True)
-    HANDOFF_LOG.unlink(missing_ok=True)
-    _write_handoff_script(
-        installer=installer,
-        parent_pid=os.getpid(),
-        gmm_path=gmm_path,
-    )
+    if process.returncode != 0:
+        dialog.set_error(
+            tr("updates.agent.handoff.failed")
+            + f"\n\nExit-Code: {process.returncode}"
+        )
+        QTimer.singleShot(10000, application.quit)
+        return application.exec()
 
+    dialog.progress.setRange(0, 100)
+    dialog.progress.setValue(100)
+    dialog.set_status(tr("updates.agent.handoff.success"))
+    QTimer.singleShot(1200, application.quit)
+    return application.exec()
+
+
+def launch_installer_handoff(installer: Path, gmm_path: Path, language: str) -> None:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    HANDOFF_READY.unlink(missing_ok=True)
+
+    source_executable = Path(sys.executable).resolve()
+    try:
+        if HANDOFF_HELPER.exists():
+            HANDOFF_HELPER.unlink()
+        shutil.copy2(source_executable, HANDOFF_HELPER)
+    except OSError as error:
+        raise RuntimeError(
+            tr("updates.agent.error.handoff_copy", error=error)
+        ) from error
+
+    environment = os.environ.copy()
+    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     creationflags = (
         getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         | getattr(subprocess, "DETACHED_PROCESS", 0)
     )
-    process = subprocess.Popen(
-        [
-            str(powershell),
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(HANDOFF_SCRIPT),
-        ],
-        close_fds=True,
-        creationflags=creationflags,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
 
-    deadline = time.monotonic() + 7.0
+    try:
+        process = subprocess.Popen(
+            [
+                str(HANDOFF_HELPER),
+                "--handoff-update",
+                "--handoff-installer",
+                str(installer),
+                "--handoff-parent-pid",
+                str(os.getpid()),
+                "--handoff-gmm",
+                str(gmm_path),
+                "--language",
+                language,
+            ],
+            close_fds=True,
+            creationflags=creationflags,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=environment,
+        )
+    except OSError as error:
+        raise RuntimeError(tr("updates.agent.error.handoff")) from error
+
+    deadline = time.monotonic() + 10.0
     while time.monotonic() < deadline:
         QApplication.processEvents()
         if HANDOFF_READY.is_file():
-            logging.info("Windows update handoff is ready.")
+            logging.info("Native Windows update handoff is ready.")
             return
         if process.poll() is not None:
-            raise RuntimeError(tr("error.handoff"))
+            raise RuntimeError(tr("updates.agent.error.handoff"))
         time.sleep(0.05)
 
     try:
         process.terminate()
     except OSError:
         pass
-    raise RuntimeError(tr("error.handoff"))
+    raise RuntimeError(tr("updates.agent.error.handoff"))
 
 
 class UpdateAgent(QObject):
@@ -914,33 +904,50 @@ class UpdateAgent(QObject):
         tray = QSystemTrayIcon(icon, self)
         tray.setToolTip(AGENT_NAME)
         menu = QMenu()
-        check_action = QAction(tr("tray.check"), menu)
-        check_action.triggered.connect(lambda: self.check_for_updates(manual=True))
-        menu.addAction(check_action)
-        self.auto_action = QAction(tr("tray.auto"), menu)
+        self.check_action = QAction(menu)
+        self.check_action.triggered.connect(lambda: self.check_for_updates(manual=True))
+        menu.addAction(self.check_action)
+        self.auto_action = QAction(menu)
         self.auto_action.setCheckable(True)
         self.auto_action.setChecked(self.config.auto_check_enabled)
         self.auto_action.toggled.connect(self._toggle_auto_check)
         menu.addAction(self.auto_action)
-        self.autostart_action = QAction(tr("tray.autostart"), menu)
+        self.autostart_action = QAction(menu)
         self.autostart_action.setCheckable(True)
         self.autostart_action.setChecked(autostart_enabled())
         self.autostart_action.toggled.connect(self._toggle_autostart)
         menu.addAction(self.autostart_action)
         menu.addSeparator()
-        launch_action = QAction(tr("tray.launch"), menu)
-        launch_action.triggered.connect(self.launch_gmm)
-        menu.addAction(launch_action)
-        settings_action = QAction(tr("tray.settings"), menu)
-        settings_action.triggered.connect(self.show_settings)
-        menu.addAction(settings_action)
-        quit_action = QAction(tr("tray.quit"), menu)
-        quit_action.triggered.connect(self.application.quit)
-        menu.addAction(quit_action)
+        self.launch_action = QAction(menu)
+        self.launch_action.triggered.connect(self.launch_gmm)
+        menu.addAction(self.launch_action)
+        self.settings_action = QAction(menu)
+        self.settings_action.triggered.connect(self.show_settings)
+        menu.addAction(self.settings_action)
+        self.quit_action = QAction(menu)
+        self.quit_action.triggered.connect(self.application.quit)
+        menu.addAction(self.quit_action)
         tray.setContextMenu(menu)
+        self._retranslate_tray(tray)
         if QSystemTrayIcon.isSystemTrayAvailable():
             tray.show()
         return tray
+
+    def _retranslate_tray(self, tray: QSystemTrayIcon | None = None) -> None:
+        target = tray or getattr(self, "tray", None)
+        if target is not None:
+            target.setToolTip(tr("updates.agent.tray.title"))
+        for attr, key in (
+            ("check_action", "updates.agent.tray.check"),
+            ("auto_action", "updates.agent.tray.auto"),
+            ("autostart_action", "updates.agent.tray.autostart"),
+            ("launch_action", "updates.agent.tray.launch"),
+            ("settings_action", "updates.agent.tray.settings"),
+            ("quit_action", "updates.agent.tray.quit"),
+        ):
+            action = getattr(self, attr, None)
+            if action is not None:
+                action.setText(tr(key))
 
     def _toggle_auto_check(self, enabled: bool) -> None:
         self.config.auto_check_enabled = bool(enabled)
@@ -951,7 +958,7 @@ class UpdateAgent(QObject):
         try:
             set_autostart(bool(enabled), Path(self.config.agent_path).expanduser())
         except OSError as error:
-            QMessageBox.warning(None, tr("tray.title"), str(error))
+            QMessageBox.warning(None, tr("updates.agent.tray.title"), str(error))
 
     def _apply_timer(self) -> None:
         if self.config.auto_check_enabled:
@@ -988,6 +995,14 @@ class UpdateAgent(QObject):
             self.check_for_updates(manual=True)
         elif command == "reload_config":
             self.config = AgentConfig.load()
+            set_language(self.config.language)
+            apply_agent_style(self.application, component_root=COMPONENT_ROOT)
+            self._retranslate_tray()
+            if self.dialog is not None:
+                try:
+                    self.dialog.retranslate_ui()
+                except RuntimeError:
+                    self.dialog = None
             self._apply_timer()
         elif command == "show_settings":
             self.show_settings()
@@ -999,6 +1014,7 @@ class UpdateAgent(QObject):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         self.config.auto_check_enabled = dialog.auto.isChecked()
+        self.config.component_updates_enabled = dialog.components.isChecked()
         self.config.interval_minutes = dialog.interval.value()
         self.config.save()
         set_autostart(dialog.autostart.isChecked(), Path(self.config.agent_path).expanduser())
@@ -1010,7 +1026,11 @@ class UpdateAgent(QObject):
     def check_for_updates(self, manual: bool) -> None:
         if self.component_worker is not None or self.check_worker is not None:
             if manual:
-                self._message(tr("check.running"))
+                self._message(tr("updates.agent.check.running"))
+            return
+
+        if not self.config.component_updates_enabled:
+            self._check_main_update(manual)
             return
 
         service = ComponentUpdateService(
@@ -1034,9 +1054,11 @@ class UpdateAgent(QObject):
     def _components_finished(self, result_object: object, manual: bool) -> None:
         self.component_worker = None
         if isinstance(result_object, ComponentUpdateResult) and result_object.updated:
-            message = tr("component.updated", count=len(result_object.updated))
+            if "qss-update-agent" in result_object.updated:
+                apply_agent_style(self.application, component_root=COMPONENT_ROOT)
+            message = tr("updates.agent.component.updated", count=len(result_object.updated))
             if result_object.restart_required:
-                message += "\n" + tr("component.restart")
+                message += "\n" + tr("updates.agent.component.restart")
             self._message(message)
         self._check_main_update(manual)
 
@@ -1049,7 +1071,7 @@ class UpdateAgent(QObject):
     def _check_main_update(self, manual: bool) -> None:
         if self.check_worker is not None:
             if manual:
-                self._message(tr("check.running"))
+                self._message(tr("updates.agent.check.running"))
             return
         self.manual_check = manual
         current = self.config.installed_version or APP_VERSION
@@ -1083,7 +1105,7 @@ class UpdateAgent(QObject):
         self.check_worker = None
         logging.warning("Update check failed: %s", message)
         if manual:
-            QMessageBox.warning(None, tr("tray.title"), tr("check.failed", error=message))
+            QMessageBox.warning(None, tr("updates.agent.tray.title"), tr("updates.agent.check.failed", error=message))
 
     def _show_release(self, release: RemoteRelease) -> None:
         if self.dialog is not None:
@@ -1148,11 +1170,15 @@ class UpdateAgent(QObject):
         installer = Path(result_object["installer"])
         try:
             if self.dialog is not None:
-                self.dialog.set_indeterminate(tr("update.handoff"))
+                self.dialog.set_indeterminate(tr("updates.agent.update.handoff"))
             gmm_path = Path(self.config.gmm_path).expanduser()
             if not gmm_path.is_file():
-                raise RuntimeError(tr("error.no_gmm", path=gmm_path))
-            launch_installer_handoff(installer, gmm_path)
+                raise RuntimeError(tr("updates.agent.error.no_gmm", path=gmm_path))
+            launch_installer_handoff(
+                installer,
+                gmm_path,
+                self.config.language,
+            )
             # The helper is now visibly alive and owns the rest of the update.
             # Do not delete the temporary directory: the helper still needs
             # the downloaded installer from it.
@@ -1166,7 +1192,7 @@ class UpdateAgent(QObject):
     def launch_gmm(self) -> None:
         path = Path(self.config.gmm_path).expanduser()
         if not path.is_file():
-            QMessageBox.warning(None, tr("tray.title"), tr("error.no_gmm", path=path))
+            QMessageBox.warning(None, tr("updates.agent.tray.title"), tr("updates.agent.error.no_gmm", path=path))
             return
         try:
             flags = (
@@ -1184,18 +1210,18 @@ class UpdateAgent(QObject):
                 env=environment,
             )
         except OSError as error:
-            QMessageBox.warning(None, tr("tray.title"), str(error))
+            QMessageBox.warning(None, tr("updates.agent.tray.title"), str(error))
 
     def _message(self, text: str) -> None:
         if QSystemTrayIcon.isSystemTrayAvailable() and self.tray.isVisible():
             self.tray.showMessage(
-                tr("tray.title"),
+                tr("updates.agent.tray.title"),
                 text,
                 QSystemTrayIcon.MessageIcon.Information,
                 5000,
             )
         else:
-            QMessageBox.information(None, tr("tray.title"), text)
+            QMessageBox.information(None, tr("updates.agent.tray.title"), text)
 
 
 def acquire_lock() -> QLockFile | None:
@@ -1222,6 +1248,10 @@ def update_config_from_args(config: AgentConfig, args: argparse.Namespace) -> No
             config.skipped_version = ""
     if args.auto_check is not None:
         config.auto_check_enabled = parse_bool(args.auto_check)
+    if args.component_updates is not None:
+        config.component_updates_enabled = parse_bool(args.component_updates)
+    if args.language:
+        config.language = set_language(args.language)
     if args.interval is not None:
         config.interval_minutes = max(
             MIN_INTERVAL_MINUTES,
@@ -1235,16 +1265,19 @@ def update_config_from_args(config: AgentConfig, args: argparse.Namespace) -> No
 
 
 def configure_install_graphical(config: AgentConfig) -> int:
+    set_language(config.language)
     app = QApplication(sys.argv)
     app.setApplicationName(AGENT_NAME)
+    apply_agent_style(app, component_root=COMPONENT_ROOT)
     dialog = SetupDialog(config)
     if dialog.exec() != QDialog.DialogCode.Accepted:
         return 2
     config.auto_check_enabled = dialog.auto.isChecked()
+    config.component_updates_enabled = dialog.components.isChecked()
     config.interval_minutes = dialog.interval.value()
     config.save()
     set_autostart(dialog.autostart.isChecked(), Path(config.agent_path).expanduser())
-    QMessageBox.information(None, tr("setup.title"), tr("setup.saved"))
+    QMessageBox.information(None, tr("updates.agent.setup.title"), tr("updates.agent.setup.saved"))
     return 0
 
 
@@ -1254,10 +1287,12 @@ def run_agent(initial_manual_check: bool = False) -> int:
         if initial_manual_check:
             write_command("check_now")
         return 0
+    config = AgentConfig.load()
+    set_language(config.language)
     application = QApplication(sys.argv)
     application.setQuitOnLastWindowClosed(False)
     application.setApplicationName(AGENT_NAME)
-    config = AgentConfig.load()
+    apply_agent_style(application, component_root=COMPONENT_ROOT)
     agent = UpdateAgent(application, config)
     if initial_manual_check:
         QTimer.singleShot(500, lambda: agent.check_for_updates(manual=True))
@@ -1308,9 +1343,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--agent-path")
     parser.add_argument("--installed-version")
     parser.add_argument("--auto-check")
+    parser.add_argument("--component-updates")
+    parser.add_argument("--language", choices=["de", "en"])
     parser.add_argument("--autostart")
     parser.add_argument("--interval", type=int)
     parser.add_argument("--channel", choices=["stable", "prerelease"])
+    parser.add_argument("--handoff-update", action="store_true")
+    parser.add_argument("--handoff-installer")
+    parser.add_argument("--handoff-parent-pid", type=int)
+    parser.add_argument("--handoff-gmm")
     return parser
 
 
@@ -1319,11 +1360,27 @@ def main() -> int:
     args = build_parser().parse_args()
     config = AgentConfig.load()
 
+    if args.handoff_update:
+        if not (
+            args.handoff_installer
+            and args.handoff_parent_pid is not None
+            and args.handoff_gmm
+        ):
+            return 2
+        return run_installer_handoff(
+            installer=Path(args.handoff_installer).expanduser().resolve(),
+            parent_pid=int(args.handoff_parent_pid),
+            gmm_path=Path(args.handoff_gmm).expanduser().resolve(),
+            language=args.language or config.language,
+        )
+
     if (
         args.gmm_path
         or args.agent_path
         or args.installed_version
         or args.auto_check is not None
+        or args.component_updates is not None
+        or args.language
         or args.autostart is not None
         or args.interval is not None
         or args.channel

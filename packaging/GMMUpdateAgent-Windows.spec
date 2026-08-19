@@ -26,6 +26,19 @@ hiddenimports += collect_submodules("updater.services")
 
 datas = collect_data_files("certifi")
 
+# The standalone Agent uses the same translation JSON files as GMM and its
+# own QSS theme. Keep their paths stable inside the PyInstaller bundle so the
+# shared Agent i18n/style services can load them in onefile builds.
+for relative_source, destination in (
+    ("app/i18n/locales/de.json", "app/i18n/locales"),
+    ("app/i18n/locales/en.json", "app/i18n/locales"),
+    ("updater/styles/update_agent.qss", "updater/styles"),
+):
+    source = project_root / relative_source
+    if not source.is_file():
+        raise SystemExit(f"Required Update Agent data file missing: {source}")
+    datas.append((str(source), destination))
+
 analysis = Analysis(
     [str(entry)],
     pathex=[str(project_root)],

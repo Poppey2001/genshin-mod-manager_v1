@@ -4,7 +4,6 @@ import argparse
 import fcntl
 import hashlib
 import json
-import locale
 import logging
 import os
 import re
@@ -14,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -29,6 +28,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -51,6 +51,12 @@ from updater.services.component_update_service import (
     ComponentUpdateService,
 )
 from updater.services.component_worker import ComponentUpdateWorker
+from updater.services.agent_i18n import (
+    set_language,
+    system_language,
+    tr,
+)
+from updater.services.agent_style import apply_agent_style
 
 
 APP_NAME = "Genshin Mod Manager"
@@ -93,121 +99,14 @@ COMPONENT_MANIFEST_URL = (
 )
 
 
-def _language() -> str:
-    for value in (
-        os.environ.get("LANGUAGE", ""),
-        os.environ.get("LC_ALL", ""),
-        os.environ.get("LC_MESSAGES", ""),
-        os.environ.get("LANG", ""),
-    ):
-        if value.lower().startswith("de"):
-            return "de"
-    try:
-        loc = locale.getlocale()[0] or ""
-    except Exception:
-        loc = ""
-    return "de" if loc.lower().startswith("de") else "en"
-
-
-LANG = _language()
-
-
-TEXT = {
-    "de": {
-        "tray.check": "Jetzt nach Updates suchen",
-        "tray.auto": "Automatisch nach Updates suchen",
-        "tray.autostart": "Update Agent automatisch starten",
-        "tray.launch": "Genshin Mod Manager starten",
-        "tray.settings": "Update-Agent-Einstellungen …",
-        "tray.quit": "Update Agent beenden",
-        "tray.title": "GMM Update Agent",
-        "check.running": "Eine Update-Prüfung läuft bereits.",
-        "check.uptodate": "Du verwendest bereits die aktuelle Version {version}.",
-        "check.failed": "Die Update-Prüfung ist fehlgeschlagen.\n\n{error}",
-        "component.updated": "{count} kleine Update-Komponente(n) wurden installiert.",
-        "component.restart": "Die Änderungen werden beim nächsten Start des Mod Managers aktiv.",
-        "update.title": "Genshin Mod Manager Update",
-        "update.available": "Eine neue Version ist verfügbar",
-        "update.versions": "Installiert: {current}\nVerfügbar: {new}",
-        "update.notes": "Änderungen",
-        "update.install": "Update installieren",
-        "update.later": "Später",
-        "update.skip": "Diese Version überspringen",
-        "update.download": "Update wird heruntergeladen und geprüft …",
-        "update.stop": "Genshin Mod Manager wird beendet …",
-        "update.replace": "Update wird installiert …",
-        "update.done": "Update {version} wurde installiert.",
-        "update.failed": "Update fehlgeschlagen.\n\n{error}",
-        "setup.title": "Linux Update Agent einrichten",
-        "setup.info": "Der GMM Update Agent läuft unabhängig vom Mod Manager und kann im Hintergrund nach Updates suchen.",
-        "setup.autostart": "Update Agent bei der Anmeldung automatisch starten",
-        "setup.auto": "Automatisch nach Updates suchen",
-        "setup.interval": "Prüfintervall (Minuten)",
-        "setup.skipped": "Übersprungene Version: {version}",
-        "setup.no_skipped": "Keine Version wird übersprungen.",
-        "setup.reset_skip": "Übersprungene Version zurücksetzen",
-        "setup.saved": "Die Update-Agent-Einstellungen wurden gespeichert.",
-        "error.no_appimage": "Das installierte GMM-AppImage wurde nicht gefunden: {path}",
-        "error.no_asset": "Dieses Release enthält kein passendes Linux-AppImage.",
-        "error.digest": "Für {name} konnte keine gültige SHA-256-Prüfsumme gefunden werden.",
-        "error.hash": "Die SHA-256-Prüfsumme von {name} stimmt nicht überein.",
-        "error.download": "Download von {name} fehlgeschlagen: {error}",
-        "error.replace": "Das AppImage konnte nicht ersetzt werden: {error}",
-    },
-    "en": {
-        "tray.check": "Check for updates now",
-        "tray.auto": "Automatically check for updates",
-        "tray.autostart": "Start Update Agent automatically",
-        "tray.launch": "Launch Genshin Mod Manager",
-        "tray.settings": "Update Agent settings …",
-        "tray.quit": "Quit Update Agent",
-        "tray.title": "GMM Update Agent",
-        "check.running": "An update check is already running.",
-        "check.uptodate": "You are already using the current version {version}.",
-        "check.failed": "The update check failed.\n\n{error}",
-        "component.updated": "{count} small update component(s) were installed.",
-        "component.restart": "The changes will become active the next time the Mod Manager starts.",
-        "update.title": "Genshin Mod Manager Update",
-        "update.available": "A new version is available",
-        "update.versions": "Installed: {current}\nAvailable: {new}",
-        "update.notes": "What's new",
-        "update.install": "Install update",
-        "update.later": "Later",
-        "update.skip": "Skip this version",
-        "update.download": "Downloading and verifying the update …",
-        "update.stop": "Closing Genshin Mod Manager …",
-        "update.replace": "Installing the update …",
-        "update.done": "Update {version} was installed.",
-        "update.failed": "Update failed.\n\n{error}",
-        "setup.title": "Configure Linux Update Agent",
-        "setup.info": "The GMM Update Agent runs independently from the Mod Manager and can check for updates in the background.",
-        "setup.autostart": "Start Update Agent automatically when signing in",
-        "setup.auto": "Automatically check for updates",
-        "setup.interval": "Check interval (minutes)",
-        "setup.skipped": "Skipped version: {version}",
-        "setup.no_skipped": "No version is currently skipped.",
-        "setup.reset_skip": "Reset skipped version",
-        "setup.saved": "Update Agent settings were saved.",
-        "error.no_appimage": "The installed GMM AppImage was not found: {path}",
-        "error.no_asset": "This release does not contain a matching Linux AppImage.",
-        "error.digest": "No valid SHA-256 checksum could be found for {name}.",
-        "error.hash": "The SHA-256 checksum for {name} does not match.",
-        "error.download": "Download of {name} failed: {error}",
-        "error.replace": "The AppImage could not be replaced: {error}",
-    },
-}
-
-
-def tr(key: str, **kwargs: object) -> str:
-    template = TEXT.get(LANG, TEXT["en"]).get(key, TEXT["en"].get(key, key))
-    return template.format(**kwargs)
-
 
 @dataclass(slots=True)
 class AgentConfig:
     auto_check_enabled: bool = True
+    component_updates_enabled: bool = True
     interval_minutes: int = DEFAULT_INTERVAL_MINUTES
     skipped_version: str = ""
+    language: str = field(default_factory=system_language)
     channel: str = "prerelease"
     appimage_path: str = str(DEFAULT_APPIMAGE)
     agent_path: str = str(DEFAULT_AGENT)
@@ -226,8 +125,10 @@ class AgentConfig:
                 raise TypeError("update-agent.json is not an object")
             config = cls(
                 auto_check_enabled=bool(data.get("auto_check_enabled", True)),
+                component_updates_enabled=bool(data.get("component_updates_enabled", True)),
                 interval_minutes=int(data.get("interval_minutes", DEFAULT_INTERVAL_MINUTES)),
                 skipped_version=str(data.get("skipped_version", "") or ""),
+                language=str(data.get("language", system_language()) or system_language()),
                 channel=str(data.get("channel", "prerelease") or "prerelease"),
                 appimage_path=str(data.get("appimage_path", DEFAULT_APPIMAGE)),
                 agent_path=str(data.get("agent_path", DEFAULT_AGENT)),
@@ -239,6 +140,7 @@ class AgentConfig:
         config.interval_minutes = max(MIN_INTERVAL_MINUTES, min(MAX_INTERVAL_MINUTES, config.interval_minutes))
         if config.channel not in {"stable", "prerelease"}:
             config.channel = "prerelease"
+        config.language = set_language(config.language)
         return config
 
     def save(self) -> None:
@@ -404,7 +306,7 @@ def _pick_release(current_version: str, channel: str) -> RemoteRelease | None:
             agent_item = item
 
     if app_item is None:
-        raise RuntimeError(tr("error.no_asset"))
+        raise RuntimeError(tr("updates.agent.error.no_asset"))
 
     def convert(item: dict[str, Any]) -> RemoteAsset:
         digest, checksum_url = _asset_digest(item, checksum_assets)
@@ -429,13 +331,13 @@ def _pick_release(current_version: str, channel: str) -> RemoteRelease | None:
 
 def _checksum_from_url(url: str, asset_name: str) -> str:
     if not url:
-        raise RuntimeError(tr("error.digest", name=asset_name))
+        raise RuntimeError(tr("updates.agent.error.digest", name=asset_name))
     request = Request(url, headers={"User-Agent": USER_AGENT})
     with verified_urlopen(request, timeout=CHECK_TIMEOUT) as response:
         text = response.read().decode("utf-8", errors="replace")
     match = re.search(r"\b([0-9a-fA-F]{64})\b", text)
     if not match:
-        raise RuntimeError(tr("error.digest", name=asset_name))
+        raise RuntimeError(tr("updates.agent.error.digest", name=asset_name))
     return match.group(1).lower()
 
 
@@ -501,11 +403,11 @@ class DownloadWorker(QRunnable):
                     self.signals.progress.emit(overall_received + received, overall_total)
         except (HTTPError, URLError, TimeoutError, OSError) as error:
             temp.unlink(missing_ok=True)
-            raise RuntimeError(tr("error.download", name=asset.name, error=error)) from error
+            raise RuntimeError(tr("updates.agent.error.download", name=asset.name, error=error)) from error
         actual = hasher.hexdigest().lower()
         if actual != expected:
             temp.unlink(missing_ok=True)
-            raise RuntimeError(tr("error.hash", name=asset.name))
+            raise RuntimeError(tr("updates.agent.error.hash", name=asset.name))
         temp.replace(destination)
         destination.chmod(destination.stat().st_mode | 0o111)
         return received
@@ -524,7 +426,7 @@ class DownloadWorker(QRunnable):
             total = 1
         received = 0
         try:
-            self.signals.status.emit(tr("update.download"))
+            self.signals.status.emit(tr("updates.agent.update.download"))
             received += self._download_asset(self.release.appimage, app_path, received, total)
             if self.release.agent is not None:
                 agent_path = work / self.release.agent.name
@@ -541,45 +443,94 @@ class UpdateDialog(QDialog):
     install_requested = Signal()
     skip_requested = Signal()
 
-    def __init__(self, release: RemoteRelease, current_version: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        release: RemoteRelease,
+        current_version: str,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.release = release
-        self.setWindowTitle(tr("update.title"))
-        self.resize(620, 480)
+        self.current_version = current_version
+        self.setObjectName("agentUpdateDialog")
+        self.resize(690, 540)
+
         layout = QVBoxLayout(self)
-        title = QLabel(f"<b>{tr('update.available')}</b>")
-        layout.addWidget(title)
-        version = QLabel(tr("update.versions", current=current_version, new=release.version))
-        layout.addWidget(version)
-        layout.addWidget(QLabel(tr("update.notes")))
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(12)
+
+        self.title_label = QLabel(self)
+        self.title_label.setObjectName("agentTitle")
+        layout.addWidget(self.title_label)
+
+        self.version_label = QLabel(self)
+        self.version_label.setObjectName("agentSubtitle")
+        self.version_label.setWordWrap(True)
+        layout.addWidget(self.version_label)
+
+        self.notes_label = QLabel(self)
+        layout.addWidget(self.notes_label)
+
         self.notes = QTextBrowser(self)
         self.notes.setOpenExternalLinks(True)
-        self.notes.setPlainText(release.notes.strip() or "—")
+        self.notes.document().setDefaultStyleSheet(
+            "a { color: #8f7cff; } "
+            "code { color: #c9bfff; }"
+        )
+        self.notes.setMarkdown(
+            release.notes.strip()
+            or tr("updates.agent.update.no_notes")
+        )
         layout.addWidget(self.notes, 1)
+
         self.status = QLabel(self)
+        self.status.setObjectName("agentStatus")
         self.status.setWordWrap(True)
         self.status.hide()
         layout.addWidget(self.status)
+
         self.progress = QProgressBar(self)
         self.progress.setRange(0, 100)
         self.progress.hide()
         layout.addWidget(self.progress)
+
         buttons = QHBoxLayout()
-        self.skip_button = QPushButton(tr("update.skip"), self)
-        self.later_button = QPushButton(tr("update.later"), self)
-        self.install_button = QPushButton(tr("update.install"), self)
+        buttons.setSpacing(8)
+        self.skip_button = QPushButton(self)
+        self.skip_button.setProperty("role", "quiet")
+        self.later_button = QPushButton(self)
+        self.install_button = QPushButton(self)
+        self.install_button.setProperty("role", "primary")
         self.install_button.setDefault(True)
         buttons.addWidget(self.skip_button)
         buttons.addStretch(1)
         buttons.addWidget(self.later_button)
         buttons.addWidget(self.install_button)
         layout.addLayout(buttons)
+
         self.skip_button.clicked.connect(self.skip_requested.emit)
         self.later_button.clicked.connect(self.reject)
         self.install_button.clicked.connect(self.install_requested.emit)
+        self.retranslate_ui()
+
+    def retranslate_ui(self) -> None:
+        self.setWindowTitle(tr("updates.agent.update.title"))
+        self.title_label.setText(tr("updates.agent.update.available"))
+        self.version_label.setText(
+            tr(
+                "updates.agent.update.versions",
+                current=self.current_version,
+                new=self.release.version,
+            )
+        )
+        self.notes_label.setText(tr("updates.agent.update.notes"))
+        self.skip_button.setText(tr("updates.agent.update.skip"))
+        self.later_button.setText(tr("updates.agent.update.later"))
+        self.install_button.setText(tr("updates.agent.update.install"))
 
     def begin_download(self) -> None:
-        self.status.setText(tr("update.download"))
+        self.status.setProperty("error", False)
+        self.status.setText(tr("updates.agent.update.download"))
         self.status.show()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
@@ -589,6 +540,9 @@ class UpdateDialog(QDialog):
         self.skip_button.setEnabled(False)
 
     def set_status(self, text: str) -> None:
+        self.status.setProperty("error", False)
+        self.status.style().unpolish(self.status)
+        self.status.style().polish(self.status)
         self.status.setText(text)
         self.status.show()
 
@@ -605,7 +559,11 @@ class UpdateDialog(QDialog):
         self.progress.show()
 
     def set_failed(self, message: str) -> None:
-        self.set_status(tr("update.failed", error=message))
+        self.status.setProperty("error", True)
+        self.status.style().unpolish(self.status)
+        self.status.style().polish(self.status)
+        self.status.setText(tr("updates.agent.update.failed", error=message))
+        self.status.show()
         self.progress.hide()
         self.install_button.setEnabled(True)
         self.later_button.setEnabled(True)
@@ -616,42 +574,82 @@ class SetupDialog(QDialog):
     def __init__(self, config: AgentConfig, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
-        self.setWindowTitle(tr("setup.title"))
-        self.resize(520, 260)
+        self.setObjectName("agentSetupDialog")
+        self.resize(580, 390)
+
         layout = QVBoxLayout(self)
-        info = QLabel(tr("setup.info"), self)
+        layout.setContentsMargins(24, 22, 24, 22)
+        layout.setSpacing(12)
+
+        self.title_label = QLabel(tr("updates.agent.setup.title"), self)
+        self.title_label.setObjectName("agentTitle")
+        layout.addWidget(self.title_label)
+
+        info = QLabel(tr("updates.agent.setup.info"), self)
+        info.setObjectName("agentSubtitle")
         info.setWordWrap(True)
         layout.addWidget(info)
-        self.autostart = QCheckBox(tr("setup.autostart"), self)
+
+        self.autostart = QCheckBox(tr("updates.agent.setup.autostart"), self)
         self.autostart.setChecked(autostart_enabled())
-        self.auto = QCheckBox(tr("setup.auto"), self)
+        self.auto = QCheckBox(tr("updates.agent.setup.auto"), self)
         self.auto.setChecked(config.auto_check_enabled)
+        self.components = QCheckBox(tr("updates.agent.setup.components"), self)
+        self.components.setChecked(config.component_updates_enabled)
         layout.addWidget(self.autostart)
         layout.addWidget(self.auto)
+        layout.addWidget(self.components)
+
         form = QFormLayout()
         self.interval = QSpinBox(self)
         self.interval.setRange(MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES)
         self.interval.setValue(config.interval_minutes)
-        form.addRow(tr("setup.interval"), self.interval)
+        form.addRow(tr("updates.agent.setup.interval"), self.interval)
         layout.addLayout(form)
+
+        language_name = "Deutsch" if config.language == "de" else "English"
+        self.language_label = QLabel(
+            tr("updates.agent.setup.language", language=language_name),
+            self,
+        )
+        self.language_label.setObjectName("agentSubtitle")
+        layout.addWidget(self.language_label)
+
         self.skipped_label = QLabel(self)
         self.skipped_label.setWordWrap(True)
-        self.reset_skip_button = QPushButton(tr("setup.reset_skip"), self)
+        self.reset_skip_button = QPushButton(
+            tr("updates.agent.setup.reset_skip"), self
+        )
+        self.reset_skip_button.setProperty("role", "quiet")
         self.reset_skip_button.clicked.connect(self._reset_skip)
         layout.addWidget(self.skipped_label)
         layout.addWidget(self.reset_skip_button)
         self._refresh_skip_label()
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, parent=self)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        if ok_button is not None:
+            ok_button.setProperty("role", "primary")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+        self.setWindowTitle(tr("updates.agent.setup.title"))
 
     def _refresh_skip_label(self) -> None:
         if self.config.skipped_version:
-            self.skipped_label.setText(tr("setup.skipped", version=self.config.skipped_version))
+            self.skipped_label.setText(
+                tr(
+                    "updates.agent.setup.skipped",
+                    version=self.config.skipped_version,
+                )
+            )
             self.reset_skip_button.setEnabled(True)
         else:
-            self.skipped_label.setText(tr("setup.no_skipped"))
+            self.skipped_label.setText(tr("updates.agent.setup.no_skipped"))
             self.reset_skip_button.setEnabled(False)
 
     def _reset_skip(self) -> None:
@@ -686,33 +684,50 @@ class UpdateAgent(QObject):
         tray = QSystemTrayIcon(icon, self)
         tray.setToolTip(AGENT_NAME)
         menu = QMenu()
-        check_action = QAction(tr("tray.check"), menu)
-        check_action.triggered.connect(lambda: self.check_for_updates(manual=True))
-        menu.addAction(check_action)
-        self.auto_action = QAction(tr("tray.auto"), menu)
+        self.check_action = QAction(menu)
+        self.check_action.triggered.connect(lambda: self.check_for_updates(manual=True))
+        menu.addAction(self.check_action)
+        self.auto_action = QAction(menu)
         self.auto_action.setCheckable(True)
         self.auto_action.setChecked(self.config.auto_check_enabled)
         self.auto_action.toggled.connect(self._toggle_auto_check)
         menu.addAction(self.auto_action)
-        self.autostart_action = QAction(tr("tray.autostart"), menu)
+        self.autostart_action = QAction(menu)
         self.autostart_action.setCheckable(True)
         self.autostart_action.setChecked(autostart_enabled())
         self.autostart_action.toggled.connect(self._toggle_autostart)
         menu.addAction(self.autostart_action)
         menu.addSeparator()
-        launch_action = QAction(tr("tray.launch"), menu)
-        launch_action.triggered.connect(self.launch_gmm)
-        menu.addAction(launch_action)
-        settings_action = QAction(tr("tray.settings"), menu)
-        settings_action.triggered.connect(self.show_settings)
-        menu.addAction(settings_action)
-        quit_action = QAction(tr("tray.quit"), menu)
-        quit_action.triggered.connect(self.application.quit)
-        menu.addAction(quit_action)
+        self.launch_action = QAction(menu)
+        self.launch_action.triggered.connect(self.launch_gmm)
+        menu.addAction(self.launch_action)
+        self.settings_action = QAction(menu)
+        self.settings_action.triggered.connect(self.show_settings)
+        menu.addAction(self.settings_action)
+        self.quit_action = QAction(menu)
+        self.quit_action.triggered.connect(self.application.quit)
+        menu.addAction(self.quit_action)
         tray.setContextMenu(menu)
+        self._retranslate_tray(tray)
         if QSystemTrayIcon.isSystemTrayAvailable():
             tray.show()
         return tray
+
+    def _retranslate_tray(self, tray: QSystemTrayIcon | None = None) -> None:
+        target = tray or getattr(self, "tray", None)
+        if target is not None:
+            target.setToolTip(tr("updates.agent.tray.title"))
+        for attr, key in (
+            ("check_action", "updates.agent.tray.check"),
+            ("auto_action", "updates.agent.tray.auto"),
+            ("autostart_action", "updates.agent.tray.autostart"),
+            ("launch_action", "updates.agent.tray.launch"),
+            ("settings_action", "updates.agent.tray.settings"),
+            ("quit_action", "updates.agent.tray.quit"),
+        ):
+            action = getattr(self, attr, None)
+            if action is not None:
+                action.setText(tr(key))
 
     def _toggle_auto_check(self, enabled: bool) -> None:
         self.config.auto_check_enabled = bool(enabled)
@@ -755,6 +770,14 @@ class UpdateAgent(QObject):
             self.check_for_updates(manual=True)
         elif command == "reload_config":
             self.config = AgentConfig.load()
+            set_language(self.config.language)
+            apply_agent_style(self.application, component_root=COMPONENT_ROOT)
+            self._retranslate_tray()
+            if self.dialog is not None:
+                try:
+                    self.dialog.retranslate_ui()
+                except RuntimeError:
+                    self.dialog = None
             self._apply_timer()
         elif command == "show_settings":
             self.show_settings()
@@ -766,6 +789,7 @@ class UpdateAgent(QObject):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         self.config.auto_check_enabled = dialog.auto.isChecked()
+        self.config.component_updates_enabled = dialog.components.isChecked()
         self.config.interval_minutes = dialog.interval.value()
         self.config.save()
         set_autostart(dialog.autostart.isChecked(), Path(self.config.agent_path).expanduser())
@@ -777,7 +801,11 @@ class UpdateAgent(QObject):
     def check_for_updates(self, manual: bool) -> None:
         if self.component_worker is not None or self.check_worker is not None:
             if manual:
-                self._message(tr("check.running"))
+                self._message(tr("updates.agent.check.running"))
+            return
+
+        if not self.config.component_updates_enabled:
+            self._check_main_update(manual)
             return
 
         service = ComponentUpdateService(
@@ -801,9 +829,11 @@ class UpdateAgent(QObject):
     def _components_finished(self, result_object: object, manual: bool) -> None:
         self.component_worker = None
         if isinstance(result_object, ComponentUpdateResult) and result_object.updated:
-            message = tr("component.updated", count=len(result_object.updated))
+            if "qss-update-agent" in result_object.updated:
+                apply_agent_style(self.application, component_root=COMPONENT_ROOT)
+            message = tr("updates.agent.component.updated", count=len(result_object.updated))
             if result_object.restart_required:
-                message += "\n" + tr("component.restart")
+                message += "\n" + tr("updates.agent.component.restart")
             self._message(message)
         self._check_main_update(manual)
 
@@ -816,7 +846,7 @@ class UpdateAgent(QObject):
     def _check_main_update(self, manual: bool) -> None:
         if self.check_worker is not None:
             if manual:
-                self._message(tr("check.running"))
+                self._message(tr("updates.agent.check.running"))
             return
         self.manual_check = manual
         current = self.config.installed_version or APP_VERSION
@@ -831,7 +861,7 @@ class UpdateAgent(QObject):
         self.check_worker = None
         if release_object is None:
             if manual:
-                self._message(tr("check.uptodate", version=self.config.installed_version or APP_VERSION))
+                self._message(tr("updates.agent.check.uptodate", version=self.config.installed_version or APP_VERSION))
             return
         if not isinstance(release_object, RemoteRelease):
             return
@@ -845,7 +875,7 @@ class UpdateAgent(QObject):
         self.check_worker = None
         logging.warning("Update check failed: %s", message)
         if manual:
-            QMessageBox.warning(None, tr("tray.title"), tr("check.failed", error=message))
+            QMessageBox.warning(None, tr("updates.agent.tray.title"), tr("updates.agent.check.failed", error=message))
 
     def _show_release(self, release: RemoteRelease) -> None:
         if self.dialog is not None:
@@ -911,13 +941,13 @@ class UpdateAgent(QObject):
         downloaded_agent = Path(result_object["agent"]) if result_object.get("agent") else None
         try:
             if self.dialog is not None:
-                self.dialog.set_indeterminate(tr("update.stop"))
+                self.dialog.set_indeterminate(tr("updates.agent.update.stop"))
             appimage = Path(self.config.appimage_path).expanduser().resolve()
             if not appimage.is_file():
-                raise RuntimeError(tr("error.no_appimage", path=appimage))
+                raise RuntimeError(tr("updates.agent.error.no_appimage", path=appimage))
             was_running = self._stop_running_gmm(appimage)
             if self.dialog is not None:
-                self.dialog.set_indeterminate(tr("update.replace"))
+                self.dialog.set_indeterminate(tr("updates.agent.update.replace"))
             self._replace_appimage(appimage, downloaded_appimage)
             self._replace_agent_if_possible(downloaded_agent)
             self.config.installed_version = release.version
@@ -928,7 +958,7 @@ class UpdateAgent(QObject):
             if self.dialog is not None:
                 self.dialog.progress.setRange(0, 100)
                 self.dialog.progress.setValue(100)
-                self.dialog.set_status(tr("update.done", version=release.version))
+                self.dialog.set_status(tr("updates.agent.update.done", version=release.version))
                 QTimer.singleShot(1200, self.dialog.accept)
         except Exception as error:
             logging.exception("Update installation failed")
@@ -951,7 +981,7 @@ class UpdateAgent(QObject):
                     os.replace(backup, target)
             except Exception:
                 logging.exception("Rollback failed")
-            raise RuntimeError(tr("error.replace", error=error)) from error
+            raise RuntimeError(tr("updates.agent.error.replace", error=error)) from error
         backup.unlink(missing_ok=True)
 
     def _replace_agent_if_possible(self, downloaded: Path | None) -> None:
@@ -1021,18 +1051,18 @@ class UpdateAgent(QObject):
     def launch_gmm(self) -> None:
         path = Path(self.config.appimage_path).expanduser()
         if not path.is_file():
-            QMessageBox.warning(None, tr("tray.title"), tr("error.no_appimage", path=path))
+            QMessageBox.warning(None, tr("updates.agent.tray.title"), tr("updates.agent.error.no_appimage", path=path))
             return
         try:
             subprocess.Popen([str(path)], start_new_session=True, close_fds=True)
         except OSError as error:
-            QMessageBox.warning(None, tr("tray.title"), str(error))
+            QMessageBox.warning(None, tr("updates.agent.tray.title"), str(error))
 
     def _message(self, text: str) -> None:
         if QSystemTrayIcon.isSystemTrayAvailable() and self.tray.isVisible():
-            self.tray.showMessage(tr("tray.title"), text, QSystemTrayIcon.MessageIcon.Information, 5000)
+            self.tray.showMessage(tr("updates.agent.tray.title"), text, QSystemTrayIcon.MessageIcon.Information, 5000)
         else:
-            QMessageBox.information(None, tr("tray.title"), text)
+            QMessageBox.information(None, tr("updates.agent.tray.title"), text)
 
 
 def acquire_lock() -> object | None:
@@ -1065,6 +1095,10 @@ def update_config_from_args(config: AgentConfig, args: argparse.Namespace) -> No
             config.skipped_version = ""
     if args.auto_check is not None:
         config.auto_check_enabled = parse_bool(args.auto_check)
+    if args.component_updates is not None:
+        config.component_updates_enabled = parse_bool(args.component_updates)
+    if args.language:
+        config.language = set_language(args.language)
     if args.interval is not None:
         config.interval_minutes = max(MIN_INTERVAL_MINUTES, min(MAX_INTERVAL_MINUTES, int(args.interval)))
     if args.channel:
@@ -1075,16 +1109,19 @@ def update_config_from_args(config: AgentConfig, args: argparse.Namespace) -> No
 
 
 def configure_install_graphical(config: AgentConfig) -> int:
+    set_language(config.language)
     app = QApplication(sys.argv)
     app.setApplicationName(AGENT_NAME)
+    apply_agent_style(app, component_root=COMPONENT_ROOT)
     dialog = SetupDialog(config)
     if dialog.exec() != QDialog.DialogCode.Accepted:
         return 2
     config.auto_check_enabled = dialog.auto.isChecked()
+    config.component_updates_enabled = dialog.components.isChecked()
     config.interval_minutes = dialog.interval.value()
     config.save()
     set_autostart(dialog.autostart.isChecked(), Path(config.agent_path).expanduser())
-    QMessageBox.information(None, tr("setup.title"), tr("setup.saved"))
+    QMessageBox.information(None, tr("updates.agent.setup.title"), tr("updates.agent.setup.saved"))
     return 0
 
 
@@ -1094,10 +1131,12 @@ def run_agent(initial_manual_check: bool = False) -> int:
         if initial_manual_check:
             write_command("check_now")
         return 0
+    config = AgentConfig.load()
+    set_language(config.language)
     application = QApplication(sys.argv)
     application.setQuitOnLastWindowClosed(False)
     application.setApplicationName(AGENT_NAME)
-    config = AgentConfig.load()
+    apply_agent_style(application, component_root=COMPONENT_ROOT)
     agent = UpdateAgent(application, config)
     if initial_manual_check:
         QTimer.singleShot(500, lambda: agent.check_for_updates(manual=True))
@@ -1108,11 +1147,26 @@ def run_agent(initial_manual_check: bool = False) -> int:
 
 
 def spawn_background_agent() -> None:
-    executable = Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve()
+    executable = Path(
+        sys.executable
+        if getattr(sys, "frozen", False)
+        else __file__
+    ).resolve()
     args = [str(executable), "--background"]
     if not getattr(sys, "frozen", False):
         args = [sys.executable, str(executable), "--background"]
-    subprocess.Popen(args, start_new_session=True, close_fds=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    environment = os.environ.copy()
+    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+
+    subprocess.Popen(
+        args,
+        start_new_session=True,
+        close_fds=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=environment,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1128,6 +1182,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--agent-path")
     parser.add_argument("--installed-version")
     parser.add_argument("--auto-check")
+    parser.add_argument("--component-updates")
+    parser.add_argument("--language", choices=["de", "en"])
     parser.add_argument("--autostart")
     parser.add_argument("--interval", type=int)
     parser.add_argument("--channel", choices=["stable", "prerelease"])
@@ -1139,7 +1195,7 @@ def main() -> int:
     args = build_parser().parse_args()
     config = AgentConfig.load()
 
-    if args.appimage or args.agent_path or args.installed_version or args.auto_check is not None or args.autostart is not None or args.interval is not None or args.channel:
+    if args.appimage or args.agent_path or args.installed_version or args.auto_check is not None or args.component_updates is not None or args.language or args.autostart is not None or args.interval is not None or args.channel:
         update_config_from_args(config, args)
 
     if args.autostart_enabled:
@@ -1158,13 +1214,12 @@ def main() -> int:
         return configure_install_graphical(config)
 
     if args.check_now:
-        write_command("check_now")
         lock = acquire_lock()
         if lock is None:
+            write_command("check_now")
             return 0
         del lock
-        spawn_background_agent()
-        return 0
+        return run_agent(initial_manual_check=True)
 
     return run_agent(initial_manual_check=False)
 

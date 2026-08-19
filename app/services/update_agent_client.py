@@ -139,14 +139,22 @@ def request_update_agent_check() -> bool:
     return _spawn("--check-now")
 
 
-def sync_update_agent_settings(*, auto_check: bool, channel: str) -> bool:
+def sync_update_agent_settings(
+    *,
+    auto_check: bool,
+    channel: str,
+    language: str = "en",
+) -> bool:
     normalized_channel = channel if channel in {"stable", "prerelease"} else "prerelease"
+    normalized_language = "de" if str(language).casefold().startswith("de") else "en"
     updated = _spawn(
         "--write-config",
         "--auto-check",
         "yes" if auto_check else "no",
         "--channel",
         normalized_channel,
+        "--language",
+        normalized_language,
         "--reload-running-agent",
     )
     if not updated:
@@ -205,6 +213,8 @@ def configure_update_agent(
     *,
     autostart: bool | None = None,
     interval_minutes: int | None = None,
+    component_updates: bool | None = None,
+    language: str | None = None,
     reset_skipped_version: bool = False,
 ) -> bool:
     if not is_update_agent_installed():
@@ -215,6 +225,20 @@ def configure_update_agent(
         args.extend(["--autostart", "yes" if autostart else "no"])
     if interval_minutes is not None:
         args.extend(["--interval", str(max(15, int(interval_minutes)))])
+    if component_updates is not None:
+        args.extend(
+            [
+                "--component-updates",
+                "yes" if component_updates else "no",
+            ]
+        )
+    if language is not None:
+        normalized_language = (
+            "de"
+            if str(language).casefold().startswith("de")
+            else "en"
+        )
+        args.extend(["--language", normalized_language])
 
     if reset_skipped_version:
         data = update_agent_settings()
@@ -253,10 +277,16 @@ def request_linux_agent_check() -> bool:
     return IS_LINUX and request_update_agent_check()
 
 
-def sync_linux_agent_settings(*, auto_check: bool, channel: str) -> bool:
+def sync_linux_agent_settings(
+    *,
+    auto_check: bool,
+    channel: str,
+    language: str = "en",
+) -> bool:
     return IS_LINUX and sync_update_agent_settings(
         auto_check=auto_check,
         channel=channel,
+        language=language,
     )
 
 
@@ -268,6 +298,8 @@ def configure_linux_update_agent(
     *,
     autostart: bool | None = None,
     interval_minutes: int | None = None,
+    component_updates: bool | None = None,
+    language: str | None = None,
     reset_skipped_version: bool = False,
 ) -> bool:
     if not IS_LINUX:
@@ -275,6 +307,8 @@ def configure_linux_update_agent(
     return configure_update_agent(
         autostart=autostart,
         interval_minutes=interval_minutes,
+        component_updates=component_updates,
+        language=language,
         reset_skipped_version=reset_skipped_version,
     )
 

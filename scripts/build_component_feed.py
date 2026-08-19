@@ -27,6 +27,13 @@ COMPONENTS = (
         "source": "app/styles/profiles.qss",
         "target": "styles/profiles.qss",
     },
+    {
+        "id": "qss-update-agent",
+        "kind": "qss",
+        "source": "updater/styles/update_agent.qss",
+        "target": "styles/update_agent.qss",
+        "restart_required": False,
+    },
 )
 
 
@@ -85,7 +92,12 @@ def main() -> int:
                 "size": target.stat().st_size,
                 "platforms": ["windows", "linux"],
                 "min_app_version": "0",
-                "restart_required": True,
+                "restart_required": bool(
+                    definition.get(
+                        "restart_required",
+                        True,
+                    )
+                ),
             }
         )
 
