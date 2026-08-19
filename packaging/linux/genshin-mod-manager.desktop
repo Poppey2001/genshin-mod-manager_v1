@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Genshin Mod Manager
+Comment=Manage XXMI mods for supported games
+Exec=GenshinModManager
+Icon=gmm
+Terminal=false
+Categories=Game;Utility;
+StartupNotify=true

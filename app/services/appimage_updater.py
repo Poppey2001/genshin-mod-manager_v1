@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 from app.config import CACHE_DIR
+from app.i18n import tr
 
 
 logger = logging.getLogger(
@@ -64,17 +65,15 @@ def stage_update_and_launch_helper(
 
     if target is None:
         raise AppImageUpdateError(
-            (
-                "Die Anwendung läuft "
-                "nicht als AppImage."
+            tr(
+                "updates.error.appimage.not_running"
             )
         )
 
     if not target.is_file():
         raise AppImageUpdateError(
-            (
-                "Die laufende AppImage-Datei "
-                "wurde nicht gefunden."
+            tr(
+                "updates.error.appimage.current_missing"
             )
         )
 
@@ -84,9 +83,8 @@ def stage_update_and_launch_helper(
 
     if not downloaded_file.is_file():
         raise AppImageUpdateError(
-            (
-                "Die heruntergeladene "
-                "Update-Datei fehlt."
+            tr(
+                "updates.error.appimage.download_missing"
             )
         )
 
@@ -99,9 +97,8 @@ def stage_update_and_launch_helper(
         os.W_OK,
     ):
         raise AppImageUpdateError(
-            (
-                "Der Ordner der AppImage-Datei "
-                "ist nicht beschreibbar."
+            tr(
+                "updates.error.appimage.directory_not_writable"
             )
         )
 
@@ -124,10 +121,8 @@ def stage_update_and_launch_helper(
 
     except OSError as error:
         raise AppImageUpdateError(
-            (
-                "Das Update konnte nicht "
-                "neben der AppImage-Datei "
-                "vorbereitet werden."
+            tr(
+                "updates.error.appimage.stage_failed"
             )
         ) from error
 
@@ -234,9 +229,8 @@ exit 1
         )
 
         raise AppImageUpdateError(
-            (
-                "Der Update-Helfer konnte "
-                "nicht gestartet werden."
+            tr(
+                "updates.error.appimage.helper_failed"
             )
         ) from error
 

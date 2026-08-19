@@ -1,33 +1,21 @@
 from __future__ import annotations
 
-import ast
-import hashlib
 import json
-import shutil
-import stat
-import zipfile
+import logging
+import platform
 
-from collections.abc import (
-    Callable,
-)
+from dataclasses import dataclass
 
-from dataclasses import (
-    dataclass,
-)
+from enum import Enum
 
-from enum import (
-    Enum,
-)
-
-from pathlib import (
-    Path,
-    PurePosixPath,
-)
+from typing import Any
 
 from urllib.error import (
     HTTPError,
     URLError,
 )
+
+from urllib.parse import urlencode
 
 from urllib.request import (
     Request,
@@ -39,44 +27,28 @@ from packaging.version import (
     Version,
 )
 
+from app.i18n import tr
+
 from app.update_config import (
-    MAX_UPDATE_FILE_COUNT,
-    MAX_UPDATE_UNCOMPRESSED_SIZE,
-    REMOTE_VERSION_PATH,
-    UPDATE_BRANCH,
+    APPIMAGE_ARCHITECTURE,
+    APPIMAGE_SUFFIX,
+    GITHUB_API_VERSION,
     UPDATE_CHECK_TIMEOUT,
-    UPDATE_DOWNLOAD_TIMEOUT,
-    remote_version_url,
-    source_zip_url,
-)
-
-from app.version import (
-    APP_VERSION,
+    WINDOWS_INSTALLER_ARCHITECTURE,
+    WINDOWS_INSTALLER_NAME_TOKENS,
+    WINDOWS_INSTALLER_SUFFIX,
 )
 
 
-# ============================================================
-# Callback Types
-# ============================================================
-
-ProgressCallback = Callable[
-    [
-        int,
-        int,
-        str,
-    ],
-    None,
-]
-
-CancelCallback = Callable[
-    [],
-    bool,
-]
+logger = logging.getLogger(
+    __name__
+)
 
 
-# ============================================================
-# Exceptions
-# ============================================================
+GITHUB_API_BASE_URL = (
+    "https://api.github.com"
+)
+
 
 class UpdateServiceError(
     RuntimeError
@@ -84,28 +56,26 @@ class UpdateServiceError(
     pass
 
 
-class UpdateCancelledError(
-    UpdateServiceError
-):
-    pass
-
-
-# ============================================================
-# Channel
-# ============================================================
-
 class UpdateChannel(
     str,
     Enum,
 ):
     STABLE = "stable"
-
     PRERELEASE = "prerelease"
 
 
-# ============================================================
-# Update Info
-# ============================================================
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class ReleaseAsset:
+    name: str
+    download_url: str
+    size: int
+
+    content_type: str | None = None
+    digest: str | None = None
+
 
 @dataclass(
     frozen=True,
@@ -116,1335 +86,651 @@ class UpdateInfo:
 
     version: Version
 
-    version_display: str
+    tag_name: str
 
-    archive_url: str
+    release_name: str
 
-    @property
-    def prerelease(
+    release_notes: str
+
+    release_url: str
+
+    published_at: str | None
+
+    prerelease: bool
+
+    assets: tuple[
+        ReleaseAsset,
+        ...,
+    ]
+
+    def find_appimage_asset(
         self,
-    ) -> bool:
-        return (
-            self.version
-            .is_prerelease
+    ) -> ReleaseAsset | None:
+        candidates = [
+            asset
+            for asset in self.assets
+            if asset.name.casefold().endswith(
+                APPIMAGE_SUFFIX.casefold()
+            )
+        ]
+
+        if not candidates:
+            return None
+
+        machine = (
+            platform.machine()
+            .strip()
+            .casefold()
         )
 
-# ============================================================
-# Staged Update
-# ============================================================
+        architecture_names = {
+            "x86_64": {
+                "x86_64",
+                "amd64",
+            },
+            "amd64": {
+                "x86_64",
+                "amd64",
+            },
+            "aarch64": {
+                "aarch64",
+                "arm64",
+            },
+            "arm64": {
+                "aarch64",
+                "arm64",
+            },
+        }
 
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class StagedUpdate:
-    info: UpdateInfo
+        expected_names = (
+            architecture_names.get(
+                machine,
+                {
+                    APPIMAGE_ARCHITECTURE
+                    .casefold()
+                },
+            )
+        )
 
-    cache_root: Path
+        for asset in candidates:
+            name = (
+                asset.name.casefold()
+            )
 
-    archive_path: Path
+            if any(
+                architecture
+                in name
+                for architecture
+                in expected_names
+            ):
+                return asset
 
-    extract_root: Path
+        if len(candidates) == 1:
+            return candidates[0]
 
-    payload_root: Path
+        return None
 
-    manifest_path: Path
+    def find_windows_installer_asset(
+        self,
+    ) -> ReleaseAsset | None:
+        candidates = [
+            asset
+            for asset in self.assets
+            if (
+                asset.name.casefold().endswith(
+                    WINDOWS_INSTALLER_SUFFIX.casefold()
+                )
+                and any(
+                    token.casefold()
+                    in asset.name.casefold()
+                    for token
+                    in WINDOWS_INSTALLER_NAME_TOKENS
+                )
+            )
+        ]
 
+        if not candidates:
+            return None
 
-# ============================================================
-# Update Service
-# ============================================================
+        machine = (
+            platform.machine()
+            .strip()
+            .casefold()
+        )
+
+        architecture_names = {
+            "x86_64": {
+                "x86_64",
+                "amd64",
+                "x64",
+            },
+            "amd64": {
+                "x86_64",
+                "amd64",
+                "x64",
+            },
+            "x64": {
+                "x86_64",
+                "amd64",
+                "x64",
+            },
+            "aarch64": {
+                "aarch64",
+                "arm64",
+            },
+            "arm64": {
+                "aarch64",
+                "arm64",
+            },
+        }
+
+        expected_names = (
+            architecture_names.get(
+                machine,
+                {
+                    WINDOWS_INSTALLER_ARCHITECTURE
+                    .casefold()
+                },
+            )
+        )
+
+        for asset in candidates:
+            name = (
+                asset.name.casefold()
+            )
+
+            if any(
+                architecture
+                in name
+                for architecture
+                in expected_names
+            ):
+                return asset
+
+        if len(candidates) == 1:
+            return candidates[0]
+
+        return None
+
 
 class UpdateService:
     def __init__(
         self,
         *,
-        current_version: str | None = None,
-        channel: UpdateChannel = (
-            UpdateChannel.PRERELEASE
+        owner: str,
+        repository: str,
+        current_version: str,
+        channel: UpdateChannel,
+        timeout: float = (
+            UPDATE_CHECK_TIMEOUT
         ),
     ) -> None:
-        version_text = (
-            current_version
-            if current_version is not None
-            else APP_VERSION
+        self.owner = owner.strip()
+
+        self.repository = (
+            repository.strip()
         )
 
-        try:
-            self.current_version = (
-                Version(
-                    version_text
+        if not self.owner:
+            raise ValueError(
+                tr(
+                    "updates.error.service.owner_missing"
                 )
             )
 
+        if not self.repository:
+            raise ValueError(
+                tr(
+                    "updates.error.service.repository_missing"
+                )
+            )
+
+        try:
+            self.current_version = Version(
+                current_version
+            )
+
         except InvalidVersion as error:
-            raise UpdateServiceError(
-                (
-                    "Die lokale APP_VERSION "
-                    "ist ungültig:\n"
-                    f"{version_text}"
+            raise ValueError(
+                tr(
+                    "updates.error.service.invalid_current_version",
+                    version=current_version,
                 )
             ) from error
 
         self.channel = channel
 
-    # ========================================================
-    # Update prüfen
-    # ========================================================
+        self.timeout = max(
+            float(timeout),
+            1.0,
+        )
 
     def check_for_update(
         self,
-        *,
-        allow_prerelease: bool | None = None,
     ) -> UpdateInfo | None:
-        """
-        Vergleicht:
-
-            lokale app.version.APP_VERSION
-
-        mit:
-
-            GitHub/main/app/version.py
-
-        Es werden dafür keine GitHub Releases verwendet.
-        """
-
-        if allow_prerelease is None:
-            allow_prerelease = (
-                self.channel
-                == UpdateChannel.PRERELEASE
-            )
-
-        # ====================================================
-        # Remote version.py laden
-        # ====================================================
-
-        url = remote_version_url()
-
-        request = Request(
-            url,
-            headers={
-                "User-Agent": (
-                    "XXMI-Mod-Manager-Updater"
-                ),
-                "Cache-Control": (
-                    "no-cache"
-                ),
-            },
+        releases = (
+            self._fetch_releases()
         )
 
-        try:
-            with urlopen(
-                request,
-                timeout=(
-                    UPDATE_CHECK_TIMEOUT
-                ),
-            ) as response:
-                raw_version_file = (
-                    response.read()
-                )
+        candidates: list[
+            UpdateInfo
+        ] = []
 
-        except HTTPError as error:
-            raise UpdateServiceError(
-                (
-                    "Remote version.py konnte "
-                    "nicht geladen werden."
-                    "\n\n"
-                    f"HTTP {error.code}"
-                    "\n"
-                    f"{url}"
-                )
-            ) from error
-
-        except URLError as error:
-            raise UpdateServiceError(
-                (
-                    "GitHub konnte nicht "
-                    "erreicht werden."
-                    "\n\n"
-                    f"{error}"
-                )
-            ) from error
-
-        # ====================================================
-        # Remote APP_VERSION auslesen
-        # ====================================================
-
-        (
-            remote_version,
-            remote_display,
-        ) = self._parse_remote_version(
-            raw_version_file
-        )
-
-        # ====================================================
-        # Debug-Ausgabe
-        # ====================================================
-
-        print(
-            "[UPDATER] Local version :",
-            self.current_version,
-        )
-
-        print(
-            "[UPDATER] Remote version:",
-            remote_version,
-        )
-
-        print(
-            "[UPDATER] Version URL   :",
-            url,
-        )
-
-        # ====================================================
-        # Version vergleichen
-        # ====================================================
-
-        if (
-            remote_version
-            <= self.current_version
-        ):
-            print(
-                "[UPDATER] No update available."
-            )
-
-            return None
-
-        # ====================================================
-        # Stable / Prerelease
-        # ====================================================
-
-        if (
-            remote_version.is_prerelease
-            and not allow_prerelease
-        ):
-            print(
-                (
-                    "[UPDATER] Update ignored "
-                    "because it is a prerelease."
+        for release in releases:
+            update = (
+                self._parse_release(
+                    release
                 )
             )
 
-            return None
-
-        print(
-            "[UPDATER] Update available:",
-            self.current_version,
-            "->",
-            remote_version,
-        )
-
-        # ====================================================
-        # Update gefunden
-        # ====================================================
-
-        return UpdateInfo(
-            current_version=(
-                self.current_version
-            ),
-            version=(
-                remote_version
-            ),
-            version_display=(
-                remote_display
-            ),
-            archive_url=(
-                source_zip_url()
-            ),
-        )
-
-    # ========================================================
-    # Update herunterladen + entpacken
-    # ========================================================
-    @staticmethod
-    def _parse_remote_version(
-        data: bytes,
-    ) -> tuple[
-        Version,
-        str,
-    ]:
-        try:
-            source = data.decode(
-                "utf-8"
-            )
-
-        except UnicodeDecodeError as error:
-            raise UpdateServiceError(
-                (
-                    "Remote version.py ist "
-                    "nicht UTF-8."
-                )
-            ) from error
-
-        try:
-            module = ast.parse(
-                source
-            )
-
-        except SyntaxError as error:
-            raise UpdateServiceError(
-                (
-                    "Remote version.py enthält "
-                    "ungültigen Python-Code."
-                )
-            ) from error
-
-        values: dict[
-            str,
-            str,
-        ] = {}
-
-        for node in module.body:
-            name: str | None = None
-
-            value_node = None
-
-            # ================================================
-            # APP_VERSION = "..."
-            # ================================================
-
-            if isinstance(
-                node,
-                ast.Assign,
-            ):
-                if (
-                    len(
-                        node.targets
-                    )
-                    != 1
-                ):
-                    continue
-
-                target = (
-                    node.targets[
-                        0
-                    ]
-                )
-
-                if isinstance(
-                    target,
-                    ast.Name,
-                ):
-                    name = target.id
-
-                    value_node = (
-                        node.value
-                    )
-
-            # ================================================
-            # APP_VERSION: str = "..."
-            # ================================================
-
-            elif isinstance(
-                node,
-                ast.AnnAssign,
-            ):
-                if isinstance(
-                    node.target,
-                    ast.Name,
-                ):
-                    name = (
-                        node.target.id
-                    )
-
-                    value_node = (
-                        node.value
-                    )
+            if update is None:
+                continue
 
             if (
-                name
-                not in {
-                    "APP_VERSION",
-                    "APP_VERSION_DISPLAY",
-                }
-                or value_node is None
+                update.version
+                <= self.current_version
             ):
                 continue
 
-            try:
-                value = ast.literal_eval(
-                    value_node
-                )
-
-            except (
-                ValueError,
-                TypeError,
+            if not self._channel_allows(
+                update
             ):
                 continue
 
-            if isinstance(
-                value,
-                str,
-            ):
-                values[
-                    name
-                ] = value.strip()
-
-        # ====================================================
-        # APP_VERSION
-        # ====================================================
-
-        version_text = (
-            values.get(
-                "APP_VERSION",
-                "",
+            candidates.append(
+                update
             )
+
+        if not candidates:
+            return None
+
+        return max(
+            candidates,
+            key=lambda update: (
+                update.version
+            ),
         )
 
-        if not version_text:
-            raise UpdateServiceError(
-                (
-                    "APP_VERSION wurde in der "
-                    "Remote-version.py nicht "
-                    "gefunden."
+    def _channel_allows(
+        self,
+        update: UpdateInfo,
+    ) -> bool:
+        if (
+            self.channel
+            == UpdateChannel.PRERELEASE
+        ):
+            return True
+
+        if (
+            self.channel
+            == UpdateChannel.STABLE
+        ):
+            return (
+                not update.prerelease
+                and not (
+                    update.version
+                    .is_prerelease
                 )
             )
+
+        return False
+
+    def _parse_release(
+        self,
+        release: dict[
+            str,
+            Any,
+        ],
+    ) -> UpdateInfo | None:
+        if bool(
+            release.get(
+                "draft",
+                False,
+            )
+        ):
+            return None
+
+        tag_name = release.get(
+            "tag_name"
+        )
+
+        if not isinstance(
+            tag_name,
+            str,
+        ):
+            return None
+
+        tag_name = (
+            tag_name.strip()
+        )
+
+        if not tag_name:
+            return None
+
+        version_text = (
+            self._version_from_tag(
+                tag_name
+            )
+        )
 
         try:
             version = Version(
                 version_text
             )
 
-        except InvalidVersion as error:
-            raise UpdateServiceError(
+        except InvalidVersion:
+            logger.warning(
                 (
-                    "Ungültige Remote-Version: "
-                    f"{version_text}"
+                    "Release mit ungültiger "
+                    "Version ignoriert: %s"
+                ),
+                tag_name,
+            )
+
+            return None
+
+        release_name = (
+            release.get(
+                "name"
+            )
+        )
+
+        if not isinstance(
+            release_name,
+            str,
+        ):
+            release_name = ""
+
+        release_name = (
+            release_name.strip()
+        )
+
+        if not release_name:
+            release_name = tag_name
+
+        release_notes = (
+            release.get(
+                "body"
+            )
+        )
+
+        if not isinstance(
+            release_notes,
+            str,
+        ):
+            release_notes = ""
+
+        release_url = (
+            release.get(
+                "html_url"
+            )
+        )
+
+        if not isinstance(
+            release_url,
+            str,
+        ):
+            release_url = ""
+
+        published_at = (
+            release.get(
+                "published_at"
+            )
+        )
+
+        if not isinstance(
+            published_at,
+            str,
+        ):
+            published_at = None
+
+        assets = (
+            self._parse_assets(
+                release.get(
+                    "assets"
+                )
+            )
+        )
+
+        return UpdateInfo(
+            current_version=(
+                self.current_version
+            ),
+            version=version,
+            tag_name=tag_name,
+            release_name=release_name,
+            release_notes=release_notes,
+            release_url=release_url,
+            published_at=published_at,
+            prerelease=bool(
+                release.get(
+                    "prerelease",
+                    False,
+                )
+            ),
+            assets=assets,
+        )
+
+    @staticmethod
+    def _version_from_tag(
+        tag_name: str,
+    ) -> str:
+        tag_name = (
+            tag_name.strip()
+        )
+
+        if (
+            len(tag_name) > 1
+            and tag_name[0]
+            in {"v", "V"}
+        ):
+            return tag_name[1:]
+
+        return tag_name
+
+    @staticmethod
+    def _parse_assets(
+        raw_assets: Any,
+    ) -> tuple[
+        ReleaseAsset,
+        ...,
+    ]:
+        if not isinstance(
+            raw_assets,
+            list,
+        ):
+            return ()
+
+        assets: list[
+            ReleaseAsset
+        ] = []
+
+        for raw_asset in raw_assets:
+            if not isinstance(
+                raw_asset,
+                dict,
+            ):
+                continue
+
+            name = raw_asset.get(
+                "name"
+            )
+
+            download_url = (
+                raw_asset.get(
+                    "browser_download_url"
+                )
+            )
+
+            if not isinstance(
+                name,
+                str,
+            ):
+                continue
+
+            if not isinstance(
+                download_url,
+                str,
+            ):
+                continue
+
+            size = raw_asset.get(
+                "size",
+                0,
+            )
+
+            if not isinstance(
+                size,
+                int,
+            ):
+                size = 0
+
+            content_type = (
+                raw_asset.get(
+                    "content_type"
+                )
+            )
+
+            if not isinstance(
+                content_type,
+                str,
+            ):
+                content_type = None
+
+            digest = raw_asset.get(
+                "digest"
+            )
+
+            if not isinstance(
+                digest,
+                str,
+            ):
+                digest = None
+
+            assets.append(
+                ReleaseAsset(
+                    name=name,
+                    download_url=(
+                        download_url
+                    ),
+                    size=size,
+                    content_type=(
+                        content_type
+                    ),
+                    digest=digest,
+                )
+            )
+
+        return tuple(
+            assets
+        )
+
+    def _fetch_releases(
+        self,
+    ) -> list[
+        dict[str, Any]
+    ]:
+        query = urlencode(
+            {
+                "per_page": 100,
+                "page": 1,
+            }
+        )
+
+        url = (
+            f"{GITHUB_API_BASE_URL}"
+            f"/repos/{self.owner}"
+            f"/{self.repository}"
+            f"/releases"
+            f"?{query}"
+        )
+
+        request = Request(
+            url,
+            headers={
+                "Accept": (
+                    "application/vnd.github+json"
+                ),
+                "X-GitHub-Api-Version": (
+                    GITHUB_API_VERSION
+                ),
+                "User-Agent": (
+                    "Genshin-Mod-Manager-Updater"
+                ),
+            },
+            method="GET",
+        )
+
+        try:
+            with urlopen(
+                request,
+                timeout=self.timeout,
+            ) as response:
+                raw_data = (
+                    response.read()
+                )
+
+        except HTTPError as error:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.service.github_http",
+                    code=error.code,
                 )
             ) from error
 
-        # ====================================================
-        # Display
-        # ====================================================
-
-        display = (
-            values.get(
-                "APP_VERSION_DISPLAY"
-            )
-            or str(
-                version
-            )
-        )
-
-        return (
-            version,
-            display,
-        )
-    def download_update(
-        self,
-        *,
-        info: UpdateInfo,
-        cache_root: Path,
-        progress_callback: (
-            ProgressCallback
-            | None
-        ) = None,
-        cancel_callback: (
-            CancelCallback
-            | None
-        ) = None,
-    ) -> StagedUpdate:
-        cache_root = (
-            Path(
-                cache_root
-            )
-            .expanduser()
-            .absolute()
-        )
-
-        archive_path = (
-            cache_root
-            / "source.zip"
-        )
-
-        extract_root = (
-            cache_root
-            / "extracted"
-        )
-
-        manifest_path = (
-            cache_root
-            / "manifest.json"
-        )
-
-        # ----------------------------------------------------
-        # Alten Cache entfernen
-        # ----------------------------------------------------
-
-        if cache_root.exists():
-            shutil.rmtree(
-                cache_root,
-                ignore_errors=True,
+        except URLError as error:
+            reason = getattr(
+                error,
+                "reason",
+                error,
             )
 
-        cache_root.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.service.github_unreachable",
+                    reason=reason,
+                )
+            ) from error
+
+        except TimeoutError as error:
+            raise UpdateServiceError(
+                tr(
+                    "updates.error.service.github_timeout"
+                )
+            ) from error
 
         try:
-            # ================================================
-            # Source ZIP herunterladen
-            # ================================================
-
-            self._download_to_file(
-                url=(
-                    info.archive_url
-                ),
-                destination=(
-                    archive_path
-                ),
-                progress_callback=(
-                    progress_callback
-                ),
-                cancel_callback=(
-                    cancel_callback
-                ),
-            )
-
-            self._check_cancelled(
-                cancel_callback
-            )
-
-            # ================================================
-            # ZIP prüfen
-            # ================================================
-
-            if not zipfile.is_zipfile(
-                archive_path
-            ):
-                raise UpdateServiceError(
-                    (
-                        "GitHub hat kein gültiges "
-                        "ZIP-Archiv geliefert."
-                    )
-                )
-
-            archive_sha256 = (
-                self._sha256_file(
-                    archive_path
-                )
-            )
-
-            # ================================================
-            # Sicher entpacken
-            # ================================================
-
-            extract_root.mkdir(
-                parents=True,
-                exist_ok=True,
-            )
-
-            self._extract_archive_securely(
-                archive_path=(
-                    archive_path
-                ),
-                destination=(
-                    extract_root
-                ),
-                cancel_callback=(
-                    cancel_callback
-                ),
-            )
-
-            self._check_cancelled(
-                cancel_callback
-            )
-
-            # ================================================
-            # GitHub Root-Ordner finden
-            # ================================================
-
-            payload_root = (
-                self._find_payload_root(
-                    extract_root
-                )
-            )
-
-            # ================================================
-            # Entpackte Version prüfen
-            #
-            # So stellen wir sicher, dass das ZIP wirklich
-            # zur zuvor gefundenen Version gehört.
-            # ================================================
-
-            extracted_version_path = (
-                payload_root
-                / REMOTE_VERSION_PATH
-            )
-
-            if not (
-                extracted_version_path
-                .is_file()
-            ):
-                raise UpdateServiceError(
-                    (
-                        "Das Update enthält keine "
-                        f"{REMOTE_VERSION_PATH}."
-                    )
-                )
-
-            (
-                archive_version,
-                archive_display,
-            ) = (
-                self._parse_version_file(
-                    extracted_version_path
-                    .read_bytes()
-                )
-            )
-
-            if (
-                archive_version
-                != info.version
-            ):
-                raise UpdateServiceError(
-                    (
-                        "Die Version des ZIP-Archivs "
-                        "stimmt nicht mit der zuvor "
-                        "gefundenen Version überein."
-                        "\n\n"
-                        f"Erwartet: {info.version}"
-                        "\n"
-                        f"ZIP: {archive_version}"
-                    )
-                )
-
-            # ================================================
-            # Hauptstruktur prüfen
-            # ================================================
-
-            if not (
-                payload_root
-                / "main.py"
-            ).is_file():
-                raise UpdateServiceError(
-                    (
-                        "Das Update enthält "
-                        "keine main.py."
-                    )
-                )
-
-            if not (
-                payload_root
-                / "app"
-            ).is_dir():
-                raise UpdateServiceError(
-                    (
-                        "Das Update enthält "
-                        "keinen app/-Ordner."
-                    )
-                )
-
-            # ================================================
-            # Manifest
-            # ================================================
-
-            manifest = {
-                "schema_version": 1,
-
-                "version": str(
-                    archive_version
-                ),
-
-                "version_display": (
-                    archive_display
-                ),
-
-                "archive_sha256": (
-                    archive_sha256
-                ),
-
-                "archive_path": (
-                    str(
-                        archive_path
-                    )
-                ),
-
-                "payload_root": (
-                    str(
-                        payload_root
-                    )
-                ),
-            }
-
-            manifest_path.write_text(
-                json.dumps(
-                    manifest,
-                    indent=2,
-                    ensure_ascii=False,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-
-            return StagedUpdate(
-                info=info,
-                cache_root=(
-                    cache_root
-                ),
-                archive_path=(
-                    archive_path
-                ),
-                extract_root=(
-                    extract_root
-                ),
-                payload_root=(
-                    payload_root
-                ),
-                manifest_path=(
-                    manifest_path
-                ),
-            )
-
-        except Exception:
-            shutil.rmtree(
-                cache_root,
-                ignore_errors=True,
-            )
-
-            raise
-
-    # ========================================================
-    # Remote Version Parser
-    # ========================================================
-
-    @staticmethod
-    def _parse_version_file(
-        data: bytes,
-    ) -> tuple[
-        Version,
-        str,
-    ]:
-        try:
-            source = (
-                data.decode(
+            data = json.loads(
+                raw_data.decode(
                     "utf-8"
                 )
             )
 
-        except UnicodeDecodeError as error:
+        except (
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+        ) as error:
             raise UpdateServiceError(
-                (
-                    "Die entfernte version.py "
-                    "ist nicht UTF-8."
+                tr(
+                    "updates.error.service.github_invalid_response"
                 )
             ) from error
 
-        try:
-            tree = ast.parse(
-                source
-            )
-
-        except SyntaxError as error:
-            raise UpdateServiceError(
-                (
-                    "Die entfernte version.py "
-                    "enthält ungültigen "
-                    "Python-Code."
-                )
-            ) from error
-
-        values: dict[
-            str,
-            str,
-        ] = {}
-
-        for node in tree.body:
-            name: (
-                str
-                | None
-            ) = None
-
-            value_node = None
-
-            # -----------------------------------------------
-            # APP_VERSION = "..."
-            # -----------------------------------------------
-
-            if isinstance(
-                node,
-                ast.Assign,
-            ):
-                if len(
-                    node.targets
-                ) != 1:
-                    continue
-
-                target = (
-                    node.targets[
-                        0
-                    ]
-                )
-
-                if isinstance(
-                    target,
-                    ast.Name,
-                ):
-                    name = target.id
-
-                    value_node = (
-                        node.value
-                    )
-
-            # -----------------------------------------------
-            # APP_VERSION: str = "..."
-            # -----------------------------------------------
-
-            elif isinstance(
-                node,
-                ast.AnnAssign,
-            ):
-                if isinstance(
-                    node.target,
-                    ast.Name,
-                ):
-                    name = (
-                        node.target.id
-                    )
-
-                    value_node = (
-                        node.value
-                    )
-
-            if (
-                name
-                not in {
-                    "APP_VERSION",
-                    "APP_VERSION_DISPLAY",
-                }
-                or value_node is None
-            ):
-                continue
-
-            try:
-                value = (
-                    ast.literal_eval(
-                        value_node
-                    )
-                )
-
-            except (
-                ValueError,
-                TypeError,
-            ):
-                continue
-
-            if isinstance(
-                value,
-                str,
-            ):
-                values[
-                    name
-                ] = (
-                    value.strip()
-                )
-
-        version_text = (
-            values.get(
-                "APP_VERSION",
-                "",
-            )
-        )
-
-        if not version_text:
-            raise UpdateServiceError(
-                (
-                    "APP_VERSION wurde in "
-                    "der entfernten version.py "
-                    "nicht gefunden."
-                )
-            )
-
-        try:
-            version = (
-                Version(
-                    version_text
-                )
-            )
-
-        except InvalidVersion as error:
-            raise UpdateServiceError(
-                (
-                    "Ungültige Remote-Version: "
-                    f"{version_text}"
-                )
-            ) from error
-
-        display = (
-            values.get(
-                "APP_VERSION_DISPLAY"
-            )
-            or str(
-                version
-            )
-        )
-
-        return (
-            version,
-            display,
-        )
-
-    # ========================================================
-    # Kleine Datei herunterladen
-    # ========================================================
-
-    @staticmethod
-    def _download_bytes(
-        url: str,
-        *,
-        timeout: float,
-    ) -> bytes:
-        request = Request(
-            url,
-            headers={
-                "User-Agent": (
-                    "XXMI-Mod-Manager-Updater"
-                ),
-            },
-        )
-
-        try:
-            with urlopen(
-                request,
-                timeout=timeout,
-            ) as response:
-                return response.read()
-
-        except HTTPError as error:
-            raise UpdateServiceError(
-                (
-                    "GitHub HTTP "
-                    f"{error.code}."
-                )
-            ) from error
-
-        except URLError as error:
-            raise UpdateServiceError(
-                (
-                    "GitHub konnte nicht "
-                    "erreicht werden."
-                    "\n\n"
-                    f"{error}"
-                )
-            ) from error
-
-        except TimeoutError as error:
-            raise UpdateServiceError(
-                (
-                    "Zeitüberschreitung bei "
-                    "der Update-Prüfung."
-                )
-            ) from error
-
-    # ========================================================
-    # ZIP Download
-    # ========================================================
-
-    @staticmethod
-    def _download_to_file(
-        *,
-        url: str,
-        destination: Path,
-        progress_callback: (
-            ProgressCallback
-            | None
-        ),
-        cancel_callback: (
-            CancelCallback
-            | None
-        ),
-    ) -> None:
-        request = Request(
-            url,
-            headers={
-                "User-Agent": (
-                    "XXMI-Mod-Manager-Updater"
-                ),
-            },
-        )
-
-        try:
-            with urlopen(
-                request,
-                timeout=(
-                    UPDATE_DOWNLOAD_TIMEOUT
-                ),
-            ) as response:
-                content_length = (
-                    response.headers.get(
-                        "Content-Length"
-                    )
-                )
-
-                try:
-                    total = int(
-                        content_length
-                    )
-
-                except (
-                    TypeError,
-                    ValueError,
-                ):
-                    total = 0
-
-                received = 0
-
-                with destination.open(
-                    "wb"
-                ) as output:
-                    while True:
-                        if (
-                            cancel_callback
-                            is not None
-                            and cancel_callback()
-                        ):
-                            raise UpdateCancelledError(
-                                (
-                                    "Update-Download "
-                                    "abgebrochen."
-                                )
-                            )
-
-                        chunk = response.read(
-                            1024
-                            * 1024
-                        )
-
-                        if not chunk:
-                            break
-
-                        output.write(
-                            chunk
-                        )
-
-                        received += len(
-                            chunk
-                        )
-
-                        if (
-                            progress_callback
-                            is not None
-                        ):
-                            progress_callback(
-                                received,
-                                total,
-                                "source.zip",
-                            )
-
-        except UpdateCancelledError:
-            raise
-
-        except HTTPError as error:
-            if error.code == 404:
-                raise UpdateServiceError(
-                    (
-                        "Das GitHub Source-ZIP "
-                        "wurde nicht gefunden."
-                        "\n\n"
-                        "Prüfe, ob der passende "
-                        "Git-Tag existiert."
-                    )
-                ) from error
-
-            raise UpdateServiceError(
-                (
-                    "GitHub Download HTTP "
-                    f"{error.code}."
-                )
-            ) from error
-
-        except URLError as error:
-            raise UpdateServiceError(
-                (
-                    "Das Update-ZIP konnte "
-                    "nicht heruntergeladen werden."
-                    "\n\n"
-                    f"{error}"
-                )
-            ) from error
-
-        except TimeoutError as error:
-            raise UpdateServiceError(
-                (
-                    "Zeitüberschreitung beim "
-                    "Update-Download."
-                )
-            ) from error
-
-    # ========================================================
-    # Sicher entpacken
-    # ========================================================
-
-    @classmethod
-    def _extract_archive_securely(
-        cls,
-        *,
-        archive_path: Path,
-        destination: Path,
-        cancel_callback: (
-            CancelCallback
-            | None
-        ),
-    ) -> None:
-        destination_resolved = (
-            destination.resolve()
-        )
-
-        with zipfile.ZipFile(
-            archive_path,
-            "r",
-        ) as archive:
-            entries = (
-                archive.infolist()
-            )
-
-            if (
-                len(
-                    entries
-                )
-                > MAX_UPDATE_FILE_COUNT
-            ):
-                raise UpdateServiceError(
-                    (
-                        "Das Update-ZIP enthält "
-                        "zu viele Dateien."
-                    )
-                )
-
-            total_uncompressed = sum(
-                max(
-                    0,
-                    entry.file_size,
-                )
-                for entry
-                in entries
-            )
-
-            if (
-                total_uncompressed
-                > MAX_UPDATE_UNCOMPRESSED_SIZE
-            ):
-                raise UpdateServiceError(
-                    (
-                        "Das entpackte Update "
-                        "wäre zu groß."
-                    )
-                )
-
-            # ================================================
-            # Zuerst ALLE Pfade prüfen
-            # ================================================
-
-            for entry in entries:
-                cls._check_cancelled(
-                    cancel_callback
-                )
-
-                normalized = (
-                    entry.filename
-                    .replace(
-                        "\\",
-                        "/",
-                    )
-                )
-
-                path = PurePosixPath(
-                    normalized
-                )
-
-                if path.is_absolute():
-                    raise UpdateServiceError(
-                        (
-                            "Unsicherer absoluter "
-                            "Pfad im Update-ZIP."
-                        )
-                    )
-
-                if (
-                    ".."
-                    in path.parts
-                ):
-                    raise UpdateServiceError(
-                        (
-                            "Unsicherer relativer "
-                            "Pfad im Update-ZIP."
-                        )
-                    )
-
-                if (
-                    path.parts
-                    and ":"
-                    in path.parts[
-                        0
-                    ]
-                ):
-                    raise UpdateServiceError(
-                        (
-                            "Unsicherer Windows-Pfad "
-                            "im Update-ZIP."
-                        )
-                    )
-
-                # --------------------------------------------
-                # Symlinks ablehnen
-                # --------------------------------------------
-
-                unix_mode = (
-                    entry.external_attr
-                    >> 16
-                )
-
-                if stat.S_ISLNK(
-                    unix_mode
-                ):
-                    raise UpdateServiceError(
-                        (
-                            "Symlinks sind im "
-                            "Update-ZIP nicht erlaubt."
-                        )
-                    )
-
-                target = (
-                    destination.joinpath(
-                        *path.parts
-                    )
-                )
-
-                try:
-                    (
-                        target.resolve(
-                            strict=False
-                        )
-                        .relative_to(
-                            destination_resolved
-                        )
-                    )
-
-                except ValueError as error:
-                    raise UpdateServiceError(
-                        (
-                            "Eine Update-Datei "
-                            "würde den Cache "
-                            "verlassen."
-                        )
-                    ) from error
-
-            # ================================================
-            # Erst jetzt entpacken
-            # ================================================
-
-            for entry in entries:
-                cls._check_cancelled(
-                    cancel_callback
-                )
-
-                archive.extract(
-                    entry,
-                    destination,
-                )
-
-    # ========================================================
-    # Payload Root
-    # ========================================================
-
-    @staticmethod
-    def _find_payload_root(
-        extract_root: Path,
-    ) -> Path:
-        directories = [
-            path
-            for path
-            in extract_root.iterdir()
-            if path.is_dir()
-        ]
-
-        files = [
-            path
-            for path
-            in extract_root.iterdir()
-            if path.is_file()
-        ]
-
-        if (
-            files
-            or len(
-                directories
-            )
-            != 1
+        if not isinstance(
+            data,
+            list,
         ):
             raise UpdateServiceError(
-                (
-                    "Das GitHub Source-ZIP "
-                    "besitzt eine unerwartete "
-                    "Verzeichnisstruktur."
+                tr(
+                    "updates.error.service.github_unexpected_response"
                 )
             )
 
-        return directories[
-            0
+        return [
+            item
+            for item in data
+            if isinstance(
+                item,
+                dict,
+            )
         ]
-
-    # ========================================================
-    # SHA-256
-    # ========================================================
-
-    @staticmethod
-    def _sha256_file(
-        path: Path,
-    ) -> str:
-        hasher = (
-            hashlib.sha256()
-        )
-
-        with path.open(
-            "rb"
-        ) as handle:
-            while True:
-                chunk = handle.read(
-                    1024
-                    * 1024
-                )
-
-                if not chunk:
-                    break
-
-                hasher.update(
-                    chunk
-                )
-
-        return (
-            hasher.hexdigest()
-        )
-
-    # ========================================================
-    # Cancel
-    # ========================================================
-
-    @staticmethod
-    def _check_cancelled(
-        callback: (
-            CancelCallback
-            | None
-        ),
-    ) -> None:
-        if (
-            callback is not None
-            and callback()
-        ):
-            raise UpdateCancelledError(
-                (
-                    "Update-Download "
-                    "abgebrochen."
-                )
-            )
-
-
-__all__ = [
-    "StagedUpdate",
-    "UpdateCancelledError",
-    "UpdateChannel",
-    "UpdateInfo",
-    "UpdateService",
-    "UpdateServiceError",
-]

@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 from PySide6.QtCore import (
+    QUrl,
     Signal,
 )
-from app.update_config import (
-    UPDATE_BRANCH,
+
+from PySide6.QtGui import (
+    QDesktopServices,
 )
+
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
     QProgressBar,
     QPushButton,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -26,9 +30,7 @@ from app.services.update_service import (
 )
 
 
-class UpdateDialog(
-    QDialog
-):
+class UpdateDialog(QDialog):
     install_requested = Signal()
 
     def __init__(
@@ -58,7 +60,11 @@ class UpdateDialog(
             self
         )
 
-        self.source_label = QLabel(
+        self.notes_label = QLabel(
+            self
+        )
+
+        self.notes_view = QTextBrowser(
             self
         )
 
@@ -66,22 +72,20 @@ class UpdateDialog(
             self
         )
 
-        self.progress_bar = (
-            QProgressBar(
-                self
-            )
+        self.progress_bar = QProgressBar(
+            self
         )
 
-        self.later_button = (
-            QPushButton(
-                self
-            )
+        self.release_button = QPushButton(
+            self
         )
 
-        self.install_button = (
-            QPushButton(
-                self
-            )
+        self.later_button = QPushButton(
+            self
+        )
+
+        self.install_button = QPushButton(
+            self
         )
 
         self._build_ui()
@@ -92,15 +96,15 @@ class UpdateDialog(
 
         self.retranslate_ui()
 
-    # ========================================================
-    # UI
-    # ========================================================
-
     def _build_ui(
         self,
     ) -> None:
         self.setMinimumWidth(
-            500
+            560
+        )
+
+        self.setMinimumHeight(
+            420
         )
 
         layout = QVBoxLayout(
@@ -126,12 +130,16 @@ class UpdateDialog(
             True
         )
 
-        self.source_label.setWordWrap(
-            True
+        self.notes_label.setObjectName(
+            "updateSectionTitle"
         )
 
-        self.status_label.setWordWrap(
-            True
+        self.notes_view.setOpenExternalLinks(
+            False
+        )
+
+        self.notes_view.setPlainText(
+            self.update.release_notes.strip()
         )
 
         self.progress_bar.setVisible(
@@ -147,17 +155,35 @@ class UpdateDialog(
             0
         )
 
-        buttons = QHBoxLayout()
-
-        buttons.addStretch(
-            1
+        self.status_label.setWordWrap(
+            True
         )
 
-        buttons.addWidget(
+        self.release_button.clicked.connect(
+            self._open_release_page
+        )
+
+        self.later_button.clicked.connect(
+            self.reject
+        )
+
+        self.install_button.clicked.connect(
+            self.install_requested.emit
+        )
+
+        button_layout = QHBoxLayout()
+
+        button_layout.addWidget(
+            self.release_button
+        )
+
+        button_layout.addStretch()
+
+        button_layout.addWidget(
             self.later_button
         )
 
-        buttons.addWidget(
+        button_layout.addWidget(
             self.install_button
         )
 
@@ -170,7 +196,12 @@ class UpdateDialog(
         )
 
         layout.addWidget(
-            self.source_label
+            self.notes_label
+        )
+
+        layout.addWidget(
+            self.notes_view,
+            stretch=1,
         )
 
         layout.addWidget(
@@ -182,20 +213,8 @@ class UpdateDialog(
         )
 
         layout.addLayout(
-            buttons
+            button_layout
         )
-
-        self.later_button.clicked.connect(
-            self.reject
-        )
-
-        self.install_button.clicked.connect(
-            self.install_requested.emit
-        )
-
-    # ========================================================
-    # Translation
-    # ========================================================
 
     def retranslate_ui(
         self,
@@ -217,20 +236,33 @@ class UpdateDialog(
             tr(
                 "updates.dialog.version",
                 current=(
-                    self.update
-                    .current_version
+                    self.update.current_version
                 ),
                 new=(
-                    self.update
-                    .version_display
+                    self.update.version
                 ),
             )
         )
 
-        self.source_label.setText(
+        self.notes_label.setText(
             tr(
-                "updates.dialog.source",
-                branch=UPDATE_BRANCH,
+                "updates.dialog.release_notes"
+            )
+        )
+
+        if not (
+            self.update.release_notes
+            .strip()
+        ):
+            self.notes_view.setPlainText(
+                tr(
+                    "updates.dialog.no_notes"
+                )
+            )
+
+        self.release_button.setText(
+            tr(
+                "updates.dialog.open_release"
             )
         )
 
@@ -256,17 +288,10 @@ class UpdateDialog(
                 )
             )
 
-        elif not self._busy:
-            self.status_label.clear()
-
         self.install_button.setEnabled(
             self.install_supported
             and not self._busy
         )
-
-    # ========================================================
-    # Download
-    # ========================================================
 
     def start_download(
         self,
@@ -279,7 +304,17 @@ class UpdateDialog(
 
         self.progress_bar.setRange(
             0,
-            0,
+            100,
+        )
+
+        self.progress_bar.setValue(
+            0
+        )
+
+        self.status_label.setText(
+            tr(
+                "updates.status.downloading"
+            )
         )
 
         self.install_button.setEnabled(
@@ -290,84 +325,37 @@ class UpdateDialog(
             False
         )
 
-        self.status_label.setText(
-            tr(
-                "updates.status.downloading"
-            )
-        )
-
     def update_progress(
         self,
-        current: int,
+        received: int,
         total: int,
-        name: str,
     ) -> None:
-        if total > 0:
-            percent = min(
-                100,
-                max(
-                    0,
-                    int(
-                        (
-                            current
-                            * 100
-                        )
-                        / total
-                    ),
-                ),
-            )
-
-            self.progress_bar.setRange(
-                0,
-                100,
-            )
-
-            self.progress_bar.setValue(
-                percent
-            )
-
-        else:
+        if total <= 0:
             self.progress_bar.setRange(
                 0,
                 0,
             )
 
-        self.status_label.setText(
-            tr(
-                "updates.status.download_progress",
-                current=(
-                    self._format_bytes(
-                        current
-                    )
-                ),
-                total=(
-                    self._format_bytes(
-                        total
-                    )
-                    if total > 0
-                    else "?"
-                ),
-                file=name,
-            )
-        )
-
-    def show_installing(
-        self,
-    ) -> None:
-        self._busy = True
-
-        self.progress_bar.setVisible(
-            True
-        )
+            return
 
         self.progress_bar.setRange(
             0,
-            0,
+            100,
         )
 
-        self.status_label.setText(
-            tr(
-                "updates.status.installing"
+        percentage = int(
+            received
+            / total
+            * 100
+        )
+
+        self.progress_bar.setValue(
+            max(
+                0,
+                min(
+                    percentage,
+                    100,
+                ),
             )
         )
 
@@ -396,9 +384,25 @@ class UpdateDialog(
             self.install_supported
         )
 
-    # ========================================================
-    # Close
-    # ========================================================
+    def show_installing(
+        self,
+    ) -> None:
+        self._busy = True
+
+        self.progress_bar.setRange(
+            0,
+            0,
+        )
+
+        self.progress_bar.setVisible(
+            True
+        )
+
+        self.status_label.setText(
+            tr(
+                "updates.status.installing"
+            )
+        )
 
     def reject(
         self,
@@ -408,54 +412,14 @@ class UpdateDialog(
 
         super().reject()
 
-    # ========================================================
-    # Bytes
-    # ========================================================
+    def _open_release_page(
+        self,
+    ) -> None:
+        if not self.update.release_url:
+            return
 
-    @staticmethod
-    def _format_bytes(
-        value: int,
-    ) -> str:
-        size = float(
-            max(
-                0,
-                int(
-                    value
-                ),
+        QDesktopServices.openUrl(
+            QUrl(
+                self.update.release_url
             )
         )
-
-        units = (
-            "B",
-            "KB",
-            "MB",
-            "GB",
-        )
-
-        for unit in units:
-            if (
-                size < 1024.0
-                or unit
-                == units[
-                    -1
-                ]
-            ):
-                if unit == "B":
-                    return (
-                        f"{int(size)} {unit}"
-                    )
-
-                return (
-                    f"{size:.1f} {unit}"
-                )
-
-            size /= 1024.0
-
-        return (
-            f"{size:.1f} GB"
-        )
-
-
-__all__ = [
-    "UpdateDialog",
-]
