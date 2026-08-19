@@ -406,9 +406,13 @@ if (-not $ISCC) {
         $InnoFile = Get-Item `
             -LiteralPath $InnoBootstrap
 
+        # Avoid PowerShell numeric suffixes here so the script
+        # behaves identically on Windows PowerShell 5.1.
+        $MinimumInnoInstallerBytes = 5242880
+
         if (
-            $InnoFile.Length
-            -lt 5MB
+            $InnoFile.Length -lt
+            $MinimumInnoInstallerBytes
         ) {
             throw (
                 "Downloaded Inno Setup bootstrap is unexpectedly small: " +
@@ -419,10 +423,7 @@ if (-not $ISCC) {
         $InnoSignature = Get-AuthenticodeSignature `
             -LiteralPath $InnoBootstrap
 
-        if (
-            $InnoSignature.Status
-            -ne "Valid"
-        ) {
+        if ($InnoSignature.Status -ne "Valid") {
             throw (
                 "Inno Setup Authenticode signature is not valid. " +
                 "Status=$($InnoSignature.Status)"
@@ -435,17 +436,9 @@ if (-not $ISCC) {
             )
         }
 
-        $InnoSigner = (
-            $InnoSignature
-            .SignerCertificate
-            .Subject
-        )
+        $InnoSigner = $InnoSignature.SignerCertificate.Subject
 
-        if (
-            $InnoSigner
-            -notmatch
-            "Pyrsys B\.V\."
-        ) {
+        if ($InnoSigner -notmatch "Pyrsys B\.V\.") {
             throw (
                 "Unexpected Inno Setup signer: " +
                 $InnoSigner
@@ -488,10 +481,7 @@ if (-not $ISCC) {
             -Wait `
             -PassThru
 
-        if (
-            $InnoProcess.ExitCode
-            -ne 0
-        ) {
+        if ($InnoProcess.ExitCode -ne 0) {
             throw (
                 "Portable Inno Setup installation failed with exit code " +
                 "$($InnoProcess.ExitCode)"
