@@ -1173,12 +1173,15 @@ class UpdateAgent(QObject):
                 getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
                 | getattr(subprocess, "DETACHED_PROCESS", 0)
             )
+            environment = os.environ.copy()
+            environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
             subprocess.Popen(
                 [str(path)],
                 creationflags=flags,
                 close_fds=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                env=environment,
             )
         except OSError as error:
             QMessageBox.warning(None, tr("tray.title"), str(error))
@@ -1271,6 +1274,13 @@ def spawn_background_agent() -> None:
     else:
         executable = Path(__file__).resolve()
         args = [sys.executable, str(executable), "--background"]
+
+    environment = os.environ.copy()
+    # Required for an independent PyInstaller onefile instance. Otherwise the
+    # new process may reuse this instance's _MEI directory; when this process
+    # exits, base_library.zip can disappear underneath the child process.
+    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+
     flags = (
         getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         | getattr(subprocess, "DETACHED_PROCESS", 0)
@@ -1281,6 +1291,7 @@ def spawn_background_agent() -> None:
         close_fds=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        env=environment,
     )
 
 
@@ -1335,13 +1346,16 @@ def main() -> int:
         return configure_install_graphical(config)
 
     if args.check_now:
-        write_command("check_now")
+        # If an Agent instance is already running, ask that instance to check.
+        # If no instance is running, this process becomes the background Agent
+        # itself and performs the manual check. This avoids the old onefile
+        # self-spawn path that could lose its temporary base_library.zip.
         lock = acquire_lock()
         if lock is None:
+            write_command("check_now")
             return 0
         lock.unlock()
-        spawn_background_agent()
-        return 0
+        return run_agent(initial_manual_check=True)
 
     return run_agent(initial_manual_check=False)
 

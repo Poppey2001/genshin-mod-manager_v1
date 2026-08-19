@@ -105,10 +105,19 @@ def _spawn(*args: str) -> bool:
     if not is_update_agent_installed():
         return False
 
+    environment = os.environ.copy()
+    # PyInstaller 6.9+ treats a newly spawned frozen executable as a worker
+    # process unless explicitly told that it is an independent application.
+    # Without this, a onefile child can reuse the parent's temporary _MEI
+    # directory and later fail with a missing base_library.zip after the
+    # parent exits and cleans that directory.
+    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+
     kwargs: dict[str, object] = {
         "close_fds": True,
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
+        "env": environment,
     }
 
     if IS_WINDOWS:
