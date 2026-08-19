@@ -607,7 +607,11 @@ else {
     )
 }
 
+Write-Host "Compiling installer with VM-safe LZMA2 settings..."
+Write-Host "Compression: lzma2/max (reduced memory usage for VMs)"
+
 & $ISCC `
+    "/Qp" `
     "/DMyAppVersion=$Version" `
     "$Root\packaging\windows\installer.iss"
 

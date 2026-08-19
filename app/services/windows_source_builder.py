@@ -798,29 +798,46 @@ def build_windows_installer_from_source(
 
     if return_code != 0:
         try:
-            log_text = (
-                build_log.read_text(
-                    encoding="utf-8",
-                    errors="replace",
+            log_text = build_log.read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+
+            lines = log_text.splitlines()
+
+            error_pattern = re.compile(
+                (
+                    r"(?i)(error|fatal|exception|failed|"
+                    r"out of memory|not enough memory|"
+                    r"insufficient memory|access denied|"
+                    r"no space|disk full|cannot|could not)"
                 )
             )
 
-            lines = (
-                log_text.splitlines()
-            )
+            error_lines = [
+                line
+                for line in lines
+                if error_pattern.search(line)
+            ]
 
-            tail = "\n".join(
-                lines[-35:]
-            )
+            if error_lines:
+                summary = "\n".join(
+                    error_lines[-18:]
+                )
+            else:
+                summary = "\n".join(
+                    lines[-25:]
+                )
 
         except OSError:
-            tail = ""
+            summary = ""
 
         raise WindowsSourceBuildError(
             tr(
                 "updates.error.local_build.failed",
                 code=return_code,
-                log=tail,
+                log=summary,
+                log_path=build_log,
             )
         )
 

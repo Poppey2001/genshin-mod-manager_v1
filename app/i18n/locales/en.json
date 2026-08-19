@@ -593,6 +593,6 @@
     "updates.error.local_build.version_file_missing": "app/version.py is missing from the downloaded source.",
     "updates.error.local_build.script_missing": "scripts/build_windows_installer.ps1 is missing from the downloaded source.",
     "updates.error.local_build.start_failed": "The local Windows build could not be started.",
-    "updates.error.local_build.failed": "The local Windows build failed with exit code {code}.\n\nLast build output:\n{log}",
+    "updates.error.local_build.failed": "The local Windows build failed with exit code {code}.\n\nRelevant build output:\n{log}\n\nFull build log:\n{log_path}",
     "updates.error.local_build.output_missing": "The local build finished, but the expected Windows installer was not found:\n{path}"
 }
