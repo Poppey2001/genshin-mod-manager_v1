@@ -10,7 +10,28 @@ from PyInstaller.utils.hooks import (
 
 project_root = Path(
     SPECPATH
-).resolve().parent.parent
+).resolve().parent
+
+main_py = (
+    project_root
+    / "main.py"
+)
+
+app_dir = (
+    project_root
+    / "app"
+)
+
+if not main_py.is_file():
+    raise SystemExit(
+        f"main.py not found in project root: {project_root}"
+    )
+
+if not app_dir.is_dir():
+    raise SystemExit(
+        f"app directory not found in project root: {project_root}"
+    )
+
 
 datas = collect_data_files(
     "app"
@@ -57,8 +78,7 @@ hiddenimports = collect_submodules(
 analysis = Analysis(
     [
         str(
-            project_root
-            / "main.py"
+            main_py
         )
     ],
     pathex=[
