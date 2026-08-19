@@ -970,11 +970,12 @@ class MainWindow(
         ):
             QMessageBox.warning(
                 self,
-                "GameBanana",
-                (
-                    "Der Download wurde abgeschlossen, "
-                    "konnte aber nicht an die Library "
-                    "übergeben werden."
+                tr(
+                    "gamebanana.error.install.title"
+                ),
+                tr(
+                    "gamebanana.error.install."
+                    "library_handoff_failed"
                 ),
             )
 

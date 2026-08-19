@@ -19,6 +19,11 @@ from app.config import (
     AppConfig,
 )
 
+from app.i18n import (
+    tr,
+    translation_manager,
+)
+
 from app.pages.global_settings_page import (
     GlobalSettingsPage,
 )
@@ -46,9 +51,16 @@ class SettingsDialog(
         )
 
         self.config = config
+        self._responsive_mode = None
+
+        self.setObjectName(
+            "settingsDialog"
+        )
 
         self.setWindowTitle(
-            "XXMI Mod Manager – Einstellungen"
+            tr(
+                "settings.dialog.window_title"
+            )
         )
 
         self.setModal(
@@ -97,8 +109,18 @@ class SettingsDialog(
 
         self._connect_signals()
 
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
+
+        self.retranslate_ui()
+
         self.on_game_changed(
             self.config.selected_game
+        )
+
+        self._update_responsive_layout(
+            force=True
         )
 
     def _build_ui(
@@ -146,26 +168,25 @@ class SettingsDialog(
             "settingsNavigationList"
         )
 
-        self.navigation.setFixedWidth(
+        self.navigation.setMinimumWidth(
+            160
+        )
+        self.navigation.setMaximumWidth(
             190
         )
 
-        game_item = QListWidgetItem(
-            "Spiel"
-        )
+        self.game_item = QListWidgetItem()
 
-        game_item.setIcon(
+        self.game_item.setIcon(
             self.style()
             .standardIcon(
                 QStyle.StandardPixmap.SP_ComputerIcon
             )
         )
 
-        global_item = QListWidgetItem(
-            "Global"
-        )
+        self.global_item = QListWidgetItem()
 
-        global_item.setIcon(
+        self.global_item.setIcon(
             self.style()
             .standardIcon(
                 QStyle.StandardPixmap.SP_FileDialogDetailedView
@@ -173,11 +194,11 @@ class SettingsDialog(
         )
 
         self.navigation.addItem(
-            game_item
+            self.game_item
         )
 
         self.navigation.addItem(
-            global_item
+            self.global_item
         )
 
         navigation_layout.addWidget(
@@ -288,14 +309,84 @@ class SettingsDialog(
 
         self.activateWindow()
 
+    def resizeEvent(
+        self,
+        event,
+    ) -> None:
+        super().resizeEvent(event)
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(
+        self,
+        *,
+        force: bool = False,
+    ) -> None:
+        mode = (
+            "compact"
+            if self.width() < 980
+            else "wide"
+        )
+
+        if (
+            not force
+            and mode == self._responsive_mode
+        ):
+            return
+
+        self._responsive_mode = mode
+        self.setProperty(
+            "responsiveMode",
+            mode,
+        )
+
+        target_width = (
+            160
+            if mode == "compact"
+            else 190
+        )
+        self.navigation.setFixedWidth(
+            target_width
+        )
+
+        style = self.style()
+        style.unpolish(self)
+        style.polish(self)
+
+    def retranslate_ui(
+        self,
+        _language: str | None = None,
+    ) -> None:
+        self.setWindowTitle(
+            tr(
+                "settings.dialog.window_title"
+            )
+        )
+
+        self.game_item.setText(
+            tr(
+                "settings.dialog.nav.game"
+            )
+        )
+
+        self.global_item.setText(
+            tr(
+                "settings.dialog.nav.global"
+            )
+        )
+
     def _apply_style(
         self,
     ) -> None:
         self.setStyleSheet(
             """
-            QDialog {
+            QDialog#settingsDialog {
                 background: #12151b;
                 color: #f1f1f1;
+            }
+
+            QDialog#settingsDialog QStackedWidget {
+                background: #12151b;
+                border: none;
             }
 
             QFrame#settingsNavigation {
@@ -305,8 +396,13 @@ class SettingsDialog(
 
             QListWidget#settingsNavigationList {
                 background: transparent;
+                color: #aeb5c1;
                 border: none;
                 outline: none;
+            }
+
+            QListWidget#settingsNavigationList::viewport {
+                background: transparent;
             }
 
             QListWidget#settingsNavigationList::item {
@@ -318,11 +414,19 @@ class SettingsDialog(
 
             QListWidget#settingsNavigationList::item:hover {
                 background: #252b36;
+                color: #f1f3f6;
             }
 
             QListWidget#settingsNavigationList::item:selected {
                 background: #30284b;
                 color: #ffffff;
+            }
+
+            QToolTip {
+                background-color: #20242c;
+                color: #f1f3f6;
+                border: 1px solid #3a404b;
+                padding: 5px 7px;
             }
             """
         )

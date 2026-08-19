@@ -743,13 +743,13 @@ class LibraryModCard(
             CARD_MAXIMUM_WIDTH
         )
 
-        self.setFixedHeight(
+        self.setMinimumHeight(
             CARD_HEIGHT
         )
 
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Preferred,
         )
 
         # ----------------------------------------------------
@@ -883,11 +883,11 @@ class LibraryModCard(
         )
 
         self.toggle_button.setMinimumWidth(
-            100
+            0
         )
-
-        self.toggle_button.setMaximumWidth(
-            122
+        self.toggle_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
         )
 
         self._build_ui()

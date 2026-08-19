@@ -7,8 +7,10 @@ from PySide6.QtGui import QDesktopServices, QTextDocumentFragment
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QMessageBox,
     QProgressBar,
@@ -198,6 +200,10 @@ class GameBananaPage(QWidget):
         # ----------------------------------------------------
         browse_card = QFrame(self)
         browse_card.setObjectName("gameBananaBrowseCard")
+        browse_card.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         browse_layout = QVBoxLayout(browse_card)
         browse_layout.setContentsMargins(14, 12, 14, 12)
         browse_layout.setSpacing(8)
@@ -217,24 +223,27 @@ class GameBananaPage(QWidget):
         self.search_input.setClearButtonEnabled(True)
         browse_layout.addWidget(self.search_input)
 
-        search_actions = QHBoxLayout()
-        search_actions.setSpacing(8)
+        search_actions = QGridLayout()
+        self._search_actions_layout = search_actions
+        search_actions.setContentsMargins(0, 0, 0, 0)
+        search_actions.setHorizontalSpacing(8)
+        search_actions.setVerticalSpacing(8)
 
         self.search_button.setObjectName("gameBananaPrimaryButton")
         self.search_button.setMinimumHeight(40)
+        self.search_button.setMinimumWidth(0)
         self.search_button.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        search_actions.addWidget(self.search_button, stretch=1)
 
         self.latest_button.setObjectName("gameBananaSecondaryButton")
         self.latest_button.setMinimumHeight(40)
+        self.latest_button.setMinimumWidth(0)
         self.latest_button.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        search_actions.addWidget(self.latest_button, stretch=1)
 
         browse_layout.addLayout(search_actions)
 
@@ -329,10 +338,21 @@ class GameBananaPage(QWidget):
         self._details_content_layout = layout
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(12)
+        layout.setSizeConstraint(
+            QLayout.SizeConstraint.SetMinimumSize
+        )
+        content.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
 
         # Direct lookup card
         direct_card = QFrame(content)
         direct_card.setObjectName("gameBananaDirectCard")
+        direct_card.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         direct_layout = QVBoxLayout(direct_card)
         direct_layout.setContentsMargins(13, 12, 13, 12)
         direct_layout.setSpacing(8)
@@ -370,6 +390,10 @@ class GameBananaPage(QWidget):
 
         # Mod card
         self.mod_frame.setObjectName("gameBananaModCard")
+        self.mod_frame.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         mod_layout = QVBoxLayout(self.mod_frame)
         mod_layout.setContentsMargins(15, 14, 15, 14)
         mod_layout.setSpacing(8)
@@ -424,6 +448,10 @@ class GameBananaPage(QWidget):
 
         # Operation card
         self.operation_frame.setObjectName("gameBananaOperationCard")
+        self.operation_frame.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
         operation_layout = QVBoxLayout(self.operation_frame)
         operation_layout.setContentsMargins(13, 11, 13, 11)
         operation_layout.setSpacing(7)
@@ -502,6 +530,57 @@ class GameBananaPage(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._update_responsive_layout()
+
+    def _reflow_search_actions(
+        self,
+        *,
+        stacked: bool,
+    ) -> None:
+        layout = getattr(
+            self,
+            "_search_actions_layout",
+            None,
+        )
+        if layout is None:
+            return
+
+        layout.removeWidget(
+            self.search_button
+        )
+        layout.removeWidget(
+            self.latest_button
+        )
+
+        if stacked:
+            layout.addWidget(
+                self.search_button,
+                0, 0,
+            )
+            layout.addWidget(
+                self.latest_button,
+                1, 0,
+            )
+            layout.setColumnStretch(
+                0, 1
+            )
+            layout.setColumnStretch(
+                1, 0
+            )
+        else:
+            layout.addWidget(
+                self.search_button,
+                0, 0,
+            )
+            layout.addWidget(
+                self.latest_button,
+                0, 1,
+            )
+            layout.setColumnStretch(
+                0, 1
+            )
+            layout.setColumnStretch(
+                1, 1
+            )
 
     def _update_responsive_layout(
         self,
@@ -615,6 +694,10 @@ class GameBananaPage(QWidget):
             splitter.setSizes(
                 sizes
             )
+
+        self._reflow_search_actions(
+            stacked=(mode == "tight")
+        )
 
         style = self.style()
         style.unpolish(self)

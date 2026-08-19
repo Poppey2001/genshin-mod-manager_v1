@@ -7,8 +7,10 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -269,7 +271,7 @@ class ModDetailsPanel(
         if stacked:
             self.setMinimumWidth(0)
             self.setMaximumWidth(16777215)
-            self.setMinimumHeight(280)
+            self.setMinimumHeight(220)
         else:
             self.setMinimumWidth(330)
             self.setMaximumWidth(470)
@@ -330,6 +332,9 @@ class ModDetailsPanel(
             caption.setAlignment(
                 Qt.AlignmentFlag.AlignTop
             )
+            caption.setWordWrap(
+                True
+            )
 
         self.toggle_button.setObjectName(
             "primaryActionButton"
@@ -355,6 +360,11 @@ class ModDetailsPanel(
         ):
             button.setEnabled(
                 False
+            )
+            button.setMinimumWidth(0)
+            button.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
             )
 
     # ========================================================
@@ -383,6 +393,15 @@ class ModDetailsPanel(
 
         layout.setSpacing(
             12
+        )
+
+        layout.setSizeConstraint(
+            QLayout.SizeConstraint.SetMinimumSize
+        )
+
+        panel.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
         )
 
         # ========================================================
@@ -723,7 +742,7 @@ class ModDetailsPanel(
         )
 
         secondary_actions = (
-            QHBoxLayout()
+            QVBoxLayout()
         )
 
         secondary_actions.setContentsMargins(
@@ -797,7 +816,7 @@ class ModDetailsPanel(
     def _value(
         self,
         *,
-        word_wrap: bool = False,
+        word_wrap: bool = True,
         selectable: bool = False,
     ) -> QLabel:
         label = QLabel(

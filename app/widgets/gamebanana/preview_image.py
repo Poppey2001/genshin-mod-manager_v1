@@ -21,6 +21,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.i18n import (
+    tr,
+    translation_manager,
+)
+
 from app.workers.gamebanana_image_worker import (
     GameBananaImageWorker,
 )
@@ -75,6 +80,12 @@ class GameBananaPreviewImage(
             minimum_height
         )
         self._disposed = False
+        self._text_state = "none"
+
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
+
         self._show_no_preview()
 
     # ========================================================
@@ -140,8 +151,12 @@ class GameBananaPreviewImage(
 
             return
 
+        self._text_state = "loading"
+
         self.setText(
-            "Vorschau wird geladen …"
+            tr(
+                "gamebanana.preview.loading"
+            )
         )
 
         worker = (
@@ -242,6 +257,7 @@ class GameBananaPreviewImage(
         self._pixmap_original = (
             pixmap
         )
+        self._text_state = "image"
 
         self._refresh_scaled_pixmap()
 
@@ -282,9 +298,34 @@ class GameBananaPreviewImage(
 
         self.clear()
 
+        self._text_state = "none"
+
         self.setText(
-            "Keine Vorschau"
+            tr(
+                "gamebanana.preview.none"
+            )
         )
+
+    def retranslate_ui(
+        self,
+        _language: str | None = None,
+    ) -> None:
+        if self._disposed:
+            return
+
+        if self._text_state == "loading":
+            self.setText(
+                tr(
+                    "gamebanana.preview.loading"
+                )
+            )
+
+        elif self._text_state == "none":
+            self.setText(
+                tr(
+                    "gamebanana.preview.none"
+                )
+            )
 
     def resizeEvent(
         self,

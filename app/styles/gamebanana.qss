@@ -484,3 +484,23 @@ QPushButton#gameBananaResultOpenButton {
     padding-left: 9px;
     padding-right: 9px;
 }
+
+
+/* ============================================================
+   WINDOWS / TRANSLATION BOX SIZING SAFETY V1
+   ============================================================ */
+
+QFrame#gameBananaBrowseCard,
+QFrame#gameBananaDirectCard,
+QFrame#gameBananaResultCard,
+QFrame#gameBananaModCard,
+QFrame#gameBananaOperationCard {
+    max-height: 16777215px;
+}
+
+QWidget#gameBananaPage QPushButton,
+QComboBox#gameBananaFileCombo,
+QLineEdit#gameBananaSearchInput,
+QLineEdit#gameBananaReferenceInput {
+    min-width: 0px;
+}

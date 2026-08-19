@@ -16,6 +16,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from app.i18n import (
+    tr,
+)
+
 from app.platform_support import (
     PlatformSupportError,
     reveal_in_file_manager,
@@ -42,7 +46,10 @@ class ModInfoDialog(QDialog):
         self.analysis = analysis
 
         self.setWindowTitle(
-            f"Mod-Informationen – {mod_name}"
+            tr(
+                "mod_info.window_title",
+                mod_name=mod_name,
+            )
         )
 
         self.setMinimumSize(
@@ -73,7 +80,10 @@ class ModInfoDialog(QDialog):
         layout.setSpacing(12)
 
         title_label = QLabel(
-            f"Steuerungen für {mod_name}"
+            tr(
+                "mod_info.title",
+                mod_name=mod_name,
+            )
         )
         title_label.setObjectName(
             "dialogTitle"
@@ -105,7 +115,9 @@ class ModInfoDialog(QDialog):
         bottom_layout = QHBoxLayout()
 
         open_folder_button = QPushButton(
-            "Mod-Ordner öffnen"
+            tr(
+                "mod_info.open_folder"
+            )
         )
         open_folder_button.clicked.connect(
             self._open_mod_folder
@@ -113,6 +125,14 @@ class ModInfoDialog(QDialog):
 
         close_buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Close
+        )
+
+        close_buttons.button(
+            QDialogButtonBox.StandardButton.Close
+        ).setText(
+            tr(
+                "common.close"
+            )
         )
         close_buttons.rejected.connect(
             self.reject
@@ -186,7 +206,9 @@ class ModInfoDialog(QDialog):
         except PlatformSupportError as error:
             QMessageBox.critical(
                 self,
-                "Ordner konnte nicht geöffnet werden",
+                tr(
+                    "mod_info.open_folder_failed"
+                ),
                 str(error),
             )
 
@@ -255,7 +277,7 @@ def _build_analysis_html(
 
     if analysis.warnings:
         parts.append(
-            "<h3>Hinweise</h3><ul>"
+            f"<h3>{html.escape(tr('mod_info.html.warnings'))}</h3><ul>"
         )
 
         for warning in analysis.warnings:
@@ -270,9 +292,12 @@ def _build_analysis_html(
     if not analysis.files:
         parts.append(
             "<p class='warning'>"
-            "Es wurde keine Merge-, Master- oder steuernde "
-            "INI-Datei gefunden."
-            "</p>"
+            + html.escape(
+                tr(
+                    "mod_info.html.no_control_ini"
+                )
+            )
+            + "</p>"
         )
 
         return "".join(parts)
@@ -286,14 +311,13 @@ def _build_analysis_html(
         )
 
     parts.append(
-        """
-        <p class="muted">
-            Der Manager zeigt technische Variablen und Zustände.
-            Ohne Kommentare in der INI kann er nicht sicher wissen,
-            ob eine Variable beispielsweise „Jacke“, „Haare“ oder
-            „Effekt“ bedeutet.
-        </p>
-        """
+        "<p class='muted'>"
+        + html.escape(
+            tr(
+                "mod_info.html.technical_note"
+            )
+        )
+        + "</p>"
     )
 
     return "".join(parts)
@@ -319,14 +343,14 @@ def _build_file_html(
 
     if file_analysis.namespace:
         parts.append(
-            "<p><b>Namespace:</b> "
+            f"<p><b>{html.escape(tr('mod_info.html.namespace'))}:</b> "
             f"<code>{html.escape(file_analysis.namespace)}</code>"
             "</p>"
         )
 
     if file_analysis.merged_sources:
         parts.append(
-            "<h3>Zusammengeführte Mods</h3><ol start='0'>"
+            f"<h3>{html.escape(tr('mod_info.html.merged_mods'))}</h3><ol start='0'>"
         )
 
         for source in file_analysis.merged_sources:
@@ -367,14 +391,16 @@ def _build_binding_html(
     keys = (
         ", ".join(binding.keys)
         if binding.keys
-        else "Keine Taste erkannt"
+        else tr(
+            "mod_info.html.no_key"
+        )
     )
 
     parts = [
         f"<h3>[{html.escape(binding.section_name)}]</h3>",
-        "<p><b>Taste:</b> ",
+        f"<p><b>{html.escape(tr('mod_info.html.key'))}:</b> ",
         f"<code>{html.escape(keys)}</code></p>",
-        "<p><b>Typ:</b> ",
+        f"<p><b>{html.escape(tr('mod_info.html.type'))}:</b> ",
         html.escape(
             _key_type_description(
                 binding.key_type
@@ -385,49 +411,48 @@ def _build_binding_html(
 
     if binding.back_keys:
         parts.append(
-            "<p><b>Rückwärts:</b> "
+            f"<p><b>{html.escape(tr('mod_info.html.reverse'))}:</b> "
             f"<code>{html.escape(', '.join(binding.back_keys))}</code>"
             "</p>"
         )
 
     if binding.condition:
         parts.append(
-            "<p><b>Bedingung:</b> "
+            f"<p><b>{html.escape(tr('mod_info.html.condition'))}:</b> "
             f"<code>{html.escape(binding.condition)}</code>"
             "</p>"
         )
 
     if binding.smart is not None:
         parts.append(
-            "<p><b>Smart cycle:</b> "
+            f"<p><b>{html.escape(tr('mod_info.html.smart_cycle'))}:</b> "
             f"<code>{html.escape(binding.smart)}</code>"
             "</p>"
         )
 
     if binding.wrap is not None:
         parts.append(
-            "<p><b>Am Ende weiterspringen:</b> "
+            f"<p><b>{html.escape(tr('mod_info.html.wrap'))}:</b> "
             f"<code>{html.escape(binding.wrap)}</code>"
             "</p>"
         )
 
     if binding.run_commands:
         parts.append(
-            "<p><b>CommandLists:</b> "
+            f"<p><b>{html.escape(tr('mod_info.html.command_lists'))}:</b> "
             f"<code>{html.escape(', '.join(binding.run_commands))}</code>"
             "</p>"
         )
 
     if binding.assignments:
         parts.append(
-            """
-            <table>
-                <tr>
-                    <th>Variable / Einstellung</th>
-                    <th>Werte</th>
-                    <th>Interpretation</th>
-                </tr>
-            """
+            (
+                "<table><tr>"
+                f"<th>{html.escape(tr('mod_info.html.assignment'))}</th>"
+                f"<th>{html.escape(tr('mod_info.html.values'))}</th>"
+                f"<th>{html.escape(tr('mod_info.html.interpretation'))}</th>"
+                "</tr>"
+            )
         )
 
         for assignment in binding.assignments:
@@ -451,7 +476,7 @@ def _build_binding_html(
 
     if binding.comments:
         parts.append(
-            "<p><b>Kommentare:</b></p><ul>"
+            f"<p><b>{html.escape(tr('mod_info.html.comments'))}:</b></p><ul>"
         )
 
         for comment in binding.comments[:10]:
@@ -488,15 +513,14 @@ def _build_state_html(
     }
 
     parts = [
-        "<h4>Erkannte Zustände</h4>",
-        """
-        <table>
-            <tr>
-                <th>Zustand</th>
-                <th>Beschreibung</th>
-                <th>Gesetzte Werte</th>
-            </tr>
-        """,
+        f"<h4>{html.escape(tr('mod_info.html.detected_states'))}</h4>",
+        (
+            "<table><tr>"
+            f"<th>{html.escape(tr('mod_info.html.state'))}</th>"
+            f"<th>{html.escape(tr('mod_info.html.description'))}</th>"
+            f"<th>{html.escape(tr('mod_info.html.set_values'))}</th>"
+            "</tr>"
+        ),
     ]
 
     for state_index in range(state_count):
@@ -514,7 +538,10 @@ def _build_state_html(
 
         if description is None:
             description = (
-                f"Technischer Zustand {state_index}"
+                tr(
+                    "mod_info.html.technical_state",
+                    index=state_index,
+                )
             )
 
         state_values: list[str] = []
@@ -546,24 +573,25 @@ def _build_state_html(
 def _key_type_description(
     key_type: str,
 ) -> str:
-    descriptions = {
-        "cycle": (
-            "Wechselt nacheinander zwischen mehreren Zuständen"
-        ),
-        "toggle": (
-            "Schaltet die Änderung ein oder aus"
-        ),
-        "hold": (
-            "Ist nur aktiv, solange die Taste gehalten wird"
-        ),
-        "activate": (
-            "Wendet die Einstellung beim Tastendruck an"
-        ),
+    description_keys = {
+        "cycle": "mod_info.type.cycle",
+        "toggle": "mod_info.type.toggle",
+        "hold": "mod_info.type.hold",
+        "activate": "mod_info.type.activate",
     }
 
-    return descriptions.get(
-        key_type.casefold(),
-        f"Unbekannter Typ: {key_type}",
+    key = description_keys.get(
+        key_type.casefold()
+    )
+
+    if key is not None:
+        return tr(
+            key
+        )
+
+    return tr(
+        "mod_info.type.unknown",
+        key_type=key_type,
     )
 
 
@@ -575,14 +603,19 @@ def _assignment_description(
     )
 
     if value_count > 1:
-        return (
-            f"Wechselt zwischen {value_count} Werten"
+        return tr(
+            "mod_info.assignment.multiple",
+            count=value_count,
         )
 
     if assignment.name.startswith("$"):
-        return "Setzt eine Mod-Variable"
+        return tr(
+            "mod_info.assignment.mod_variable"
+        )
 
-    return "Setzt eine 3DMigoto-Einstellung"
+    return tr(
+        "mod_info.assignment.3dmigoto_setting"
+    )
 
 
 def _source_label(

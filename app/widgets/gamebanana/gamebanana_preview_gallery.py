@@ -19,8 +19,10 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -561,6 +563,10 @@ class GameBananaPreviewGallery(
             8
         )
 
+        layout.setSizeConstraint(
+            QLayout.SizeConstraint.SetMinimumSize
+        )
+
         heading = QHBoxLayout()
         heading.setSpacing(
             8
@@ -624,34 +630,77 @@ class GameBananaPreviewGallery(
             self.thumbnail_scroll
         )
 
-        actions = QHBoxLayout()
-        actions.setSpacing(
-            8
-        )
+        actions = QGridLayout()
+        self._action_layout = actions
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setHorizontalSpacing(8)
+        actions.setVerticalSpacing(8)
 
+        self.fullscreen_button.setMinimumWidth(0)
         self.fullscreen_button.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
 
+        self.open_button.setMinimumWidth(0)
         self.open_button.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
 
-        actions.addWidget(
-            self.fullscreen_button,
-            stretch=1,
-        )
-
-        actions.addWidget(
-            self.open_button,
-            stretch=1,
-        )
-
         layout.addLayout(
             actions
         )
+        self._reflow_action_buttons()
+
+    def _reflow_action_buttons(
+        self,
+    ) -> None:
+        layout = getattr(
+            self,
+            "_action_layout",
+            None,
+        )
+        if layout is None:
+            return
+
+        layout.removeWidget(
+            self.fullscreen_button
+        )
+        layout.removeWidget(
+            self.open_button
+        )
+
+        if self._compact_mode:
+            layout.addWidget(
+                self.fullscreen_button,
+                0, 0,
+            )
+            layout.addWidget(
+                self.open_button,
+                1, 0,
+            )
+            layout.setColumnStretch(
+                0, 1
+            )
+            layout.setColumnStretch(
+                1, 0
+            )
+        else:
+            layout.addWidget(
+                self.fullscreen_button,
+                0, 0,
+            )
+            layout.addWidget(
+                self.open_button,
+                0, 1,
+            )
+            layout.setColumnStretch(
+                0, 1
+            )
+            layout.setColumnStretch(
+                1, 1
+            )
 
     def _connect_signals(
         self,
@@ -705,6 +754,7 @@ class GameBananaPreviewGallery(
 
         self.main_image_label.updateGeometry()
         self.thumbnail_scroll.updateGeometry()
+        self._reflow_action_buttons()
 
         # GameBananaPreviewGallery besitzt absichtlich keine
         # parameterlose _render_pixmap()-Methode. Diese gehört

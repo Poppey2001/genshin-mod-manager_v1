@@ -1248,7 +1248,6 @@ QLabel#pageDescription {
 
 QFrame[statCard="true"] {
     min-height: 82px;
-    max-height: 94px;
     background-color: #181c23;
     border: 1px solid #292f39;
     border-radius: 12px;
@@ -1832,7 +1831,6 @@ QLabel#locationBadge {
 QLineEdit#searchInput,
 QComboBox#filterCombo {
     min-height: 34px;
-    max-height: 34px;
 
     background-color: #11151a;
 
@@ -2560,4 +2558,30 @@ QFrame#selectionToolbar[responsiveMode="compact"] {
 QWidget#libraryPage[responsiveMode="tight"] QFrame#libraryViewToolbar {
     margin-left: 0px;
     margin-right: 0px;
+}
+
+
+/* ============================================================
+   WINDOWS / TRANSLATION BOX SIZING SAFETY V1
+   ============================================================ */
+
+QFrame#libraryHeader,
+QFrame#filterCard,
+QFrame#selectionToolbar,
+QFrame#detailHeaderCard,
+QFrame#detailPreviewCard,
+QFrame#detailInfoCard,
+QFrame#detailActionCard,
+QFrame#libraryModCard {
+    max-height: 16777215px;
+}
+
+QLineEdit#searchInput,
+QComboBox#filterCombo {
+    max-height: 16777215px;
+}
+
+QFrame#detailActionCard QPushButton,
+QPushButton#libraryCardAction {
+    min-width: 0px;
 }

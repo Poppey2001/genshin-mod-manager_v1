@@ -28,6 +28,11 @@ from app.gamebanana.models import (
     GameBananaMod,
 )
 
+from app.i18n import (
+    tr,
+    translation_manager,
+)
+
 from app.widgets.gamebanana.preview_image import (
     GameBananaPreviewImage,
 )
@@ -66,9 +71,7 @@ class GameBananaModDetails(
 
         self.content = QWidget()
 
-        self.back_button = QPushButton(
-            "← Zurück"
-        )
+        self.back_button = QPushButton()
 
         self.gallery = (
             GameBananaImageGallery(
@@ -88,25 +91,17 @@ class GameBananaModDetails(
             QTextBrowser()
         )
 
-        self.file_label = QLabel(
-            "Datei"
-        )
+        self.file_label = QLabel()
 
         self.file_combo = (
             QComboBox()
         )
 
-        self.open_button = QPushButton(
-            "Auf GameBanana öffnen"
-        )
+        self.open_button = QPushButton()
 
-        self.install_button = QPushButton(
-            "Herunterladen && installieren"
-        )
+        self.install_button = QPushButton()
 
-        self.cancel_button = QPushButton(
-            "Abbrechen"
-        )
+        self.cancel_button = QPushButton()
 
         self.progress = (
             QProgressBar()
@@ -116,6 +111,11 @@ class GameBananaModDetails(
 
         self._build_ui()
 
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
+
+        self.retranslate_ui()
         self.clear_mod()
 
     def _build_ui(
@@ -305,40 +305,67 @@ class GameBananaModDetails(
         )
 
     # ========================================================
-    # Mod
+    # Translation
     # ========================================================
 
-    def set_mod(
+    def retranslate_ui(
         self,
-        mod: GameBananaMod,
+        _language: str | None = None,
     ) -> None:
-        self._mod = mod
-
-        image_urls = (
-            mod.image_urls
-        )
-
-        if (
-            not image_urls
-            and mod.preview_url
-        ):
-            image_urls = (
-                mod.preview_url,
+        self.back_button.setText(
+            tr(
+                "gamebanana.details.back"
             )
-
-        self.gallery.set_urls(
-            image_urls
         )
+
+        self.file_label.setText(
+            tr(
+                "gamebanana.files"
+            )
+        )
+
+        self.open_button.setText(
+            tr(
+                "gamebanana.open_page"
+            )
+        )
+
+        self.install_button.setText(
+            tr(
+                "gamebanana.download_install"
+            )
+        )
+
+        self.cancel_button.setText(
+            tr(
+                "common.cancel"
+            )
+        )
+
+        if self._mod is not None:
+            self._refresh_mod_texts()
+
+    def _refresh_mod_texts(
+        self,
+    ) -> None:
+        mod = self._mod
+
+        if mod is None:
+            return
 
         self.name_label.setText(
             mod.name
         )
 
         self.author_label.setText(
-            (
-                f"von {mod.author}"
-                if mod.author
-                else "Unbekannter Autor"
+            tr(
+                "gamebanana.mod.author",
+                author=(
+                    mod.author
+                    or tr(
+                        "gamebanana.value.unknown"
+                    )
+                ),
             )
         )
 
@@ -365,16 +392,25 @@ class GameBananaModDetails(
         )
 
         self.stats_label.setText(
-            (
-                f"Downloads: {self._format_count(mod.downloads)}"
-                f"    •    Likes: {self._format_count(mod.likes)}"
-                f"    •    Aufrufe: {self._format_count(mod.views)}"
+            tr(
+                "gamebanana.mod.stats",
+                downloads=self._format_count(
+                    mod.downloads
+                ),
+                likes=self._format_count(
+                    mod.likes
+                ),
+                views=self._format_count(
+                    mod.views
+                ),
             )
         )
 
         description = (
             mod.description
-            or "Keine Beschreibung vorhanden."
+            or tr(
+                "gamebanana.mod.no_description"
+            )
         )
 
         plain_description = (
@@ -388,6 +424,34 @@ class GameBananaModDetails(
         self.description.setPlainText(
             plain_description
         )
+
+    # ========================================================
+    # Mod
+    # ========================================================
+
+    def set_mod(
+        self,
+        mod: GameBananaMod,
+    ) -> None:
+        self._mod = mod
+
+        image_urls = (
+            mod.image_urls
+        )
+
+        if (
+            not image_urls
+            and mod.preview_url
+        ):
+            image_urls = (
+                mod.preview_url,
+            )
+
+        self.gallery.set_urls(
+            image_urls
+        )
+
+        self._refresh_mod_texts()
 
         self.file_combo.clear()
 
@@ -554,7 +618,10 @@ class GameBananaModDetails(
         self.cancel_button.show()
 
         self.status_label.setText(
-            f"Lade {file.name} herunter …"
+            tr(
+                "gamebanana.status.downloading",
+                file=file.name,
+            )
         )
 
     def update_download(
@@ -569,9 +636,11 @@ class GameBananaModDetails(
             )
 
             self.status_label.setText(
-                (
-                    f"{self._format_bytes(current)} "
-                    "heruntergeladen"
+                tr(
+                    "gamebanana.status.download_bytes",
+                    current=self._format_bytes(
+                        current
+                    ),
                 )
             )
 
@@ -596,9 +665,14 @@ class GameBananaModDetails(
         )
 
         self.status_label.setText(
-            (
-                f"{self._format_bytes(current)} / "
-                f"{self._format_bytes(total)}"
+            tr(
+                "gamebanana.status.download_progress",
+                current=self._format_bytes(
+                    current
+                ),
+                total=self._format_bytes(
+                    total
+                ),
             )
         )
 
@@ -621,7 +695,9 @@ class GameBananaModDetails(
         self.cancel_button.hide()
 
         self.status_label.setText(
-            "Download abgeschlossen."
+            tr(
+                "gamebanana.status.download_finished"
+            )
         )
 
     def fail_download(
@@ -651,13 +727,18 @@ class GameBananaModDetails(
         if value is None:
             return "-"
 
-        return (
-            f"{value:,}"
-            .replace(
+        formatted = f"{value:,}"
+
+        if (
+            translation_manager.language
+            == "de"
+        ):
+            return formatted.replace(
                 ",",
                 ".",
             )
-        )
+
+        return formatted
 
     @staticmethod
     def _file_name(

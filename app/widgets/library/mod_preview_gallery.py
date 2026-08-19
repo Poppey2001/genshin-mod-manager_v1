@@ -30,6 +30,7 @@ from app.workers.library_preview_worker import (
 )
 from app.i18n import (
     tr,
+    translation_manager,
 )
 
 class ModPreviewGallery(
@@ -101,6 +102,10 @@ class ModPreviewGallery(
         self.source_label = QLabel()
 
         self._build_ui()
+
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
 
         self.clear_preview()
 
@@ -216,6 +221,20 @@ class ModPreviewGallery(
                 color: #8f98a8;
             }
             """
+        )
+
+    def retranslate_ui(
+        self,
+        _language: str | None = None,
+    ) -> None:
+        if self._all_count() > 0:
+            self._show_current()
+            return
+
+        self.empty_label.setText(
+            tr(
+                "library.preview.none"
+            )
         )
 
     # ========================================================
@@ -363,7 +382,9 @@ class ModPreviewGallery(
             )
 
             self.empty_label.setText(
-                "Keine Vorschau"
+                tr(
+                    "library.preview.none"
+                )
             )
 
             self.counter_label.clear()
@@ -526,7 +547,9 @@ class ModPreviewGallery(
         )
 
         self.empty_label.setText(
-            "Keine Vorschau"
+            tr(
+                "library.preview.none"
+            )
         )
 
         self.counter_label.clear()

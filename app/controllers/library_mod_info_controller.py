@@ -17,6 +17,10 @@ from app.dialogs.mod_info_dialog import (
     ModInfoDialog,
 )
 
+from app.i18n import (
+    tr,
+)
+
 from app.models.mod import (
     ModInfo,
 )
@@ -99,13 +103,13 @@ class LibraryModInfoController(QObject):
         except Exception as error:
             QMessageBox.critical(
                 self._dialog_parent,
-                "INI-Analyse fehlgeschlagen",
-                (
-                    "Die Merge- oder Master-INI "
-                    "konnte nicht analysiert "
-                    "werden.\n\n"
-                    f"{type(error).__name__}: "
-                    f"{error}"
+                tr(
+                    "mod_info.analysis_failed.title"
+                ),
+                tr(
+                    "mod_info.analysis_failed.message",
+                    error_type=type(error).__name__,
+                    error=error,
                 ),
             )
 

@@ -21,6 +21,11 @@ from app.gamebanana.models import (
     GameBananaModSummary,
 )
 
+from app.i18n import (
+    tr,
+    translation_manager,
+)
+
 from app.widgets.gamebanana.mod_card import (
     GameBananaModCard,
 )
@@ -57,7 +62,7 @@ class GameBananaModGrid(
         self._column_count = 0
 
         self.empty_label = QLabel(
-            "Keine Mods gefunden."
+            self
         )
 
         self.scroll_area = (
@@ -75,6 +80,12 @@ class GameBananaModGrid(
         )
 
         self._build_ui()
+
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
+
+        self.retranslate_ui()
 
     def _build_ui(
         self,
@@ -161,6 +172,16 @@ class GameBananaModGrid(
                 background: transparent;
             }
             """
+        )
+
+    def retranslate_ui(
+        self,
+        _language: str | None = None,
+    ) -> None:
+        self.empty_label.setText(
+            tr(
+                "gamebanana.grid.empty"
+            )
         )
 
     # ========================================================

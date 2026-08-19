@@ -14,6 +14,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.i18n import (
+    tr,
+)
+
 from app.services.mod_importer import (
     ConflictPolicy,
     ImportOptions,
@@ -37,7 +41,9 @@ class ImportOptionsDialog(QDialog):
         self.conflict_combobox = QComboBox()
 
         self.setWindowTitle(
-            "Mods importieren"
+            tr(
+                "import.options.window_title"
+            )
         )
 
         self.setMinimumWidth(
@@ -57,7 +63,10 @@ class ImportOptionsDialog(QDialog):
         layout.setSpacing(14)
 
         title_label = QLabel(
-            f"{len(self.sources)} Quelle(n) importieren"
+            tr(
+                "import.options.title",
+                count=len(self.sources),
+            )
         )
         title_label.setObjectName(
             "dialogTitle"
@@ -70,7 +79,11 @@ class ImportOptionsDialog(QDialog):
 
         if len(self.sources) > 8:
             source_preview += (
-                f"\n• … und {len(self.sources) - 8} weitere"
+                "\n• "
+                + tr(
+                    "import.options.more_sources",
+                    count=len(self.sources) - 8,
+                )
             )
 
         source_label = QLabel(
@@ -82,27 +95,35 @@ class ImportOptionsDialog(QDialog):
         )
 
         description_label = QLabel(
-            "Charakter und Mod-Typ sind optional. "
-            "Ohne Angaben wird die vorhandene Struktur "
-            "des Ordners oder Archivs übernommen."
+            tr(
+                "import.options.description"
+            )
         )
         description_label.setWordWrap(True)
 
         self.character_input.setPlaceholderText(
-            "Zum Beispiel: Chiori"
+            tr(
+                "import.options.character_placeholder"
+            )
         )
 
         self.mod_type_input.setPlaceholderText(
-            "Zum Beispiel: Character Skin"
+            tr(
+                "import.options.mod_type_placeholder"
+            )
         )
 
         self.conflict_combobox.addItem(
-            "Automatisch umbenennen",
+            tr(
+                "import.options.conflict.rename"
+            ),
             userData=ConflictPolicy.RENAME.value,
         )
 
         self.conflict_combobox.addItem(
-            "Vorhandenen Mod überspringen",
+            tr(
+                "import.options.conflict.skip"
+            ),
             userData=ConflictPolicy.SKIP.value,
         )
 
@@ -110,17 +131,23 @@ class ImportOptionsDialog(QDialog):
         form_layout.setSpacing(12)
 
         form_layout.addRow(
-            "Charakter:",
+            tr(
+                "import.options.character_label"
+            ),
             self.character_input,
         )
 
         form_layout.addRow(
-            "Mod-Typ:",
+            tr(
+                "import.options.mod_type_label"
+            ),
             self.mod_type_input,
         )
 
         form_layout.addRow(
-            "Bei Namenskonflikt:",
+            tr(
+                "import.options.conflict_label"
+            ),
             self.conflict_combobox,
         )
 
@@ -134,7 +161,19 @@ class ImportOptionsDialog(QDialog):
         )
 
         ok_button.setText(
-            "Import starten"
+            tr(
+                "import.options.start"
+            )
+        )
+
+        cancel_button = buttons.button(
+            QDialogButtonBox.StandardButton.Cancel
+        )
+
+        cancel_button.setText(
+            tr(
+                "common.cancel"
+            )
         )
 
         buttons.accepted.connect(
@@ -200,10 +239,11 @@ class ImportOptionsDialog(QDialog):
         if mod_type and not character:
             QMessageBox.warning(
                 self,
-                "Charakter fehlt",
-                (
-                    "Wenn du einen Mod-Typ angibst, musst du "
-                    "auch einen Charakter angeben."
+                tr(
+                    "import.options.character_missing.title"
+                ),
+                tr(
+                    "import.options.character_missing.message"
                 ),
             )
             return

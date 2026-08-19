@@ -19,6 +19,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.i18n import (
+    tr,
+    translation_manager,
+)
+
 from app.widgets.gamebanana.preview_image import (
     GameBananaPreviewImage,
 )
@@ -184,7 +189,12 @@ class GameBananaImageGallery(
 
         self._build_ui()
 
+        translation_manager.language_changed.connect(
+            self.retranslate_ui
+        )
+
         self.clear()
+        self.retranslate_ui()
 
     def _build_ui(
         self,
@@ -316,6 +326,29 @@ class GameBananaImageGallery(
             """
         )
 
+    def retranslate_ui(
+        self,
+        _language: str | None = None,
+    ) -> None:
+        self.previous_button.setToolTip(
+            tr(
+                "gamebanana.preview.previous"
+            )
+        )
+
+        self.next_button.setToolTip(
+            tr(
+                "gamebanana.preview.next"
+            )
+        )
+
+        if not self.urls:
+            self.counter_label.setText(
+                tr(
+                    "gamebanana.preview.none"
+                )
+            )
+
     # ========================================================
     # URLs
     # ========================================================
@@ -365,7 +398,9 @@ class GameBananaImageGallery(
             )
 
             self.counter_label.setText(
-                "Keine Bilder"
+                tr(
+                    "gamebanana.preview.none"
+                )
             )
 
             self.previous_button.setEnabled(

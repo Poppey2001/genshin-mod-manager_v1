@@ -1,24 +1,19 @@
 {
     "app.name": "Genshin Mod Manager",
-
     "common.cancel": "Cancel",
     "common.close": "Close",
     "common.enabled": "Enabled",
     "common.disabled": "Disabled",
     "common.unknown": "Unknown",
-
     "library.title": "Mod Library",
     "library.description": "Detected mod folders from the configured mod library directory.",
-
     "library.action.scan": "Scan again",
     "library.action.import": "Import",
     "library.action.cancel_import": "Cancel import",
-
     "library.status.import_started": "Mod import started.",
     "library.status.import_failed": "The mod import failed.",
     "library.status.import_cancelled": "The mod import was cancelled.",
     "library.status.import_cancelling": "Cancelling import …",
-
     "library.status.scan_started": "Scanning folder …",
     "library.status.scan_failed": "The library scan failed.",
     "library.status.scan_cancelled": "The library scan was cancelled.",
@@ -26,44 +21,34 @@
     "library.status.scan_restart": "Cancelling the current scan and starting a new scan …",
     "library.status.library_missing": "The mod library directory does not exist.",
     "library.status.scan_result": "{count} mods found in {seconds:.2f} seconds.",
-
     "library.status.filter_result": "Showing {visible} of {total} mods.",
-
     "library.status.bulk_failed": "The bulk operation failed.",
     "library.status.bulk_cancelling": "The bulk operation will be cancelled after the current mod has been processed …",
-
     "library.location.checking": "Checking",
     "library.location.local": "Local folder",
     "library.location.network": "Network drive",
-
-
     "library.import.archive": "Select ZIP or archive",
     "library.import.directory": "Select mod folder",
-
     "library.filter.library": "Library",
     "library.filter.search_placeholder": "Search mods, characters or paths …",
     "library.filter.all_characters": "All characters",
     "library.filter.all_mod_types": "All mod types",
     "library.filter.all_statuses": "All statuses",
     "library.filter.reset": "Reset",
-
     "mod.state.enabled": "Enabled",
     "mod.state.disabled": "Disabled",
     "mod.state.conflict": "Conflict",
     "mod.state.broken": "Broken",
     "mod.state.not_configured": "Not configured",
-
     "common.local": "Local",
     "common.network": "Network",
     "common.symlink": "Symlink",
-
     "library.list.selection_actions": "Selection actions",
     "library.list.enable_selected": "Enable selected",
     "library.list.disable_selected": "Disable selected",
     "library.list.adopt_selected": "Adopt conflicts",
     "library.list.cancel_bulk": "Cancel bulk operation",
     "library.list.info_tooltip": "Analyze Merge and Master INI",
-
     "library.column.mod": "Mod",
     "library.column.character": "Character",
     "library.column.mod_type": "Mod type",
@@ -74,7 +59,6 @@
     "library.column.size": "Size",
     "library.column.modified": "Modified",
     "library.column.path": "Path",
-
     "library.details.eyebrow": "MOD DETAILS",
     "library.details.character": "Character",
     "library.details.mod_type": "Mod type",
@@ -85,15 +69,12 @@
     "library.details.modified": "Modified",
     "library.details.path": "Path",
     "library.details.actions": "Actions",
-
     "library.details.empty_title": "No mod selected",
     "library.details.empty_description": "Select a mod on the left to view its details and actions.",
     "library.details.no_selection": "No selection",
-
     "library.details.multiple_title": "{count} mods selected",
     "library.details.multiple_description": "Use the selection actions above the list.",
     "library.details.multiple_status": "Multiple selection",
-
     "library.details.action.enable": "Enable",
     "library.details.action.disable": "Disable",
     "library.details.action.remove_broken": "Remove broken link",
@@ -102,7 +83,6 @@
     "library.details.action.adopt": "Adopt conflict",
     "library.details.action.info": "Analyze INI control",
     "library.details.action.adopt_tooltip": "Adopts an existing mod folder without overwriting its files.",
-
     "library.stats.total.title": "Total mods",
     "library.stats.total.subtitle": "Library",
     "library.stats.active.title": "Enabled",
@@ -111,10 +91,8 @@
     "library.stats.conflicts.subtitle": "Require attention",
     "library.stats.characters.title": "Characters",
     "library.stats.characters.subtitle": "Detected assignments",
-
     "common.mod_count.one": "{count} mod",
     "common.mod_count.other": "{count} mods",
-
     "library.import_picker.archive_title": "Select mod archives",
     "library.import_picker.directory_title": "Select mod folder",
     "library.import_picker.supported_archives": "Supported archives (*.zip *.7z *.rar *.tar *.tar.gz *.tgz *.tar.bz2 *.tbz2 *.tar.xz *.txz)",
@@ -123,22 +101,18 @@
     "library.import_picker.rar_archives": "RAR archives (*.rar)",
     "library.import_picker.tar_archives": "TAR archives (*.tar *.tar.gz *.tgz *.tar.bz2 *.tbz2 *.tar.xz *.txz)",
     "library.import_picker.all_files": "All files (*)",
-
     "library.import.unsupported_title": "No supported files",
     "library.import.unsupported_message": "No supported mod folders or archives were selected.",
-
     "library.progress.import_preparing": "Preparing import …",
     "library.progress.scan_preparing": "Scanning library …",
     "library.progress.scan_indeterminate": "Scanning – {name}",
     "library.progress.scan_processing": "Scanning “{name}” …",
     "library.progress.bulk_preparing": "Preparing bulk operation …",
     "library.progress.bulk_processing": "Processing “{name}” …",
-
     "library.operation.scan_running": "Scan in progress",
     "library.operation.import_running": "Import in progress",
     "library.operation.bulk_running": "Bulk operation in progress",
     "library.operation.action_running": "Operation in progress",
-
     "library.operation.block.import_by_bulk": "Mods cannot be imported while a bulk operation is running.",
     "library.operation.block.import_by_import": "A mod import is already running.",
     "library.operation.block.import_by_scan": "Wait until the current library scan has finished.",
@@ -148,17 +122,13 @@
     "library.operation.block.scan_by_bulk": "The library cannot be scanned while a bulk operation is running.",
     "library.operation.block.scan_by_import": "The library cannot be scanned while an import is running.",
     "library.operation.block.default": "The requested operation cannot be started right now.",
-
     "library.bulk.action.enable_title": "Enable mods",
     "library.bulk.action.disable_title": "Disable mods",
     "library.bulk.action.adopt_title": "Adopt conflicts",
-
     "library.bulk.action.enable_description": "The selected disabled mods will be enabled. Mods that are already enabled will be skipped.",
     "library.bulk.action.disable_description": "The selected enabled mods will be disabled. Mods that are already disabled will be skipped.",
     "library.bulk.action.adopt_description": "Existing conflict folders will be added to management. Mod files will not be overwritten.",
-
     "library.bulk.confirmation": "Selected mods: {count}\n\n{description}\n\nDo you want to continue?",
-
     "library.bulk_result.action.enable": "Enable",
     "library.bulk_result.action.disable": "Disable",
     "library.bulk_result.action.adopt": "Adopt",
@@ -171,7 +141,6 @@
     "library.bulk_result.cancelled_detail": "The bulk operation was cancelled before completion.",
     "library.bulk_result.status_cancelled": "The bulk operation was cancelled.",
     "library.bulk_result.status_completed": "Bulk operation completed: {count} successful.",
-
     "library.import_result.imported": "Imported: {count}",
     "library.import_result.skipped": "Skipped: {count}",
     "library.import_result.failed": "Failed: {count}",
@@ -179,9 +148,7 @@
     "library.import_result.status_failed": "{imported} imported, {failed} failed.",
     "library.import_result.status_skipped": "{imported} imported, {skipped} skipped.",
     "library.import_result.status_success": "{imported} imported.",
-
     "library.result.remaining": "… and {count} more",
-
     "library.mod_action.enabled": "“{mod_name}” was enabled: {destination}",
     "library.mod_action.disabled": "“{mod_name}” was disabled and the repaired version was saved.",
     "library.mod_action.not_configured": "Select the active mods folder in Settings first.",
@@ -189,13 +156,11 @@
     "library.mod_action.not_conflict": "The selected mod does not currently have a conflict.",
     "library.mod_action.adopted_enabled": "“{mod_name}” was adopted as an existing enabled mod.",
     "library.mod_action.adopted_disabled": "“{mod_name}” was adopted as an existing disabled mod.",
-
     "library.mod_action.dialog.missing_folder_title": "Active mods folder missing",
     "library.mod_action.dialog.conflict_title": "Mod conflict",
     "library.mod_action.dialog.no_conflict_title": "No conflict",
     "library.mod_action.dialog.adopt_title": "Adopt existing mod",
     "library.mod_action.dialog.adopt_message": "The existing folder for “{mod_name}” will be marked as managed by Genshin Mod Manager.\n\nNo mod files will be overwritten, moved or deleted.\n\nAfterwards, the manager can enable and disable the folder by renaming it.\n\nDo you want to continue?",
-
     "library.dialog.import.title": "Mod import",
     "library.dialog.import.completed": "Mod import completed",
     "library.dialog.import.failed": "Mod import failed",
@@ -207,115 +172,84 @@
     "library.dialog.no_selection.message": "Select at least one mod in the table.",
     "library.dialog.mod_management_failed": "Mod management failed",
     "library.dialog.adopt_failed": "Conflict could not be adopted",
-
     "library.status.import_start_failed": "The mod import could not be started.",
     "library.status.bulk_start_failed": "The bulk operation could not be started.",
     "library.status.bulk_enable_started": "Enabling mods started.",
     "library.status.bulk_disable_started": "Disabling mods started.",
     "library.status.bulk_adopt_started": "Adopting conflicts started.",
-
     "library.error.stylesheet_load": "The mod library stylesheet could not be loaded: {path}",
     "library.status.game_changed": "Loading library for {game} …",
     "library.status.directory_failed": "The library directory could not be created.",
-    "library.error.directory.title": "Library unavailable",   
+    "library.error.directory.title": "Library unavailable",
     "main.window_title": "Genshin Mod Manager",
-
     "main.sidebar.title": "Genshin",
     "main.sidebar.subtitle": "Mod Manager",
     "main.sidebar.version": "Version {version}",
-
     "navigation.library": "Library",
     "navigation.gamebanana": "GameBanana",
     "navigation.profiles": "Profiles",
     "navigation.conflicts": "Conflicts",
     "navigation.settings": "Settings",
-
     "main.status.active_profile": "Active profile: {profile}",
-
     "main.page.profiles.title": "Profiles",
     "main.page.profiles.description": "Here you will be able to save different mod setups.",
-
     "main.page.conflicts.title": "Conflicts",
     "main.page.conflicts.description": "This page will show possible file and mod conflicts.",
-
     "main.launcher.missing.title": "No launcher selected",
     "main.launcher.missing.message": "Select a launcher in Settings first.",
     "main.launcher.start_failed.title": "Launcher could not be started",
-
     "settings.title": "Settings",
     "settings.description": "Configure the mod library, active mods folder, launcher and Mod Manager behavior.",
-
     "settings.group.library": "Mod Library",
     "settings.group.paths": "Paths",
     "settings.group.behavior": "Behavior",
-
     "settings.library.description": "All mods managed by the manager are stored here. The folder can be local or located on a mounted network drive.",
     "settings.library.placeholder": "Default: ~/.local/share/genshin-mod-manager/mods",
-
     "settings.active_mods.label": "Active Mods Folder",
     "settings.active_mods.description": "The folder from which the active mod loader loads its mods.",
     "settings.active_mods.placeholder": "No mods folder selected",
-
     "settings.launcher.label": "Launcher",
     "settings.launcher.description": "Optional path to an AppImage, shell script, Wine program or mod loader.",
     "settings.launcher.placeholder": "No launcher selected",
-
     "settings.symlinks.label": "Enable mods using symbolic links",
     "settings.symlinks.description": "With symbolic links, mods remain in the central library and are not duplicated.",
-
     "settings.backups.label": "Automatically create backups before changes",
     "settings.backups.description": "Backups protect existing files from accidental overwriting.",
-
     "settings.appearance.label": "Appearance",
     "settings.language.label": "Language",
-
     "settings.theme.dark": "Dark",
     "settings.theme.light": "Light",
     "settings.theme.system": "System",
-
     "settings.language.de": "Deutsch",
     "settings.language.en": "English",
-
     "settings.button.choose": "Choose",
     "settings.button.default": "Default",
     "settings.button.clear": "Clear",
     "settings.button.reset": "Reset",
     "settings.button.save": "Save settings",
-
     "settings.dialog.choose_library": "Select mod library",
     "settings.dialog.choose_active_mods": "Select active mods folder",
     "settings.dialog.choose_launcher": "Select launcher",
-
     "settings.warning.network.title": "Network address not supported",
     "settings.warning.network.message": "Addresses such as smb:// or nfs:// cannot be used directly.\n\nMount the network drive under /mnt, /media or through your file manager first.",
-
     "settings.warning.invalid_mods.title": "Invalid mods folder",
     "settings.warning.mods_missing": "The selected mods folder does not exist.",
     "settings.warning.mods_not_directory": "The selected path is not a directory.",
-
     "settings.library_create.title": "Create library",
     "settings.library_create.message": "The selected library folder does not exist yet.\n\nDo you want to create it now?",
-
     "settings.error.create_directory.title": "Folder could not be created",
-
     "settings.warning.invalid_library.title": "Invalid mod library",
     "settings.warning.invalid_library.message": "The library path is not a directory.",
-
     "settings.warning.invalid_launcher.title": "Invalid launcher",
     "settings.warning.launcher_missing": "The selected launcher file does not exist.",
     "settings.warning.launcher_not_file": "The selected launcher path is not a file.",
-
     "settings.error.save.title": "Save error",
     "settings.error.save.message": "The settings could not be saved.\n\n{error}",
-
     "settings.status.saved": "Settings saved.",
     "settings.status.reset": "Unsaved changes were discarded.",
-
     "app.error.unexpected.title": "Unexpected error",
     "app.error.unexpected.message": "Genshin Mod Manager had to close because of an error.\n\n{error_type}: {error}",
-
     "library.details.action.unavailable": "Unavailable",
-
     "updates.settings.title": "Updates",
     "updates.settings.auto_check": "Automatically check for updates when the application starts",
     "updates.settings.channel": "Update channel",
@@ -323,16 +257,13 @@
     "updates.settings.check_now": "Check for updates now",
     "updates.settings.runtime.appimage": "Automatic installation is available because the application is running as an AppImage.",
     "updates.settings.runtime.dev": "Development mode: updates can be checked, but automatic installation is only available from an AppImage.",
-
     "updates.channel.stable": "Stable",
     "updates.channel.prerelease": "Pre-release",
-
     "updates.check.title": "Updates",
     "updates.check.already_running": "An update check is already running.",
     "updates.check.up_to_date": "You are already using the latest version {version}.",
     "updates.check.failed_title": "Update check failed",
     "updates.check.failed": "The update check failed.\n\n{error}",
-
     "updates.dialog.window_title": "Update available",
     "updates.dialog.available": "A new version is available",
     "updates.dialog.version": "Installed: {current}\nAvailable: {new}",
@@ -342,22 +273,18 @@
     "updates.dialog.later": "Later",
     "updates.dialog.install": "Install update",
     "updates.dialog.appimage_required": "Automatic installation is only available when Mod Manager is running as an AppImage.",
-
     "updates.status.downloading": "Downloading and verifying update …",
     "updates.status.installing": "The update has been verified. The application will close, update itself and restart …",
     "updates.status.failed": "Update failed: {error}",
     "updates.status.cancelled": "The update download was cancelled.",
-
     "updates.error.repo_not_configured": "The GitHub repository for the auto-updater has not been configured yet.",
     "updates.error.no_digest": "No SHA-256 digest was found for this release.",
     "updates.error.invalid_download": "The downloaded update file is invalid.",
-
     "game.selector.title": "Game",
     "game.selector.importer": "XXMI Importer: {importer}",
     "game.change.blocked.title": "Cannot switch game",
     "game.change.blocked.message": "The game cannot be changed while a scan, import or bulk operation is running.",
     "game.status.changed": "Active game: {game}",
-
     "gamebanana.title": "GameBanana",
     "gamebanana.current_game": "Mods for {game} · {importer}",
     "gamebanana.reference.placeholder": "Enter a GameBanana mod URL or mod ID …",
@@ -365,13 +292,10 @@
     "gamebanana.files": "Download file",
     "gamebanana.open_page": "Open on GameBanana",
     "gamebanana.download_install": "Download & import",
-
     "gamebanana.value.unknown": "Unknown",
-
     "gamebanana.mod.author": "Author: {author}",
     "gamebanana.mod.game": "Game: {game}",
     "gamebanana.mod.no_description": "No description available.",
-
     "gamebanana.status.loading": "Loading GameBanana mod …",
     "gamebanana.status.loaded": "{count} download file(s) found.",
     "gamebanana.status.lookup_failed": "The GameBanana mod could not be loaded.",
@@ -382,29 +306,21 @@
     "gamebanana.status.download_failed": "The download failed.",
     "gamebanana.status.cancelled": "The download was cancelled.",
     "gamebanana.status.cancelling": "Cancelling download …",
-
     "gamebanana.busy.title": "GameBanana busy",
     "gamebanana.busy.message": "A GameBanana operation is already running.",
-
     "gamebanana.error.lookup.title": "Could not load GameBanana mod",
     "gamebanana.error.download.title": "GameBanana download failed",
     "gamebanana.error.download.start": "The download could not be started.",
     "gamebanana.error.download.missing": "The downloaded file could not be found.",
-
     "gamebanana.error.game_changed.title": "Wrong game selected",
     "gamebanana.error.game_changed.message": "The active game has changed since the download started. The file will not be imported automatically.",
-
     "archive.security.blocked.title": "Unsafe archive blocked",
     "archive.security.blocked.message": "The archive cannot be imported because at least one unsafe structure was detected.",
-
     "archive.security.warning.title": "Archive contains files requiring review",
     "archive.security.warning.message": "The archive contains executables, scripts, or binary modules. Such files can be legitimate for mods, but should only be installed if you trust the source.\n\nDo you want to continue importing?",
-
     "archive.security.scan_failed.title": "Archive scan failed",
     "archive.security.scan_failed.message": "The archive “{archive}” could not be safely inspected.",
-
     "archive.security.more": "\n… and {count} more",
-
     "gamebanana.browse.title": "Browse mods",
     "gamebanana.search.placeholder": "Search recent mods …",
     "gamebanana.search.button": "Search",
@@ -429,98 +345,7 @@
     "gamebanana.error.browse.title": "GameBanana browser",
     "gamebanana.browse.page": "Page {page}",
     "gamebanana.browse.search_mode": "Search results",
-
     "ui.games.title": "GAMES",
-
-    "library.details.preview": "Preview",
-    "library.details.gamebanana_id": "GameBanana ID",
-
-    "library.details.action.set_gamebanana_id": "Set GameBanana ID",
-    "library.details.action.set_gamebanana_id_tooltip": "Links this library mod to a GameBanana mod ID. If no local preview is available, preview images can be loaded from GameBanana.",
-
-    "library.gamebanana_id.dialog.title": "GameBanana ID",
-    "library.gamebanana_id.dialog.message": "GameBanana mod ID for “{mod_name}”:",
-    "library.gamebanana_id.error.title": "Could not save GameBanana ID",
-    "library.gamebanana_id.error.message": "The GameBanana ID could not be saved to the mod metadata.\n\n{error}",
-    "library.gamebanana_id.status.saved": "Saved GameBanana ID {mod_id} for “{mod_name}”.",
-
-    "library.preview.none": "No preview",
-    "library.preview.loading": "Searching for preview …",
-    "library.preview.unavailable": "Preview unavailable",
-    "library.preview.local": "Local",
-    "library.preview.gamebanana": "GameBanana",
-    "library.preview.image_load_failed": "Image could not be loaded",
-
-    "library.view.title": "View",
-    "library.view.list": "List",
-    "library.view.gallery": "Gallery",
-    "library.gallery.empty": "No mods match the current filters.",
-
-    "library.gamebanana_metadata.error.title": "GameBanana metadata",
-    "library.gamebanana_metadata.error.message": "The mod was imported, but the GameBanana link could not be saved completely.\n\n{errors}",
-    "library.empty.title": "Your mod library is empty",
-    "library.empty.description": "Import your first mod or scan the library directory again.",
-    "library.empty.no_results_title": "No matching mods found",
-    "library.empty.no_results_description": "Change your search or filters to show mods again.",
-
-    "conflicts.title": "Conflicts",
-    "conflicts.description": "Check library conflicts, manually added XXMI mods and possible duplicates.",
-    "conflicts.refresh": "Check again",
-    "conflicts.empty": "No conflicts were found.",
-    "conflicts.count": "{count} conflicts",
-
-    "conflicts.type.library": "Library conflict",
-    "conflicts.type.unmanaged": "Manually added",
-    "conflicts.type.invalid_marker": "Invalid marker",
-    "conflicts.type.orphaned": "Orphaned mod",
-
-    "conflicts.message.library": "Data exists at the active target that cannot be unambiguously assigned to the library mod.",
-    "conflicts.message.unmanaged": "This mod is located in the active XXMI mods directory but is currently not managed by your library.",
-    "conflicts.message.invalid_marker": "This mod contains a damaged, invalid or mismatching manager marker.",
-    "conflicts.message.orphaned": "This active mod was previously managed, but its corresponding library mod could not be found.",
-
-    "conflicts.action.open": "Open folder",
-    "conflicts.action.adopt": "Adopt",
-    "conflicts.action.check_duplicate": "Check duplicate",
-    "conflicts.action.copy_to_library": "Copy to library",
-    "conflicts.action.delete_duplicate": "Delete active copy",
-
-    "conflicts.hash.idle": "Not checked for duplicates yet.",
-    "conflicts.hash.checking": "Running ORFix / 5.7 normalization and duplicate check … {current}/{total} – {name}",
-    "conflicts.hash.duplicate": "An identical mod was found in your library.",
-    "conflicts.hash.no_duplicate": "No identical mod was found in your library.",
-    "conflicts.hash.failed": "The duplicate check failed.",
-    "conflicts.hash.invalid_source": "This entry is not a valid mod directory.",
-    "conflicts.hash.crc32": "CRC32: {value}",
-    "conflicts.hash.sha256": "SHA-256: {value}",
-    "conflicts.hash.duplicate_path": "Library duplicate: {path}",
-
-    "conflicts.delete.title": "Delete active duplicate",
-    "conflicts.delete.message": "CRC32 and SHA-256 match a library mod after ORFix/5.7 normalization.\n\nActive copy:\n{source}\n\nLibrary:\n{library}\n\nPermanently delete the active copy?",
-    "conflicts.delete.failed.title": "Could not delete duplicate",
-    "conflicts.delete.failed.message": "The active copy could not be deleted.\n\n{error}",
-    "conflicts.delete.completed.title": "Duplicate deleted",
-    "conflicts.delete.completed.message": "The confirmed active duplicate copy was deleted.",
-
-    "conflicts.copy.failed.title": "Could not copy mod",
-    "conflicts.copy.missing": "The mod directory no longer exists.",
-
-    "conflicts.manual.title": "Manually added mod",
-    "conflicts.manual.message": "This mod has no unambiguous library source and therefore cannot be adopted automatically. You can import it using “Copy to library” instead.",
-    "conflicts.summary.attention_title": "Conflicts require attention",
-    "conflicts.summary.attention_description": "{count} entries should be reviewed before enabling additional mods.",
-    "conflicts.summary.clean_title": "No conflicts detected",
-    "conflicts.summary.clean_description": "The currently checked mod configuration looks clean.",
-    "conflicts.empty.description": "No problematic or unmanaged mods were found.",
-    "updates.dialog.install_unavailable": "No automatically installable update package was found for this platform.",
-    "updates.error.unsupported_platform": "Automatic installation is currently supported on Windows only.",
-
-    "updates.dialog.script_count": "{count} Python files will be updated.",
-    "updates.dialog.script_install_unavailable": "Automatic script installation is not available on this system.",
-    "updates.dialog.source": "Update source: GitHub Source · {branch}",
-    "updates.status.download_progress": "{file}: {current} of {total}",
-    "updates.error.install_unsupported": "Automatic script installation is not available on this system or build.",
-
     "profiles.action.activate": "Activate",
     "profiles.action.delete": "Delete",
     "profiles.action.new": "New profile",
@@ -565,8 +390,6 @@
     "profiles.warning.navigation_blocked": "While a profile is being applied, you cannot leave the page, switch games, or open Settings.",
     "profiles.warning.no_mods": "There are currently no safely managed mods available. Wait for the library scan to finish and review any conflicts.",
     "profiles.warning.title": "Profiles",
-
-
     "gamebanana.details.empty": "Select a mod on the left or open a GameBanana entry directly.",
     "gamebanana.result.id": "ID: {id}",
     "gamebanana.result.author": "Author: {author}",
@@ -587,6 +410,139 @@
     "gamebanana.preview.fullscreen": "View larger",
     "gamebanana.preview.open": "Open image in browser",
     "gamebanana.preview.lightbox_title": "GameBanana preview",
-    "gamebanana.preview.thumbnail_tooltip": "Preview image {current} of {total}"
-
+    "gamebanana.preview.thumbnail_tooltip": "Preview image {current} of {total}",
+    "conflicts.title": "Conflicts",
+    "conflicts.description": "Check library conflicts, manually added XXMI mods, and possible duplicates.",
+    "conflicts.refresh": "Check again",
+    "conflicts.empty": "No conflicts were found.",
+    "conflicts.count": "{count} conflicts",
+    "conflicts.summary.attention_title": "Conflicts require attention",
+    "conflicts.summary.attention_description": "Review these entries before enabling more mods.",
+    "conflicts.summary.clean_title": "No conflicts detected",
+    "conflicts.summary.clean_description": "The currently checked mod configuration looks clean.",
+    "conflicts.action.check_duplicate": "Check duplicate",
+    "conflicts.action.copy_to_library": "Copy to library",
+    "conflicts.action.open": "Open folder",
+    "conflicts.action.adopt": "Adopt",
+    "conflicts.action.delete_duplicate": "Delete duplicate",
+    "conflicts.hash.idle": "Not checked for duplicates yet.",
+    "conflicts.hash.checking": "{current}/{total} – Checking “{name}” …",
+    "conflicts.hash.crc32": "CRC32: {value}",
+    "conflicts.hash.sha256": "SHA256: {value}",
+    "conflicts.hash.duplicate": "Identical duplicate found.",
+    "conflicts.hash.duplicate_path": "Duplicate: {path}",
+    "conflicts.hash.no_duplicate": "No identical duplicate found.",
+    "conflicts.hash.failed": "The duplicate check failed.",
+    "conflicts.hash.invalid_source": "The mod folder no longer exists or is not a directory.",
+    "conflicts.delete.title": "Delete confirmed duplicate",
+    "conflicts.delete.message": "An identical duplicate was found.\n\nActive XXMI mod:\n{source}\n\nLibrary mod:\n{library}\n\nThe active duplicate folder will be permanently deleted.\n\nDo you want to continue?",
+    "conflicts.delete.failed.title": "Duplicate could not be deleted",
+    "conflicts.delete.failed.message": "The confirmed duplicate could not be deleted.\n\n{error}",
+    "conflicts.delete.completed.title": "Duplicate deleted",
+    "conflicts.delete.completed.message": "The confirmed duplicate was deleted. Conflicts will be checked again.",
+    "conflicts.manual.title": "Manually added mod",
+    "conflicts.manual.message": "This entry cannot be adopted automatically.\n\nThe mod is a manually added XXMI mod outside library management. Copy it to the library first or manage it manually.",
+    "conflicts.copy.failed.title": "Copy unavailable",
+    "conflicts.copy.missing": "The mod folder no longer exists and cannot be copied to the library.",
+    "library.view.title": "View",
+    "library.view.list": "List",
+    "library.view.gallery": "Gallery",
+    "library.gallery.empty": "No mods are available in the gallery.",
+    "library.preview.loading": "Loading preview …",
+    "library.preview.none": "No preview available.",
+    "library.details.preview": "Preview",
+    "library.details.gamebanana_id": "GameBanana ID",
+    "library.details.action.set_gamebanana_id": "Set GameBanana ID",
+    "library.details.action.set_gamebanana_id_tooltip": "Stores the GameBanana mod ID for this library mod.",
+    "library.gamebanana_id.dialog.title": "Set GameBanana ID",
+    "library.gamebanana_id.dialog.message": "GameBanana mod ID for “{mod_name}”:",
+    "library.gamebanana_id.error.title": "GameBanana ID could not be saved",
+    "library.gamebanana_id.error.message": "The GameBanana ID could not be saved.\n\n{error}",
+    "library.gamebanana_id.status.saved": "GameBanana ID {mod_id} was saved for “{mod_name}”.",
+    "library.gamebanana_metadata.error.title": "Incomplete GameBanana metadata",
+    "library.gamebanana_metadata.error.message": "The mod was imported, but some GameBanana metadata could not be saved:\n\n{errors}",
+    "game.change.failed.title": "Game switch failed",
+    "gamebanana.error.install.title": "GameBanana import unavailable",
+    "gamebanana.error.install.game_changed": "The selected game changed after the download. The file will therefore not be imported automatically.",
+    "gamebanana.error.install.library_handoff_failed": "The download finished, but it could not be handed off to the library.",
+    "library.preview.unavailable": "Preview unavailable.",
+    "library.preview.image_load_failed": "The preview image could not be loaded.",
+    "library.preview.local": "Local preview",
+    "library.preview.gamebanana": "GameBanana preview",
+    "updates.dialog.install_unavailable": "Automatic installation is not available for this update.",
+    "updates.dialog.source": "Source",
+    "updates.error.install_unsupported": "This update cannot be installed automatically in the current runtime.",
+    "updates.status.download_progress": "Downloading update …",
+    "import.options.window_title": "Import mods",
+    "import.options.title": "Import {count} source(s)",
+    "import.options.more_sources": "… and {count} more",
+    "import.options.description": "Character and mod type are optional. If left empty, the existing folder or archive structure will be kept.",
+    "import.options.character_placeholder": "For example: Chiori",
+    "import.options.mod_type_placeholder": "For example: Character Skin",
+    "import.options.conflict.rename": "Rename automatically",
+    "import.options.conflict.skip": "Skip existing mod",
+    "import.options.character_label": "Character:",
+    "import.options.mod_type_label": "Mod type:",
+    "import.options.conflict_label": "On name conflict:",
+    "import.options.start": "Start import",
+    "import.options.character_missing.title": "Character missing",
+    "import.options.character_missing.message": "If you specify a mod type, you must also specify a character.",
+    "mod_info.window_title": "Mod information – {mod_name}",
+    "mod_info.title": "Controls for {mod_name}",
+    "mod_info.open_folder": "Open mod folder",
+    "mod_info.open_folder_failed": "Folder could not be opened",
+    "mod_info.analysis_failed.title": "INI analysis failed",
+    "mod_info.analysis_failed.message": "The Merge or Master INI could not be analyzed.\n\n{error_type}: {error}",
+    "mod_info.html.warnings": "Notes",
+    "mod_info.html.no_control_ini": "No Merge, Master or controlling INI file was found.",
+    "mod_info.html.technical_note": "The manager displays technical variables and states. Without comments in the INI, it cannot reliably know whether a variable represents something such as “Jacket”, “Hair” or “Effect”.",
+    "mod_info.html.namespace": "Namespace",
+    "mod_info.html.merged_mods": "Merged mods",
+    "mod_info.html.no_key": "No key detected",
+    "mod_info.html.key": "Key",
+    "mod_info.html.type": "Type",
+    "mod_info.html.reverse": "Reverse",
+    "mod_info.html.condition": "Condition",
+    "mod_info.html.smart_cycle": "Smart cycle",
+    "mod_info.html.wrap": "Wrap at end",
+    "mod_info.html.command_lists": "CommandLists",
+    "mod_info.html.assignment": "Variable / setting",
+    "mod_info.html.values": "Values",
+    "mod_info.html.interpretation": "Interpretation",
+    "mod_info.html.comments": "Comments",
+    "mod_info.html.detected_states": "Detected states",
+    "mod_info.html.state": "State",
+    "mod_info.html.description": "Description",
+    "mod_info.html.set_values": "Set values",
+    "mod_info.html.technical_state": "Technical state {index}",
+    "mod_info.type.cycle": "Cycles through multiple states",
+    "mod_info.type.toggle": "Toggles the change on or off",
+    "mod_info.type.hold": "Only active while the key is held",
+    "mod_info.type.activate": "Applies the setting when the key is pressed",
+    "mod_info.type.unknown": "Unknown type: {key_type}",
+    "mod_info.assignment.multiple": "Cycles between {count} values",
+    "mod_info.assignment.mod_variable": "Sets a mod variable",
+    "mod_info.assignment.3dmigoto_setting": "Sets a 3DMigoto setting",
+    "settings.dialog.window_title": "XXMI Mod Manager – Settings",
+    "settings.dialog.nav.game": "Game",
+    "settings.dialog.nav.global": "Global",
+    "settings.global.title": "Global settings",
+    "settings.global.description": "These options apply to the entire XXMI Mod Manager.",
+    "settings.global.group.application": "Application",
+    "settings.global.cache.title": "GameBanana image cache",
+    "settings.global.cache.description": "Preview images and screenshots can be stored locally so they do not need to be downloaded again every time they are opened.",
+    "settings.global.cache.enabled": "Enable GameBanana image cache",
+    "settings.global.cache.path": "Cache directory",
+    "settings.global.cache.max_size": "Maximum cache size",
+    "settings.global.cache.refresh_size": "Refresh size",
+    "settings.global.cache.clear": "Clear cache",
+    "settings.global.cache.choose_directory": "Select cache directory",
+    "settings.global.cache.current_size": "Current size: {size}",
+    "settings.global.cache.clear_title": "Clear GameBanana cache",
+    "settings.global.cache.clear_message": "Delete all stored GameBanana preview images?\n\n{path}",
+    "settings.global.cache.cleared": "{count} cache files were deleted.",
+    "settings.global.status.saved": "Global settings were saved.",
+    "gamebanana.details.back": "← Back",
+    "gamebanana.grid.empty": "No mods found.",
+    "gamebanana.preview.none": "No preview"
 }
