@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 from pathlib import Path
 
@@ -212,6 +213,7 @@ def _encoded_powershell_command(
     parent_pid: int,
     setup_log: Path,
     handoff_log: Path,
+    ready_marker: Path,
 ) -> str:
     installer_text = (
         _ps_single_quote(
@@ -231,7 +233,19 @@ def _encoded_powershell_command(
         )
     )
 
+    ready_marker_text = (
+        _ps_single_quote(
+            ready_marker
+        )
+    )
+
     # Windows PowerShell -EncodedCommand expects UTF-16LE.
+    #
+    # The helper owns a tiny WinForms progress window. It writes the
+    # ready marker only after that window is actually visible. The GMM
+    # process waits for this marker before it exits, so a broken helper
+    # can no longer make the application disappear without starting the
+    # update.
     script = f"""
 $ErrorActionPreference = 'Stop'
 
@@ -239,6 +253,13 @@ $parentPid = {int(parent_pid)}
 $installer = '{installer_text}'
 $setupLog = '{setup_log_text}'
 $handoffLog = '{handoff_log_text}'
+$readyMarker = '{ready_marker_text}'
+
+$form = $null
+$statusLabel = $null
+$detailLabel = $null
+$progressBar = $null
+$closeButton = $null
 
 function Write-HandoffLog([string]$Message) {{
     try {{
@@ -249,61 +270,247 @@ function Write-HandoffLog([string]$Message) {{
     }}
 }}
 
-Write-HandoffLog "Handoff helper started."
-Write-HandoffLog "Waiting for GMM PID $parentPid to exit."
-
-$deadline = [DateTime]::UtcNow.AddSeconds(20)
-
-while ($true) {{
-    $process = Get-Process -Id $parentPid -ErrorAction SilentlyContinue
-
-    if ($null -eq $process) {{
-        break
+function Pump-Ui() {{
+    try {{
+        [System.Windows.Forms.Application]::DoEvents()
     }}
-
-    if ([DateTime]::UtcNow -ge $deadline) {{
-        Write-HandoffLog "GMM did not exit within 20 seconds. Forcing shutdown."
-
-        Stop-Process -Id $parentPid -Force -ErrorAction SilentlyContinue
-
-        Start-Sleep -Milliseconds 700
-
-        break
+    catch {{
     }}
-
-    Start-Sleep -Milliseconds 200
 }}
 
-Write-HandoffLog "Old GMM process is no longer running."
-Write-HandoffLog "Starting Windows installer."
+function Set-Status(
+    [string]$Status,
+    [string]$Detail
+) {{
+    if ($null -ne $statusLabel) {{
+        $statusLabel.Text = $Status
+    }}
 
-$arguments = @(
-    '/VERYSILENT',
-    '/SUPPRESSMSGBOXES',
-    '/NORESTART',
-    ('/LOG="' + $setupLog + '"')
-)
+    if ($null -ne $detailLabel) {{
+        $detailLabel.Text = $Detail
+    }}
+
+    Pump-Ui
+}}
+
+function Remove-ReadyMarker() {{
+    try {{
+        Remove-Item -LiteralPath $readyMarker -Force -ErrorAction SilentlyContinue
+    }}
+    catch {{
+    }}
+}}
 
 try {{
+    Write-HandoffLog "Handoff helper started."
+
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+
+    $isGerman = (
+        [System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName
+        -eq 'de'
+    )
+
+    if ($isGerman) {{
+        $windowTitle = 'Genshin Mod Manager Update'
+        $waitingText = 'Update wird vorbereitet ...'
+        $waitingDetail = 'Der Mod Manager wird gleich geschlossen.'
+        $installingText = 'Update wird installiert ...'
+        $installingDetail = 'Bitte das Fenster nicht schließen.'
+        $doneText = 'Update abgeschlossen.'
+        $doneDetail = 'Die neue Version wird gestartet.'
+        $failedText = 'Update fehlgeschlagen.'
+        $closeText = 'Schließen'
+    }}
+    else {{
+        $windowTitle = 'Genshin Mod Manager Update'
+        $waitingText = 'Preparing update ...'
+        $waitingDetail = 'The Mod Manager will close in a moment.'
+        $installingText = 'Installing update ...'
+        $installingDetail = 'Please do not close this window.'
+        $doneText = 'Update complete.'
+        $doneDetail = 'The new version is starting.'
+        $failedText = 'Update failed.'
+        $closeText = 'Close'
+    }}
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = $windowTitle
+    $form.StartPosition = 'CenterScreen'
+    $form.FormBorderStyle = 'FixedDialog'
+    $form.ClientSize = New-Object System.Drawing.Size(560, 188)
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+    $form.ControlBox = $false
+    $form.ShowInTaskbar = $true
+    $form.TopMost = $true
+
+    $statusLabel = New-Object System.Windows.Forms.Label
+    $statusLabel.Location = New-Object System.Drawing.Point(24, 22)
+    $statusLabel.Size = New-Object System.Drawing.Size(512, 32)
+    $statusLabel.Font = New-Object System.Drawing.Font(
+        'Segoe UI',
+        12,
+        [System.Drawing.FontStyle]::Bold
+    )
+    $statusLabel.Text = $waitingText
+
+    $detailLabel = New-Object System.Windows.Forms.Label
+    $detailLabel.Location = New-Object System.Drawing.Point(24, 58)
+    $detailLabel.Size = New-Object System.Drawing.Size(512, 36)
+    $detailLabel.Font = New-Object System.Drawing.Font(
+        'Segoe UI',
+        9
+    )
+    $detailLabel.Text = $waitingDetail
+
+    $progressBar = New-Object System.Windows.Forms.ProgressBar
+    $progressBar.Location = New-Object System.Drawing.Point(24, 108)
+    $progressBar.Size = New-Object System.Drawing.Size(512, 24)
+    $progressBar.Style = 'Marquee'
+    $progressBar.MarqueeAnimationSpeed = 24
+
+    $closeButton = New-Object System.Windows.Forms.Button
+    $closeButton.Location = New-Object System.Drawing.Point(416, 146)
+    $closeButton.Size = New-Object System.Drawing.Size(120, 30)
+    $closeButton.Text = $closeText
+    $closeButton.Visible = $false
+    $closeButton.Add_Click({{
+        if ($null -ne $form) {{
+            $form.Close()
+        }}
+    }})
+
+    $form.Controls.Add($statusLabel)
+    $form.Controls.Add($detailLabel)
+    $form.Controls.Add($progressBar)
+    $form.Controls.Add($closeButton)
+
+    $form.Show()
+    $form.Activate()
+    Pump-Ui
+
+    # The parent process waits for this exact marker before quitting.
+    Set-Content -LiteralPath $readyMarker -Value 'ready' -Encoding ASCII
+
+    Write-HandoffLog "Progress window is visible. Ready marker written."
+    Write-HandoffLog "Waiting for GMM PID $parentPid to exit."
+
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+
+    while ($true) {{
+        $process = Get-Process -Id $parentPid -ErrorAction SilentlyContinue
+
+        if ($null -eq $process) {{
+            break
+        }}
+
+        if ([DateTime]::UtcNow -ge $deadline) {{
+            Write-HandoffLog "GMM did not exit within 20 seconds. Forcing shutdown."
+
+            Stop-Process -Id $parentPid -Force -ErrorAction SilentlyContinue
+
+            Start-Sleep -Milliseconds 700
+
+            break
+        }}
+
+        Pump-Ui
+        Start-Sleep -Milliseconds 120
+    }}
+
+    Write-HandoffLog "Old GMM process is no longer running."
+
+    Set-Status $installingText $installingDetail
+
+    Write-HandoffLog "Starting Windows installer."
+
+    $arguments = @(
+        '/VERYSILENT',
+        '/SUPPRESSMSGBOXES',
+        '/NORESTART',
+        ('/LOG="' + $setupLog + '"')
+    )
+
     $setup = Start-Process `
         -FilePath $installer `
         -ArgumentList $arguments `
-        -PassThru `
-        -Wait
+        -PassThru
+
+    while (-not $setup.HasExited) {{
+        Pump-Ui
+        Start-Sleep -Milliseconds 120
+        $setup.Refresh()
+    }}
+
+    $exitCode = [int]$setup.ExitCode
 
     Write-HandoffLog (
         "Windows installer exited with code " +
-        $setup.ExitCode
+        $exitCode
     )
 
-    exit $setup.ExitCode
+    if ($exitCode -ne 0) {{
+        throw "Windows installer exit code: $exitCode"
+    }}
+
+    $progressBar.Style = 'Continuous'
+    $progressBar.MarqueeAnimationSpeed = 0
+    $progressBar.Minimum = 0
+    $progressBar.Maximum = 100
+    $progressBar.Value = 100
+
+    Set-Status $doneText $doneDetail
+
+    Write-HandoffLog "Update completed successfully."
+
+    Start-Sleep -Milliseconds 900
+    Pump-Ui
+
+    if ($null -ne $form) {{
+        $form.Close()
+    }}
+
+    Remove-ReadyMarker
+    exit 0
 }}
 catch {{
+    $message = $_.Exception.Message
+
     Write-HandoffLog (
-        "Windows installer launch failed: " +
-        $_.Exception.Message
+        "Windows update helper failed: " +
+        $message
     )
 
+    if ($null -ne $form) {{
+        try {{
+            $progressBar.Style = 'Continuous'
+            $progressBar.MarqueeAnimationSpeed = 0
+            $progressBar.Minimum = 0
+            $progressBar.Maximum = 100
+            $progressBar.Value = 0
+
+            Set-Status $failedText $message
+
+            $closeButton.Visible = $true
+            $form.ControlBox = $true
+            $form.TopMost = $false
+            $form.Activate()
+            Pump-Ui
+
+            while ($form.Visible) {{
+                Pump-Ui
+                Start-Sleep -Milliseconds 100
+            }}
+        }}
+        catch {{
+        }}
+    }}
+
+    Remove-ReadyMarker
     exit 1
 }}
 """.strip()
@@ -397,6 +604,18 @@ def launch_windows_installer_update(
         / "windows-update-handoff.log"
     )
 
+    ready_marker = (
+        log_directory
+        / "windows-update-handoff.ready"
+    )
+
+    try:
+        ready_marker.unlink(
+            missing_ok=True
+        )
+    except OSError:
+        pass
+
     try:
         handoff_log.write_text(
             (
@@ -417,6 +636,7 @@ def launch_windows_installer_update(
             parent_pid=os.getpid(),
             setup_log=setup_log,
             handoff_log=handoff_log,
+            ready_marker=ready_marker,
         )
     )
 
@@ -427,6 +647,7 @@ def launch_windows_installer_update(
         "-NoLogo",
         "-NoProfile",
         "-NonInteractive",
+        "-STA",
         "-WindowStyle",
         "Hidden",
         "-ExecutionPolicy",
@@ -459,7 +680,7 @@ def launch_windows_installer_update(
     )
 
     try:
-        subprocess.Popen(
+        process = subprocess.Popen(
             command,
             cwd=str(
                 installer.parent
@@ -480,7 +701,69 @@ def launch_windows_installer_update(
             )
         ) from error
 
-    return installer
+    # Do not let the main application exit until the detached helper has
+    # actually created and displayed its own progress window. This avoids
+    # the old failure mode where GMM vanished even though PowerShell exited
+    # immediately afterwards.
+    deadline = (
+        time.monotonic()
+        + 8.0
+    )
+
+    while time.monotonic() < deadline:
+        if ready_marker.is_file():
+            logger.info(
+                (
+                    "Windows update handoff ist bereit: "
+                    "helper_pid=%s"
+                ),
+                process.pid,
+            )
+
+            return installer
+
+        return_code = process.poll()
+
+        if return_code is not None:
+            logger.error(
+                (
+                    "Windows update handoff wurde vor dem "
+                    "Ready-Signal beendet: exit_code=%s"
+                ),
+                return_code,
+            )
+
+            raise WindowsInstallerUpdateError(
+                tr(
+                    "updates.error.windows_installer.launch_failed"
+                )
+            )
+
+        time.sleep(
+            0.05
+        )
+
+    logger.error(
+        "Windows update handoff lieferte kein Ready-Signal."
+    )
+
+    try:
+        process.terminate()
+    except OSError:
+        pass
+
+    try:
+        ready_marker.unlink(
+            missing_ok=True
+        )
+    except OSError:
+        pass
+
+    raise WindowsInstallerUpdateError(
+        tr(
+            "updates.error.windows_installer.launch_failed"
+        )
+    )
 
 
 __all__ = [
