@@ -55,6 +55,10 @@ from app.services.profile_service import (
     ProfileService,
 )
 
+from app.services.tool_paths import (
+    apply_tool_paths_to_environment,
+)
+
 from app.platform_support import (
     PlatformSupportError,
     launch_program,
@@ -105,6 +109,11 @@ class MainWindow(
         super().__init__()
 
         self.config = config
+
+        # External tools configured in Global Settings are made
+        # available before Library / Conflicts services are created.
+        apply_tool_paths_to_environment()
+
         self.update_controller: (
             UpdateController
             | None
@@ -970,12 +979,11 @@ class MainWindow(
         ):
             QMessageBox.warning(
                 self,
-                tr(
-                    "gamebanana.error.install.title"
-                ),
-                tr(
-                    "gamebanana.error.install."
-                    "library_handoff_failed"
+                "GameBanana",
+                (
+                    "Der Download wurde abgeschlossen, "
+                    "konnte aber nicht an die Library "
+                    "übergeben werden."
                 ),
             )
 

@@ -7,12 +7,16 @@ from PySide6.QtCore import (
 
 from PySide6.QtGui import (
     QDesktopServices,
+    QFontDatabase,
+    QGuiApplication,
 )
 
 from PySide6.QtWidgets import (
     QDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
+    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QTextBrowser,
@@ -51,6 +55,11 @@ class UpdateDialog(QDialog):
         )
 
         self._busy = False
+        self._error_message = ""
+
+        self.setObjectName(
+            "updateDialog"
+        )
 
         self.title_label = QLabel(
             self
@@ -76,6 +85,52 @@ class UpdateDialog(QDialog):
             self
         )
 
+        self.error_frame = QFrame(
+            self
+        )
+
+        self.error_frame.setObjectName(
+            "updateErrorFrame"
+        )
+
+        self.error_title_label = QLabel(
+            self.error_frame
+        )
+
+        self.error_title_label.setObjectName(
+            "updateErrorTitle"
+        )
+
+        self.error_details = QPlainTextEdit(
+            self.error_frame
+        )
+
+        self.error_details.setObjectName(
+            "updateErrorDetails"
+        )
+
+        self.error_details.setReadOnly(
+            True
+        )
+
+        self.error_details.setLineWrapMode(
+            QPlainTextEdit.LineWrapMode.NoWrap
+        )
+
+        fixed_font = (
+            QFontDatabase.systemFont(
+                QFontDatabase.SystemFont.FixedFont
+            )
+        )
+
+        self.error_details.setFont(
+            fixed_font
+        )
+
+        self.copy_error_button = QPushButton(
+            self.error_frame
+        )
+
         self.release_button = QPushButton(
             self
         )
@@ -88,7 +143,12 @@ class UpdateDialog(QDialog):
             self
         )
 
+        self.install_button.setObjectName(
+            "primaryButton"
+        )
+
         self._build_ui()
+        self._apply_style()
 
         translation_manager.language_changed.connect(
             self.retranslate_ui
@@ -99,12 +159,14 @@ class UpdateDialog(QDialog):
     def _build_ui(
         self,
     ) -> None:
-        self.setMinimumWidth(
-            560
+        self.resize(
+            720,
+            560,
         )
 
-        self.setMinimumHeight(
-            420
+        self.setMinimumSize(
+            620,
+            470,
         )
 
         layout = QVBoxLayout(
@@ -112,18 +174,26 @@ class UpdateDialog(QDialog):
         )
 
         layout.setContentsMargins(
-            24,
-            24,
-            24,
-            24,
+            22,
+            20,
+            22,
+            18,
         )
 
         layout.setSpacing(
-            14
+            12
         )
 
         self.title_label.setObjectName(
             "updateTitle"
+        )
+
+        self.title_label.setWordWrap(
+            True
+        )
+
+        self.version_label.setObjectName(
+            "updateVersion"
         )
 
         self.version_label.setWordWrap(
@@ -134,12 +204,24 @@ class UpdateDialog(QDialog):
             "updateSectionTitle"
         )
 
+        self.notes_view.setObjectName(
+            "updateNotes"
+        )
+
         self.notes_view.setOpenExternalLinks(
             False
         )
 
         self.notes_view.setPlainText(
             self.update.release_notes.strip()
+        )
+
+        self.status_label.setObjectName(
+            "updateStatus"
+        )
+
+        self.status_label.setWordWrap(
+            True
         )
 
         self.progress_bar.setVisible(
@@ -155,8 +237,55 @@ class UpdateDialog(QDialog):
             0
         )
 
-        self.status_label.setWordWrap(
-            True
+        error_layout = QVBoxLayout(
+            self.error_frame
+        )
+
+        error_layout.setContentsMargins(
+            12,
+            10,
+            12,
+            10,
+        )
+
+        error_layout.setSpacing(
+            8
+        )
+
+        error_layout.addWidget(
+            self.error_title_label
+        )
+
+        self.error_details.setMinimumHeight(
+            115
+        )
+
+        self.error_details.setMaximumHeight(
+            190
+        )
+
+        error_layout.addWidget(
+            self.error_details
+        )
+
+        error_buttons = QHBoxLayout()
+
+        error_buttons.addStretch(
+            1
+        )
+
+        error_buttons.addWidget(
+            self.copy_error_button
+        )
+
+        error_layout.addLayout(
+            error_buttons
+        )
+
+        self.error_frame.hide()
+
+        self.copy_error_button.clicked.connect(
+            self._copy_error
         )
 
         self.release_button.clicked.connect(
@@ -173,11 +302,17 @@ class UpdateDialog(QDialog):
 
         button_layout = QHBoxLayout()
 
+        button_layout.setSpacing(
+            9
+        )
+
         button_layout.addWidget(
             self.release_button
         )
 
-        button_layout.addStretch()
+        button_layout.addStretch(
+            1
+        )
 
         button_layout.addWidget(
             self.later_button
@@ -212,8 +347,120 @@ class UpdateDialog(QDialog):
             self.status_label
         )
 
+        layout.addWidget(
+            self.error_frame
+        )
+
         layout.addLayout(
             button_layout
+        )
+
+    def _apply_style(
+        self,
+    ) -> None:
+        self.setStyleSheet(
+            """
+            QDialog#updateDialog {
+                background-color: #111419;
+                color: #e8ebf0;
+            }
+
+            QDialog#updateDialog QLabel {
+                background: transparent;
+                color: #dfe4eb;
+            }
+
+            QDialog#updateDialog QLabel#updateTitle {
+                color: #f7f8fa;
+                font-size: 20px;
+                font-weight: 800;
+            }
+
+            QDialog#updateDialog QLabel#updateVersion {
+                color: #d5dae2;
+                font-size: 13px;
+            }
+
+            QDialog#updateDialog QLabel#updateSectionTitle,
+            QDialog#updateDialog QLabel#updateErrorTitle {
+                color: #eef1f5;
+                font-weight: 700;
+            }
+
+            QDialog#updateDialog QLabel#updateStatus {
+                color: #b7c0cc;
+            }
+
+            QDialog#updateDialog QTextBrowser#updateNotes,
+            QDialog#updateDialog QPlainTextEdit#updateErrorDetails {
+                background-color: #171b22;
+                color: #e6e9ee;
+                border: 1px solid #2e3540;
+                border-radius: 8px;
+                padding: 8px;
+                selection-background-color: #6657c9;
+                selection-color: #ffffff;
+            }
+
+            QDialog#updateDialog QFrame#updateErrorFrame {
+                background-color: #1b1719;
+                border: 1px solid #673a42;
+                border-radius: 9px;
+            }
+
+            QDialog#updateDialog QProgressBar {
+                min-height: 16px;
+                background-color: #1b2028;
+                color: #f1f3f6;
+                border: 1px solid #323a46;
+                border-radius: 7px;
+                text-align: center;
+            }
+
+            QDialog#updateDialog QProgressBar::chunk {
+                background-color: #6758d1;
+                border-radius: 6px;
+            }
+
+            QDialog#updateDialog QPushButton {
+                min-height: 34px;
+                padding: 0 13px;
+                background-color: #282e38;
+                color: #edf0f4;
+                border: 1px solid #3a424f;
+                border-radius: 7px;
+                font-weight: 600;
+            }
+
+            QDialog#updateDialog QPushButton:hover {
+                background-color: #343b47;
+                border-color: #505a69;
+            }
+
+            QDialog#updateDialog QPushButton:disabled {
+                background-color: #1a1f26;
+                color: #69717d;
+                border-color: #292f38;
+            }
+
+            QDialog#updateDialog QPushButton#primaryButton {
+                background-color: #6758d1;
+                color: #ffffff;
+                border-color: #7a6de0;
+            }
+
+            QDialog#updateDialog QPushButton#primaryButton:hover {
+                background-color: #7566dd;
+                border-color: #8a7de7;
+            }
+
+            QToolTip {
+                background-color: #20242c;
+                color: #f1f3f6;
+                border: 1px solid #3a404b;
+                padding: 5px 7px;
+            }
+            """
         )
 
     def retranslate_ui(
@@ -260,6 +507,18 @@ class UpdateDialog(QDialog):
                 )
             )
 
+        self.error_title_label.setText(
+            tr(
+                "updates.dialog.error_details"
+            )
+        )
+
+        self.copy_error_button.setText(
+            tr(
+                "updates.dialog.copy_error"
+            )
+        )
+
         self.release_button.setText(
             tr(
                 "updates.dialog.open_release"
@@ -281,6 +540,7 @@ class UpdateDialog(QDialog):
         if (
             not self.install_supported
             and not self._busy
+            and not self._error_message
         ):
             if not (
                 self.update.release_ready
@@ -304,10 +564,20 @@ class UpdateDialog(QDialog):
             and not self._busy
         )
 
+    def _hide_error(
+        self,
+    ) -> None:
+        self._error_message = ""
+
+        self.error_details.clear()
+
+        self.error_frame.hide()
+
     def start_download(
         self,
     ) -> None:
         self._busy = True
+        self._hide_error()
 
         self.progress_bar.setVisible(
             True
@@ -340,6 +610,7 @@ class UpdateDialog(QDialog):
         self,
     ) -> None:
         self._busy = True
+        self._hide_error()
 
         self.progress_bar.setVisible(
             True
@@ -396,21 +667,10 @@ class UpdateDialog(QDialog):
             )
         )
 
-        if stage == "download_source":
-            self.progress_bar.setRange(
-                0,
-                0,
-            )
-
-        elif stage in {
-            "extract_source",
-            "build_windows",
-            "build_complete",
-        }:
-            self.progress_bar.setRange(
-                0,
-                0,
-            )
+        self.progress_bar.setRange(
+            0,
+            0,
+        )
 
     def update_progress(
         self,
@@ -456,10 +716,23 @@ class UpdateDialog(QDialog):
             False
         )
 
+        self._error_message = str(
+            message
+        ).strip()
+
         self.status_label.setText(
             tr(
-                "updates.status.failed",
-                error=message,
+                "updates.status.failed_short"
+            )
+        )
+
+        self.error_details.setPlainText(
+            self._error_message
+        )
+
+        self.error_frame.setVisible(
+            bool(
+                self._error_message
             )
         )
 
@@ -475,6 +748,7 @@ class UpdateDialog(QDialog):
         self,
     ) -> None:
         self._busy = True
+        self._hide_error()
 
         self.progress_bar.setRange(
             0,
@@ -489,6 +763,20 @@ class UpdateDialog(QDialog):
             tr(
                 "updates.status.installing"
             )
+        )
+
+    def _copy_error(
+        self,
+    ) -> None:
+        if not self._error_message:
+            return
+
+        clipboard = (
+            QGuiApplication.clipboard()
+        )
+
+        clipboard.setText(
+            self._error_message
         )
 
     def reject(

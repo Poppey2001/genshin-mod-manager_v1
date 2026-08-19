@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 import zipfile
 
@@ -335,26 +336,121 @@ def _cancelled(
     )
 
 
-def _safe_extract_zip(
+def _safe_extract_repository_zip(
     archive_path: Path,
     destination: Path,
 ) -> Path:
-    destination = (
-        destination.resolve()
-    )
+    """
+    Extract a GitHub repository ZIP directly into a short destination.
+
+    GitHub ZIPs contain one wrapper directory such as:
+        repository-<commit>/
+
+    Keeping that wrapper made the Windows updater path unnecessarily long.
+    It is stripped here while traversal outside destination remains blocked.
+    """
+
+    destination = destination.resolve()
 
     with zipfile.ZipFile(
         archive_path,
         "r",
     ) as archive:
-        members = (
-            archive.infolist()
+        members = archive.infolist()
+
+        top_level_names: set[
+            str
+        ] = set()
+
+        for member in members:
+            raw_name = (
+                member.filename
+                .replace(
+                    "\\",
+                    "/",
+                )
+                .lstrip(
+                    "/"
+                )
+            )
+
+            if not raw_name:
+                continue
+
+            parts = [
+                part
+                for part in raw_name.split(
+                    "/"
+                )
+                if part
+            ]
+
+            if not parts:
+                continue
+
+            top_level_names.add(
+                parts[0]
+            )
+
+        if len(
+            top_level_names
+        ) != 1:
+            raise WindowsSourceBuildError(
+                tr(
+                    "updates.error.local_build.archive_root"
+                )
+            )
+
+        wrapper = next(
+            iter(
+                top_level_names
+            )
         )
 
         for member in members:
+            raw_name = (
+                member.filename
+                .replace(
+                    "\\",
+                    "/",
+                )
+                .lstrip(
+                    "/"
+                )
+            )
+
+            if not raw_name:
+                continue
+
+            parts = [
+                part
+                for part in raw_name.split(
+                    "/"
+                )
+                if part
+            ]
+
+            if (
+                not parts
+                or parts[0]
+                != wrapper
+            ):
+                continue
+
+            relative_parts = (
+                parts[1:]
+            )
+
+            if not relative_parts:
+                continue
+
+            relative_path = Path(
+                *relative_parts
+            )
+
             target = (
                 destination
-                / member.filename
+                / relative_path
             ).resolve()
 
             try:
@@ -369,25 +465,38 @@ def _safe_extract_zip(
                     )
                 ) from error
 
-        archive.extractall(
-            destination
-        )
+            if member.is_dir():
+                target.mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
 
-    roots = [
-        path
-        for path in destination.iterdir()
-        if path.is_dir()
-    ]
+                continue
 
-    if len(roots) != 1:
-        raise WindowsSourceBuildError(
-            tr(
-                "updates.error.local_build.archive_root"
+            target.parent.mkdir(
+                parents=True,
+                exist_ok=True,
             )
-        )
 
-    return roots[0]
+            with (
+                archive.open(
+                    member,
+                    "r",
+                ) as source,
+                target.open(
+                    "wb"
+                ) as output,
+            ):
+                shutil.copyfileobj(
+                    source,
+                    output,
+                    length=(
+                        1024
+                        * 1024
+                    ),
+                )
 
+    return destination
 
 def build_windows_installer_from_source(
     *,
@@ -453,34 +562,81 @@ def build_windows_installer_from_source(
             )
         ) from error
 
-    update_root = (
+    # Keep build paths deliberately short on Windows.
+    #
+    # The previous workspace lived below:
+    # %LOCALAPPDATA%\genshin-mod-manager\Cache\updates\local-build-...
+    # and GitHub's repository wrapper directory added another 50+ chars.
+    # Inno Setup / packaged Qt files can then hit legacy path limits.
+    #
+    # New build root example:
+    # %TEMP%\gmmu\dc7447a1\
+    short_build_root = (
+        Path(
+            tempfile.gettempdir()
+        )
+        / "gmmu"
+        / source_commit[:8]
+    )
+
+    persistent_update_root = (
         CACHE_DIR
         / "updates"
-        / (
-            "local-build-"
-            f"{normalized_version}-"
-            f"{source_commit[:12]}"
+    )
+
+    persistent_log_root = (
+        persistent_update_root
+        / "logs"
+    )
+
+    persistent_update_root.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    persistent_log_root.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    if short_build_root.exists():
+        shutil.rmtree(
+            short_build_root,
+            ignore_errors=True,
         )
+
+    short_build_root.mkdir(
+        parents=True,
+        exist_ok=True,
     )
 
     archive_path = (
-        update_root
-        / "source.zip"
+        short_build_root
+        / "s.zip"
     )
 
-    extract_root = (
-        update_root
-        / "source"
+    source_root = (
+        short_build_root
+        / "s"
+    )
+
+    source_root.mkdir(
+        parents=True,
+        exist_ok=True,
     )
 
     build_log = (
-        update_root
-        / "windows-local-build.log"
+        short_build_root
+        / "build.log"
     )
 
-    update_root.mkdir(
-        parents=True,
-        exist_ok=True,
+    persistent_build_log = (
+        persistent_log_root
+        / (
+            "windows-local-build-"
+            f"{normalized_version}-"
+            f"{source_commit[:8]}.log"
+        )
     )
 
     if _cancelled(
@@ -643,20 +799,10 @@ def build_windows_installer_from_source(
             "extract_source"
         )
 
-    if extract_root.exists():
-        shutil.rmtree(
-            extract_root
-        )
-
-    extract_root.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
     source_root = (
-        _safe_extract_zip(
+        _safe_extract_repository_zip(
             archive_path,
-            extract_root,
+            source_root,
         )
     )
 
@@ -796,6 +942,15 @@ def build_windows_installer_from_source(
                 0.25
             )
 
+    try:
+        if build_log.is_file():
+            shutil.copy2(
+                build_log,
+                persistent_build_log,
+            )
+    except OSError:
+        pass
+
     if return_code != 0:
         try:
             log_text = build_log.read_text(
@@ -837,7 +992,11 @@ def build_windows_installer_from_source(
                 "updates.error.local_build.failed",
                 code=return_code,
                 log=summary,
-                log_path=build_log,
+                log_path=(
+                    persistent_build_log
+                    if persistent_build_log.exists()
+                    else build_log
+                ),
             )
         )
 
@@ -860,7 +1019,7 @@ def build_windows_installer_from_source(
         )
 
     final_installer = (
-        update_root
+        persistent_update_root
         / installer.name
     )
 
@@ -873,6 +1032,14 @@ def build_windows_installer_from_source(
         status_callback(
             "build_complete"
         )
+
+    try:
+        shutil.rmtree(
+            short_build_root,
+            ignore_errors=True,
+        )
+    except OSError:
+        pass
 
     return final_installer
 

@@ -607,6 +607,53 @@ else {
     )
 }
 
+$InstallerScript = Join-Path `
+    $Root `
+    "packaging\windows\installer.iss"
+
+$DistRoot = Join-Path `
+    $Root `
+    "dist\GenshinModManager"
+
+if (-not (
+    Test-Path `
+        -LiteralPath $InstallerScript `
+        -PathType Leaf
+)) {
+    throw (
+        "Inno Setup script not found: " +
+        $InstallerScript
+    )
+}
+
+if (-not (
+    Test-Path `
+        -LiteralPath $DistRoot `
+        -PathType Container
+)) {
+    throw (
+        "PyInstaller output directory not found: " +
+        $DistRoot
+    )
+}
+
+if (-not (
+    Test-Path `
+        -LiteralPath $PythonInstaller `
+        -PathType Leaf
+)) {
+    throw (
+        "Bundled Python installer not found: " +
+        $PythonInstaller
+    )
+}
+
+Write-Host "Inno preflight:"
+Write-Host "  Project root : $Root"
+Write-Host "  Script       : $InstallerScript"
+Write-Host "  Dist         : $DistRoot"
+Write-Host "  Python redist: $PythonInstaller"
+
 Write-Host "Compiling installer with VM-safe LZMA2 settings..."
 Write-Host "Compression: lzma2/max (reduced memory usage for VMs)"
 

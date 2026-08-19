@@ -36,6 +36,13 @@ from app.i18n import (
     translation_manager,
 )
 
+from app.services.tool_paths import (
+    ToolPathsSettings,
+    apply_tool_paths_to_environment,
+    load_tool_paths_settings,
+    save_tool_paths_settings,
+)
+
 from app.services.gamebanana_image_cache import (
     DEFAULT_CACHE_DIRECTORY,
     GameBananaImageCache,
@@ -71,6 +78,10 @@ class GlobalSettingsPage(QWidget):
             load_gamebanana_image_cache_settings()
         )
 
+        self.tool_paths_settings = (
+            load_tool_paths_settings()
+        )
+
         # ----------------------------------------------------
         # Global widgets
         # ----------------------------------------------------
@@ -101,6 +112,44 @@ class GlobalSettingsPage(QWidget):
         self.auto_updates_checkbox = QCheckBox(self)
         self.update_channel_label = QLabel(self)
         self.update_channel_combo = QComboBox(self)
+
+        # ----------------------------------------------------
+        # External tool paths
+        # ----------------------------------------------------
+
+        self.tools_group = QGroupBox(self)
+
+        self.tools_description_label = QLabel(self)
+        self.tools_description_label.setObjectName(
+            "settingsMutedText"
+        )
+        self.tools_description_label.setWordWrap(
+            True
+        )
+
+        self.orfix_label = QLabel(self)
+        self.orfix_description_label = QLabel(self)
+        self.orfix_description_label.setObjectName(
+            "settingsMutedText"
+        )
+        self.orfix_description_label.setWordWrap(
+            True
+        )
+        self.orfix_path_input = QLineEdit(self)
+        self.choose_orfix_button = QPushButton(self)
+        self.clear_orfix_button = QPushButton(self)
+
+        self.hash_tool_label = QLabel(self)
+        self.hash_tool_description_label = QLabel(self)
+        self.hash_tool_description_label.setObjectName(
+            "settingsMutedText"
+        )
+        self.hash_tool_description_label.setWordWrap(
+            True
+        )
+        self.hash_tool_path_input = QLineEdit(self)
+        self.choose_hash_tool_button = QPushButton(self)
+        self.clear_hash_tool_button = QPushButton(self)
 
         # ----------------------------------------------------
         # GameBanana cache widgets
@@ -311,6 +360,72 @@ class GlobalSettingsPage(QWidget):
         )
 
         # ----------------------------------------------------
+        # External tools
+        # ----------------------------------------------------
+
+        tools_layout = QVBoxLayout(
+            self.tools_group
+        )
+        self._tools_layout = tools_layout
+        tools_layout.setSpacing(10)
+
+        tools_layout.addWidget(
+            self.tools_description_label
+        )
+
+        tools_layout.addWidget(
+            self.orfix_label
+        )
+        tools_layout.addWidget(
+            self.orfix_description_label
+        )
+
+        self._orfix_grid = QGridLayout()
+        self._orfix_grid.setContentsMargins(
+            0, 0, 0, 0
+        )
+        self._orfix_grid.setHorizontalSpacing(8)
+        self._orfix_grid.setVerticalSpacing(8)
+
+        tools_layout.addLayout(
+            self._orfix_grid
+        )
+
+        tools_layout.addSpacing(
+            6
+        )
+
+        tools_layout.addWidget(
+            self.hash_tool_label
+        )
+        tools_layout.addWidget(
+            self.hash_tool_description_label
+        )
+
+        self._hash_tool_grid = QGridLayout()
+        self._hash_tool_grid.setContentsMargins(
+            0, 0, 0, 0
+        )
+        self._hash_tool_grid.setHorizontalSpacing(8)
+        self._hash_tool_grid.setVerticalSpacing(8)
+
+        tools_layout.addLayout(
+            self._hash_tool_grid
+        )
+
+        self.orfix_path_input.setMinimumWidth(0)
+        self.hash_tool_path_input.setMinimumWidth(0)
+
+        self.tools_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Maximum,
+        )
+
+        content_layout.addWidget(
+            self.tools_group
+        )
+
+        # ----------------------------------------------------
         # GameBanana image cache
         # ----------------------------------------------------
 
@@ -378,6 +493,10 @@ class GlobalSettingsPage(QWidget):
         for button in (
             self.choose_cache_button,
             self.default_cache_button,
+            self.choose_orfix_button,
+            self.clear_orfix_button,
+            self.choose_hash_tool_button,
+            self.clear_hash_tool_button,
             self.refresh_cache_button,
             self.clear_cache_button,
             self.reset_button,
@@ -468,6 +587,22 @@ class GlobalSettingsPage(QWidget):
         )
 
         self._remove_from_grid(
+            self._orfix_grid,
+            (
+                self.orfix_path_input,
+                self.choose_orfix_button,
+                self.clear_orfix_button,
+            ),
+        )
+        self._remove_from_grid(
+            self._hash_tool_grid,
+            (
+                self.hash_tool_path_input,
+                self.choose_hash_tool_button,
+                self.clear_hash_tool_button,
+            ),
+        )
+        self._remove_from_grid(
             self._cache_path_grid,
             (
                 self.cache_path_input,
@@ -510,6 +645,44 @@ class GlobalSettingsPage(QWidget):
             )
             self._update_form.setRowWrapPolicy(
                 QFormLayout.RowWrapPolicy.WrapLongRows
+            )
+
+            self._orfix_grid.addWidget(
+                self.orfix_path_input,
+                0, 0, 1, 2,
+            )
+            self._orfix_grid.addWidget(
+                self.choose_orfix_button,
+                1, 0,
+            )
+            self._orfix_grid.addWidget(
+                self.clear_orfix_button,
+                1, 1,
+            )
+            self._orfix_grid.setColumnStretch(
+                0, 1
+            )
+            self._orfix_grid.setColumnStretch(
+                1, 1
+            )
+
+            self._hash_tool_grid.addWidget(
+                self.hash_tool_path_input,
+                0, 0, 1, 2,
+            )
+            self._hash_tool_grid.addWidget(
+                self.choose_hash_tool_button,
+                1, 0,
+            )
+            self._hash_tool_grid.addWidget(
+                self.clear_hash_tool_button,
+                1, 1,
+            )
+            self._hash_tool_grid.setColumnStretch(
+                0, 1
+            )
+            self._hash_tool_grid.setColumnStretch(
+                1, 1
             )
 
             self._cache_path_grid.addWidget(
@@ -592,6 +765,38 @@ class GlobalSettingsPage(QWidget):
             )
             self._update_form.setRowWrapPolicy(
                 QFormLayout.RowWrapPolicy.DontWrapRows
+            )
+
+            self._orfix_grid.addWidget(
+                self.orfix_path_input,
+                0, 0,
+            )
+            self._orfix_grid.addWidget(
+                self.choose_orfix_button,
+                0, 1,
+            )
+            self._orfix_grid.addWidget(
+                self.clear_orfix_button,
+                0, 2,
+            )
+            self._orfix_grid.setColumnStretch(
+                0, 1
+            )
+
+            self._hash_tool_grid.addWidget(
+                self.hash_tool_path_input,
+                0, 0,
+            )
+            self._hash_tool_grid.addWidget(
+                self.choose_hash_tool_button,
+                0, 1,
+            )
+            self._hash_tool_grid.addWidget(
+                self.clear_hash_tool_button,
+                0, 2,
+            )
+            self._hash_tool_grid.setColumnStretch(
+                0, 1
             )
 
             self._cache_path_grid.addWidget(
@@ -681,6 +886,22 @@ class GlobalSettingsPage(QWidget):
     def _connect_signals(
         self,
     ) -> None:
+        self.choose_orfix_button.clicked.connect(
+            self._choose_orfix_file
+        )
+
+        self.clear_orfix_button.clicked.connect(
+            self.orfix_path_input.clear
+        )
+
+        self.choose_hash_tool_button.clicked.connect(
+            self._choose_hash_tool_file
+        )
+
+        self.clear_hash_tool_button.clicked.connect(
+            self.hash_tool_path_input.clear
+        )
+
         self.choose_cache_button.clicked.connect(
             self._choose_cache_directory
         )
@@ -1003,6 +1224,78 @@ class GlobalSettingsPage(QWidget):
             ),
         )
 
+        self.tools_group.setTitle(
+            tr(
+                "settings.global.tools.title"
+            )
+        )
+
+        self.tools_description_label.setText(
+            tr(
+                "settings.global.tools.description"
+            )
+        )
+
+        self.orfix_label.setText(
+            tr(
+                "settings.global.tools.orfix"
+            )
+        )
+
+        self.orfix_description_label.setText(
+            tr(
+                "settings.global.tools.orfix_description"
+            )
+        )
+
+        self.hash_tool_label.setText(
+            tr(
+                "settings.global.tools.hash_checker"
+            )
+        )
+
+        self.hash_tool_description_label.setText(
+            tr(
+                "settings.global.tools.hash_checker_description"
+            )
+        )
+
+        self.choose_orfix_button.setText(
+            tr(
+                "settings.button.choose"
+            )
+        )
+
+        self.clear_orfix_button.setText(
+            tr(
+                "settings.button.clear"
+            )
+        )
+
+        self.choose_hash_tool_button.setText(
+            tr(
+                "settings.button.choose"
+            )
+        )
+
+        self.clear_hash_tool_button.setText(
+            tr(
+                "settings.button.clear"
+            )
+        )
+
+        self.orfix_path_input.setPlaceholderText(
+            tr(
+                "settings.global.tools.not_configured"
+            )
+        )
+
+        self.hash_tool_path_input.setPlaceholderText(
+            tr(
+                "settings.global.tools.not_configured"
+            )
+        )
+
         self.cache_group.setTitle(
             tr(
                 "settings.global.cache.title"
@@ -1149,6 +1442,23 @@ class GlobalSettingsPage(QWidget):
                 index
             )
 
+        self.tool_paths_settings = (
+            load_tool_paths_settings()
+        )
+
+        self.orfix_path_input.setText(
+            self.tool_paths_settings.orfix_path
+            or ""
+        )
+
+        self.hash_tool_path_input.setText(
+            (
+                self.tool_paths_settings
+                .conflict_hash_tool_path
+            )
+            or ""
+        )
+
         self.cache_settings = (
             load_gamebanana_image_cache_settings()
         )
@@ -1207,6 +1517,71 @@ class GlobalSettingsPage(QWidget):
                 update_channel
             )
 
+        orfix_path = (
+            self.orfix_path_input
+            .text()
+            .strip()
+        )
+
+        hash_tool_path = (
+            self.hash_tool_path_input
+            .text()
+            .strip()
+        )
+
+        for (
+            label_key,
+            configured_path,
+        ) in (
+            (
+                "settings.global.tools.orfix",
+                orfix_path,
+            ),
+            (
+                "settings.global.tools.hash_checker",
+                hash_tool_path,
+            ),
+        ):
+            if not configured_path:
+                continue
+
+            candidate = (
+                Path(
+                    configured_path
+                )
+                .expanduser()
+            )
+
+            if not candidate.is_file():
+                QMessageBox.warning(
+                    self,
+                    tr(
+                        "settings.global.tools.invalid.title"
+                    ),
+                    tr(
+                        "settings.global.tools.invalid.message",
+                        tool=tr(
+                            label_key
+                        ),
+                        path=configured_path,
+                    ),
+                )
+
+                return
+
+        tool_paths_settings = (
+            ToolPathsSettings(
+                orfix_path=(
+                    orfix_path
+                    or None
+                ),
+                conflict_hash_tool_path=(
+                    hash_tool_path
+                    or None
+                ),
+            )
+        )
+
         cache_path = (
             self.cache_path_input
             .text()
@@ -1237,6 +1612,14 @@ class GlobalSettingsPage(QWidget):
                 cache_settings
             )
 
+            save_tool_paths_settings(
+                tool_paths_settings
+            )
+
+            apply_tool_paths_to_environment(
+                tool_paths_settings
+            )
+
         except OSError as error:
             QMessageBox.critical(
                 self,
@@ -1255,6 +1638,10 @@ class GlobalSettingsPage(QWidget):
 
         self.cache_settings = (
             cache_settings
+        )
+
+        self.tool_paths_settings = (
+            tool_paths_settings
         )
 
         GameBananaPreviewImage.clear_memory_cache()
@@ -1284,6 +1671,44 @@ class GlobalSettingsPage(QWidget):
     # ========================================================
     # Cache path
     # ========================================================
+
+    def _choose_orfix_file(
+        self,
+    ) -> None:
+        selected, _filter = QFileDialog.getOpenFileName(
+            self,
+            tr(
+                "settings.global.tools.choose_orfix"
+            ),
+            self.orfix_path_input.text().strip(),
+            tr(
+                "settings.global.tools.file_filter"
+            ),
+        )
+
+        if selected:
+            self.orfix_path_input.setText(
+                selected
+            )
+
+    def _choose_hash_tool_file(
+        self,
+    ) -> None:
+        selected, _filter = QFileDialog.getOpenFileName(
+            self,
+            tr(
+                "settings.global.tools.choose_hash_checker"
+            ),
+            self.hash_tool_path_input.text().strip(),
+            tr(
+                "settings.global.tools.file_filter"
+            ),
+        )
+
+        if selected:
+            self.hash_tool_path_input.setText(
+                selected
+            )
 
     def _choose_cache_directory(
         self,
