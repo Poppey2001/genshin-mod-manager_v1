@@ -155,3 +155,106 @@ QToolTip {
     border: 1px solid #3a424d;
     padding: 6px;
 }
+
+/* ============================================================
+   ICON EDITOR DIALOG
+   ============================================================ */
+
+QDialog#iconEditorDialog {
+    background-color: #101319;
+    color: #e7e9ef;
+}
+
+QDialog#iconEditorDialog QLabel {
+    background-color: transparent;
+    color: #d9dee8;
+}
+
+QLabel#iconEditorTitle {
+    color: #f5f6f8;
+    font-size: 23px;
+    font-weight: 850;
+}
+
+QLabel#iconEditorDescription {
+    color: #8993a1;
+    font-size: 11px;
+}
+
+QWidget#iconEditorCanvas {
+    background-color: #171c23;
+    border: none;
+}
+
+QFrame#iconEditorControls {
+    background-color: #161b22;
+    border: 1px solid #2d3440;
+    border-radius: 11px;
+}
+
+QLabel#iconEditorZoomValue {
+    color: #b9adff;
+    font-weight: 850;
+}
+
+QLabel#iconEditorOutputInfo {
+    color: #737e8d;
+    font-size: 10px;
+}
+
+QPushButton#iconEditorToolButton,
+QPushButton#iconEditorSecondaryButton,
+QPushButton#iconEditorPrimaryButton {
+    min-height: 34px;
+    border-radius: 7px;
+    padding-left: 12px;
+    padding-right: 12px;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QPushButton#iconEditorToolButton,
+QPushButton#iconEditorSecondaryButton {
+    background-color: #20262e;
+    color: #d4dae3;
+    border: 1px solid #333b47;
+}
+
+QPushButton#iconEditorToolButton:hover,
+QPushButton#iconEditorSecondaryButton:hover {
+    background-color: #29313a;
+    color: #ffffff;
+    border-color: #495463;
+}
+
+QPushButton#iconEditorPrimaryButton {
+    background-color: #6651d7;
+    color: #ffffff;
+    border: 1px solid #7b66eb;
+    min-width: 120px;
+}
+
+QPushButton#iconEditorPrimaryButton:hover {
+    background-color: #7560ea;
+    border-color: #9180f5;
+}
+
+QSlider#iconEditorZoomSlider::groove:horizontal {
+    height: 6px;
+    background-color: #252c35;
+    border-radius: 3px;
+}
+
+QSlider#iconEditorZoomSlider::sub-page:horizontal {
+    background-color: #705ce2;
+    border-radius: 3px;
+}
+
+QSlider#iconEditorZoomSlider::handle:horizontal {
+    width: 16px;
+    height: 16px;
+    margin: -5px 0px;
+    background-color: #f0edff;
+    border: 2px solid #7865e8;
+    border-radius: 8px;
+}

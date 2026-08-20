@@ -721,5 +721,19 @@
     "icons.error.previous_remove": "Das vorherige eigene Icon konnte nicht entfernt werden.",
     "icons.error.save_failed": "Das eigene Icon konnte nicht gespeichert werden.",
     "icons.error.remove_failed": "Das eigene Icon konnte nicht entfernt werden.",
-    "icons.error.reset_failed": "Der Ordner mit den eigenen Icons konnte nicht zurückgesetzt werden."
+    "icons.error.reset_failed": "Der Ordner mit den eigenen Icons konnte nicht zurückgesetzt werden.",
+    "icons.editor.window_title": "Icon anpassen",
+    "icons.editor.title": "Icon anpassen",
+    "icons.editor.description": "Verschiebe und skaliere das Bild so, wie es später als Icon aussehen soll. Datei: {file}",
+    "icons.editor.zoom": "Zoom",
+    "icons.editor.fit": "Einpassen",
+    "icons.editor.fill": "Ausfüllen / Zuschneiden",
+    "icons.editor.center": "Zentrieren",
+    "icons.editor.rotate_left": "↶ 90°",
+    "icons.editor.rotate_right": "↷ 90°",
+    "icons.editor.reset": "Original wiederherstellen",
+    "icons.editor.save": "Icon speichern",
+    "icons.editor.output": "Ausgabe: {size} × {size} PNG · Transparenz bleibt erhalten.",
+    "icons.editor.error.encode": "Das bearbeitete Icon konnte nicht als PNG gespeichert werden.",
+    "icons.action.adjust": "Anpassen"
 }

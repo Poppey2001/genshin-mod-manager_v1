@@ -721,5 +721,19 @@
     "icons.error.previous_remove": "The previous custom icon could not be removed.",
     "icons.error.save_failed": "The custom icon could not be saved.",
     "icons.error.remove_failed": "The custom icon could not be removed.",
-    "icons.error.reset_failed": "The custom icon folder could not be reset."
+    "icons.error.reset_failed": "The custom icon folder could not be reset.",
+    "icons.editor.window_title": "Adjust icon",
+    "icons.editor.title": "Adjust icon",
+    "icons.editor.description": "Move and scale the image until it looks the way you want the final icon to appear. File: {file}",
+    "icons.editor.zoom": "Zoom",
+    "icons.editor.fit": "Fit",
+    "icons.editor.fill": "Fill / Crop",
+    "icons.editor.center": "Center",
+    "icons.editor.rotate_left": "↶ 90°",
+    "icons.editor.rotate_right": "↷ 90°",
+    "icons.editor.reset": "Restore original",
+    "icons.editor.save": "Save icon",
+    "icons.editor.output": "Output: {size} × {size} PNG · Transparency is preserved.",
+    "icons.editor.error.encode": "The edited icon could not be saved as a PNG.",
+    "icons.action.adjust": "Adjust"
 }

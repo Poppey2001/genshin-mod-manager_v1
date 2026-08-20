@@ -15,6 +15,7 @@ from PySide6.QtGui import (
     QIcon,
 )
 from PySide6.QtWidgets import (
+    QDialog,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -33,17 +34,22 @@ from app.i18n import (
     tr,
     translation_manager,
 )
+from app.dialogs.icon_editor_dialog import (
+    IconEditorDialog,
+)
 from app.services.component_resources import (
     resolve_component_path,
 )
 from app.services.icon_manager import (
     IconManagerError,
+    custom_icon_source_path,
     SUPPORTED_ICON_SUFFIXES,
     ensure_custom_icon_directory,
-    install_custom_icon,
+    install_custom_icon_data,
     is_custom_icon,
     reset_all_custom_icons,
     reset_custom_icon,
+    store_custom_icon_source,
     resolve_application_icon_path,
     resolve_game_icon_path,
     resolve_navigation_icon_path,
@@ -131,7 +137,7 @@ class IconCard(
             250
         )
         self.setMinimumHeight(
-            192
+            226
         )
 
         self.preview_label = QLabel(
@@ -176,6 +182,13 @@ class IconCard(
         )
         self.change_button.setObjectName(
             "iconManagerPrimaryButton"
+        )
+
+        self.adjust_button = QPushButton(
+            self
+        )
+        self.adjust_button.setObjectName(
+            "iconManagerSecondaryButton"
         )
 
         self.reset_button = QPushButton(
@@ -234,11 +247,15 @@ class IconCard(
             stretch=1,
         )
         buttons.addWidget(
-            self.reset_button
+            self.adjust_button,
+            stretch=1,
         )
 
         layout.addLayout(
             buttons
+        )
+        layout.addWidget(
+            self.reset_button
         )
 
     def _connect_signals(
@@ -246,6 +263,9 @@ class IconCard(
     ) -> None:
         self.change_button.clicked.connect(
             self._choose_icon
+        )
+        self.adjust_button.clicked.connect(
+            self._adjust_icon
         )
         self.reset_button.clicked.connect(
             self._reset_icon
@@ -275,10 +295,48 @@ class IconCard(
         if not selected:
             return
 
-        selected_icon = QIcon(
-            selected
+        self._edit_source_icon(
+            Path(selected),
+            remember_source=True,
         )
-        if selected_icon.isNull():
+
+    def _adjust_icon(
+        self,
+        _checked: bool = False,
+    ) -> None:
+        if not is_custom_icon(
+            self.category,
+            self.key,
+        ):
+            return
+
+        current = (
+            custom_icon_source_path(
+                self.category,
+                self.key,
+            )
+            or self.path_provider()
+        )
+        if current is None:
+            return
+
+        self._edit_source_icon(
+            current,
+            remember_source=False,
+        )
+
+    def _edit_source_icon(
+        self,
+        source: Path,
+        *,
+        remember_source: bool,
+    ) -> None:
+        try:
+            editor = IconEditorDialog(
+                source_path=source,
+                parent=self,
+            )
+        except (OSError, ValueError, RuntimeError):
             QMessageBox.warning(
                 self,
                 tr(
@@ -290,11 +348,26 @@ class IconCard(
             )
             return
 
+        if editor.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        png_data = editor.png_data()
+        if not png_data:
+            return
+
         try:
-            install_custom_icon(
+            if remember_source:
+                store_custom_icon_source(
+                    self.category,
+                    self.key,
+                    source,
+                )
+
+            install_custom_icon_data(
                 self.category,
                 self.key,
-                selected,
+                png_data,
+                suffix=".png",
             )
         except IconManagerError as error:
             QMessageBox.critical(
@@ -386,6 +459,9 @@ class IconCard(
             self.status_label
         )
 
+        self.adjust_button.setEnabled(
+            custom
+        )
         self.reset_button.setEnabled(
             custom
         )
@@ -400,6 +476,11 @@ class IconCard(
         self.change_button.setText(
             tr(
                 "icons.action.change"
+            )
+        )
+        self.adjust_button.setText(
+            tr(
+                "icons.action.adjust"
             )
         )
         self.reset_button.setText(
