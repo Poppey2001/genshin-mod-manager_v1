@@ -1,0 +1,210 @@
+/* ============================================================
+   Genshin Mod Manager - Conflicts Page
+   Component: qss-conflicts
+   Windows/Linux dark UI
+   ============================================================ */
+
+QWidget#conflictsPage {
+    background-color: #101319;
+    color: #e7e9ef;
+}
+
+QWidget#conflictsPage QLabel {
+    background: transparent;
+    color: #e7e9ef;
+}
+
+QLabel#pageTitle {
+    color: #f7f8fb;
+    font-size: 21px;
+    font-weight: 800;
+}
+
+QLabel#pageDescription {
+    color: #929baa;
+    font-size: 12px;
+}
+
+QLabel#conflictCount {
+    color: #9da6b5;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+QLabel#conflictsEmpty {
+    color: #8d96a4;
+    font-size: 13px;
+}
+
+QScrollArea#conflictsScroll,
+QScrollArea#conflictsScroll > QWidget,
+QScrollArea#conflictsScroll > QWidget > QWidget,
+QWidget#conflictsContent {
+    background-color: #101319;
+    border: none;
+}
+
+/* ------------------------------------------------------------
+   Conflict cards
+   ------------------------------------------------------------ */
+
+QFrame#conflictCard {
+    background-color: #181c23;
+    border: 1px solid #343b47;
+    border-left: 3px solid #d89b38;
+    border-radius: 11px;
+}
+
+QFrame#conflictCard:hover {
+    background-color: #1e232b;
+    border-color: #4a5361;
+    border-left-color: #e0a74d;
+}
+
+QLabel#conflictTitle {
+    color: #f5f6f8;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+QLabel#conflictType {
+    color: #e8c985;
+    background-color: #332a1c;
+    border: 1px solid #5c4928;
+    border-radius: 7px;
+    padding: 3px 8px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLabel#conflictMessage {
+    color: #b0b6c1;
+    font-size: 12px;
+}
+
+QLabel#conflictPath {
+    color: #a4adbb;
+    background-color: #11151a;
+    border: 1px solid #2b323b;
+    border-radius: 7px;
+    padding: 8px 10px;
+}
+
+QLabel#conflictHashStatus {
+    color: #c0c6d1;
+    font-weight: 700;
+}
+
+QLabel#conflictHash {
+    color: #929baa;
+    background-color: #11151a;
+    border: 1px solid #262d36;
+    border-radius: 6px;
+    padding: 6px 9px;
+}
+
+QLabel#conflictDuplicate {
+    color: #6fd69a;
+    font-weight: 700;
+}
+
+/* ------------------------------------------------------------
+   Buttons - avoid native white Windows buttons
+   ------------------------------------------------------------ */
+
+QWidget#conflictsPage QPushButton {
+    min-height: 34px;
+    padding: 0 14px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+QWidget#conflictsPage QPushButton#secondaryButton {
+    background-color: #202631;
+    color: #cbd1da;
+    border: 1px solid #343d49;
+}
+
+QWidget#conflictsPage QPushButton#secondaryButton:hover {
+    background-color: #29313c;
+    color: #ffffff;
+    border-color: #46515f;
+}
+
+QWidget#conflictsPage QPushButton#secondaryButton:pressed {
+    background-color: #1b212a;
+}
+
+QWidget#conflictsPage QPushButton#primaryButton {
+    background-color: #735ee8;
+    color: #ffffff;
+    border: 1px solid #8674ef;
+}
+
+QWidget#conflictsPage QPushButton#primaryButton:hover {
+    background-color: #806cf0;
+    border-color: #9a8af4;
+}
+
+QWidget#conflictsPage QPushButton#primaryButton:pressed {
+    background-color: #6754d1;
+}
+
+QWidget#conflictsPage QPushButton#warningActionButton {
+    background-color: #4a3920;
+    color: #f1d59a;
+    border: 1px solid #73572d;
+}
+
+QWidget#conflictsPage QPushButton#warningActionButton:hover {
+    background-color: #594426;
+    color: #fff1ca;
+    border-color: #906d37;
+}
+
+QWidget#conflictsPage QPushButton#dangerButton {
+    background-color: #3a2229;
+    color: #f38a99;
+    border: 1px solid #6a3945;
+}
+
+QWidget#conflictsPage QPushButton#dangerButton:hover {
+    background-color: #4b2932;
+    color: #ffb1bb;
+    border-color: #854654;
+}
+
+QWidget#conflictsPage QPushButton:disabled {
+    background-color: #1a1f26;
+    color: #626b78;
+    border-color: #292f38;
+}
+
+/* ------------------------------------------------------------
+   Scrollbar
+   ------------------------------------------------------------ */
+
+QScrollBar:vertical {
+    background: #12161c;
+    width: 11px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background: #3a424f;
+    min-height: 28px;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #505b6b;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+    height: 0;
+}

@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "generated_at": "2026-08-20T07:50:31.720612+00:00",
+  "components": [
+    {
+      "id": "qss-library",
+      "version": "sha256-169bd2c178e12eac",
+      "kind": "qss",
+      "source": "files/styles/library.qss",
+      "target": "styles/library.qss",
+      "sha256": "169bd2c178e12eacd01a16fbdf353701e702734e1651ad838a71a110c3f7a711",
+      "size": 47611,
+      "platforms": [
+        "windows",
+        "linux"
+      ],
+      "min_app_version": "0",
+      "restart_required": true
+    },
+    {
+      "id": "qss-gamebanana",
+      "version": "sha256-4721f417d45b26f3",
+      "kind": "qss",
+      "source": "files/styles/gamebanana.qss",
+      "target": "styles/gamebanana.qss",
+      "sha256": "4721f417d45b26f3284e8ed3e10c0d6743d15ca823160652a503ae215dadfea1",
+      "size": 11031,
+      "platforms": [
+        "windows",
+        "linux"
+      ],
+      "min_app_version": "0",
+      "restart_required": true
+    },
+    {
+      "id": "qss-profiles",
+      "version": "sha256-aacfb16256816488",
+      "kind": "qss",
+      "source": "files/styles/profiles.qss",
+      "target": "styles/profiles.qss",
+      "sha256": "aacfb1625681648828ec761d58f34ff6407202d832da04f59e94a88933270577",
+      "size": 7447,
+      "platforms": [
+        "windows",
+        "linux"
+      ],
+      "min_app_version": "0",
+      "restart_required": true
+    },
+    {
+      "id": "qss-conflicts",
+      "version": "sha256-f900631fe81c635c",
+      "kind": "qss",
+      "source": "files/styles/conflicts.qss",
+      "target": "styles/conflicts.qss",
+      "sha256": "f900631fe81c635c6e782e854067b426f6609cac89316fb6e1dafa7be3944680",
+      "size": 4407,
+      "platforms": [
+        "windows",
+        "linux"
+      ],
+      "min_app_version": "0",
+      "restart_required": true
+    },
+    {
+      "id": "qss-icons",
+      "version": "sha256-ee16486c058447b7",
+      "kind": "qss",
+      "source": "files/styles/icons.qss",
+      "target": "styles/icons.qss",
+      "sha256": "ee16486c058447b7f103828403af952d8d55e19852d30b6c38513b42c99dbddc",
+      "size": 5215,
+      "platforms": [
+        "windows",
+        "linux"
+      ],
+      "min_app_version": "0",
+      "restart_required": true
+    },
+    {
+      "id": "qss-update-agent",
+      "version": "sha256-064559304203de7d",
+      "kind": "qss",
+      "source": "files/styles/update_agent.qss",
+      "target": "styles/update_agent.qss",
+      "sha256": "064559304203de7d4a556cadbefbd9f1917dc022add9881a153aff0b4c22e881",
+      "size": 3276,
+      "platforms": [
+        "windows",
+        "linux"
+      ],
+      "min_app_version": "0",
+      "restart_required": false
+    }
+  ]
+}
