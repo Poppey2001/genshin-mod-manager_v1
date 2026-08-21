@@ -4,6 +4,7 @@ import logging
 import os
 import ssl
 
+from functools import lru_cache
 from pathlib import Path
 
 from typing import Any
@@ -90,6 +91,7 @@ def tls_backend_name(
     )
 
 
+@lru_cache(maxsize=1)
 def create_https_context(
 ) -> ssl.SSLContext:
     """
@@ -180,11 +182,10 @@ def verified_urlopen(
     """
     Open HTTPS using a verified SSL context.
 
-    Kept as a tiny wrapper so all updater network paths use the same
-    certificate policy:
-    - GitHub API
-    - release asset downloads
-    - source ZIP fallback
+    Shared HTTPS wrapper for all GMM network paths.
+
+    This keeps certificate verification consistent for GitHub,
+    GameBanana API requests, preview images and downloads.
     """
 
     return urlopen(

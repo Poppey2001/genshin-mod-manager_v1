@@ -11,7 +11,10 @@ from urllib.parse import (
 
 from urllib.request import (
     Request,
-    urlopen,
+)
+
+from app.services.network_tls import (
+    verified_urlopen,
 )
 
 from PySide6.QtCore import (
@@ -92,7 +95,7 @@ class GameBananaPreviewImageWorker(
                 },
             )
 
-            with urlopen(
+            with verified_urlopen(
                 request,
                 timeout=self.timeout,
             ) as response:

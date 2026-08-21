@@ -22,7 +22,10 @@ from urllib.parse import (
 
 from urllib.request import (
     Request,
-    urlopen,
+)
+
+from app.services.network_tls import (
+    verified_urlopen,
 )
 
 from app.gamebanana.models import (
@@ -184,7 +187,7 @@ class GameBananaDownloader:
         )
 
         try:
-            with urlopen(
+            with verified_urlopen(
                 request,
                 timeout=self.timeout,
             ) as response:

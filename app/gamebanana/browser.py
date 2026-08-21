@@ -4,9 +4,10 @@ import json
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from app.gamebanana.client import GAMEBANANA_API_ROOT, GameBananaClient
+from app.services.network_tls import verified_urlopen
 from app.gamebanana.models import GameBananaBrowseResult, GameBananaMod
 
 
@@ -163,7 +164,7 @@ class GameBananaBrowserService:
             },
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:
+            with verified_urlopen(request, timeout=self.timeout) as response:
                 raw_data = response.read()
                 charset = response.headers.get_content_charset() or "utf-8"
         except HTTPError as error:
