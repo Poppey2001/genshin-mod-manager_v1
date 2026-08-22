@@ -1145,7 +1145,10 @@ class LibraryModListWidget(QFrame):
         search_term: str = "",
         character: object | None = None,
         mod_type: object | None = None,
+        category: object | None = None,
         status: object | None = None,
+        category_provider: Callable[[ModInfo], set[str]] | None = None,
+        category_names_provider: Callable[[ModInfo], tuple[str, ...]] | None = None,
     ) -> int:
         """
         Wendet die aktuellen Filter auf die Tabelle an.
@@ -1252,11 +1255,33 @@ class LibraryModListWidget(QFrame):
                 == str(mod_type).casefold()
             )
 
+            # Kategorie
+            category_ids: set[str] = set()
+            if category_provider is not None:
+                try:
+                    category_ids = set(category_provider(mod))
+                except Exception:
+                    category_ids = set()
+
+            if category is None:
+                matches_category = True
+            elif category == "__uncategorized__":
+                matches_category = not category_ids
+            else:
+                matches_category = str(category) in category_ids
+
             # Status
             matches_status = (
                 status is None
                 or row_status == status
             )
+
+            category_names: tuple[str, ...] = ()
+            if category_names_provider is not None:
+                try:
+                    category_names = tuple(category_names_provider(mod))
+                except Exception:
+                    category_names = ()
 
             # Suche
             searchable_text = " ".join(
@@ -1264,6 +1289,7 @@ class LibraryModListWidget(QFrame):
                     mod.name,
                     " ".join(mod.characters),
                     mod.mod_type or "",
+                    " ".join(category_names),
                     mod.relative_path or "",
                     str(mod.path),
                 )
@@ -1278,6 +1304,7 @@ class LibraryModListWidget(QFrame):
             row_visible = (
                 matches_character
                 and matches_mod_type
+                and matches_category
                 and matches_status
                 and matches_search
             )

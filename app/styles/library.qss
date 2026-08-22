@@ -2585,3 +2585,85 @@ QFrame#detailActionCard QPushButton,
 QPushButton#libraryCardAction {
     min-width: 0px;
 }
+
+/* ============================================================
+   Library categories
+   ============================================================ */
+
+QDialog#libraryCategoryDialog,
+QDialog#libraryCategoryAssignmentDialog {
+    background-color: #11151b;
+    color: #f5f7fb;
+}
+
+QDialog#libraryCategoryDialog QLabel#categoryDialogTitle,
+QDialog#libraryCategoryAssignmentDialog QLabel#categoryDialogTitle {
+    color: #ffffff;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+QDialog#libraryCategoryDialog QLabel#categoryDialogDescription,
+QDialog#libraryCategoryAssignmentDialog QLabel#categoryDialogDescription,
+QDialog#libraryCategoryAssignmentDialog QLabel#categoryEmptyLabel {
+    color: #9eabc0;
+}
+
+QDialog#libraryCategoryDialog QListWidget#categoryList,
+QDialog#libraryCategoryAssignmentDialog QListWidget#categoryAssignmentList {
+    background-color: #151a22;
+    color: #f2f5fa;
+    border: 1px solid #303846;
+    border-radius: 10px;
+    padding: 6px;
+    outline: 0;
+}
+
+QDialog#libraryCategoryDialog QListWidget#categoryList::item,
+QDialog#libraryCategoryAssignmentDialog QListWidget#categoryAssignmentList::item {
+    min-height: 34px;
+    padding: 5px 8px;
+    border-radius: 7px;
+}
+
+QDialog#libraryCategoryDialog QListWidget#categoryList::item:selected,
+QDialog#libraryCategoryAssignmentDialog QListWidget#categoryAssignmentList::item:selected {
+    background-color: #2b2450;
+    color: #ffffff;
+}
+
+QDialog#libraryCategoryDialog QPushButton,
+QDialog#libraryCategoryAssignmentDialog QPushButton {
+    min-height: 34px;
+    padding: 0 14px;
+    background-color: #1b222c;
+    color: #eef2f8;
+    border: 1px solid #343d4b;
+    border-radius: 8px;
+}
+
+QDialog#libraryCategoryDialog QPushButton:hover,
+QDialog#libraryCategoryAssignmentDialog QPushButton:hover {
+    background-color: #242d39;
+    border-color: #546174;
+}
+
+QDialog#libraryCategoryDialog QPushButton#primaryActionButton,
+QDialog#libraryCategoryAssignmentDialog QPushButton#primaryActionButton {
+    background-color: #6848d8;
+    border-color: #7b5ce5;
+    color: #ffffff;
+}
+
+QDialog#libraryCategoryDialog QPushButton#dangerButton {
+    background-color: #331c24;
+    border-color: #6f3345;
+    color: #ff9aad;
+}
+
+QDialog#libraryCategoryDialog QPushButton:disabled,
+QDialog#libraryCategoryAssignmentDialog QPushButton:disabled {
+    color: #697487;
+    background-color: #171c23;
+    border-color: #292f39;
+}

@@ -1439,7 +1439,10 @@ class LibraryGalleryWidget(
         self._search_term = ""
         self._character = None
         self._mod_type = None
+        self._category = None
         self._status = None
+        self._category_provider = None
+        self._category_names_provider = None
 
         self._operation_running = (
             False
@@ -1737,7 +1740,10 @@ class LibraryGalleryWidget(
         search_term: str = "",
         character=None,
         mod_type=None,
+        category=None,
         status=None,
+        category_provider=None,
+        category_names_provider=None,
     ) -> int:
         self._search_term = (
             search_term
@@ -1753,9 +1759,16 @@ class LibraryGalleryWidget(
             mod_type
         )
 
+        self._category = (
+            category
+        )
+
         self._status = (
             status
         )
+
+        self._category_provider = category_provider
+        self._category_names_provider = category_names_provider
 
         return self._apply_current_filters()
 
@@ -1810,6 +1823,28 @@ class LibraryGalleryWidget(
             )
 
             # ------------------------------------------------
+            # Category
+            # ------------------------------------------------
+
+            category_ids: set[str] = set()
+            if self._category_provider is not None:
+                try:
+                    category_ids = set(
+                        self._category_provider(mod)
+                    )
+                except Exception:
+                    category_ids = set()
+
+            if self._category is None:
+                category_matches = True
+            elif self._category == "__uncategorized__":
+                category_matches = not category_ids
+            else:
+                category_matches = (
+                    str(self._category) in category_ids
+                )
+
+            # ------------------------------------------------
             # Status
             # ------------------------------------------------
 
@@ -1818,6 +1853,15 @@ class LibraryGalleryWidget(
                 or card.state.value
                 == self._status
             )
+
+            category_names: tuple[str, ...] = ()
+            if self._category_names_provider is not None:
+                try:
+                    category_names = tuple(
+                        self._category_names_provider(mod)
+                    )
+                except Exception:
+                    category_names = ()
 
             # ------------------------------------------------
             # Search
@@ -1831,6 +1875,7 @@ class LibraryGalleryWidget(
                     ),
                     mod.mod_type
                     or "",
+                    " ".join(category_names),
                     mod.relative_path
                     or "",
                     str(
@@ -1848,6 +1893,7 @@ class LibraryGalleryWidget(
             visible = (
                 character_matches
                 and type_matches
+                and category_matches
                 and status_matches
                 and search_matches
             )

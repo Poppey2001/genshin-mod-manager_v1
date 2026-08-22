@@ -63,6 +63,8 @@ class ModDetailsPanel(
 
     gamebanana_id_requested = Signal()
 
+    category_requested = Signal()
+
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -90,6 +92,9 @@ class ModDetailsPanel(
         self._metadata_edit_enabled = (
             False
         )
+
+        self._category_edit_enabled = False
+        self._category_names: tuple[str, ...] = ()
 
         self.setObjectName(
             "detailsScroll"
@@ -157,6 +162,10 @@ class ModDetailsPanel(
             )
         )
 
+        self.categories_value = (
+            self._value()
+        )
+
         self.location_value = (
             self._value()
         )
@@ -197,6 +206,10 @@ class ModDetailsPanel(
         )
 
         self.gamebanana_id_caption = (
+            QLabel()
+        )
+
+        self.categories_caption = (
             QLabel()
         )
 
@@ -245,6 +258,10 @@ class ModDetailsPanel(
         )
 
         self.gamebanana_id_button = (
+            QPushButton()
+        )
+
+        self.category_button = (
             QPushButton()
         )
 
@@ -352,11 +369,16 @@ class ModDetailsPanel(
             "secondaryActionButton"
         )
 
+        self.category_button.setObjectName(
+            "secondaryActionButton"
+        )
+
         for button in (
             self.toggle_button,
             self.adopt_button,
             self.info_button,
             self.gamebanana_id_button,
+            self.category_button,
         ):
             button.setEnabled(
                 False
@@ -686,8 +708,8 @@ class ModDetailsPanel(
 
         info_grid.addWidget(
             create_field(
-                self.path_caption,
-                self.path_value,
+                self.categories_caption,
+                self.categories_value,
             ),
             5,
             0,
@@ -695,8 +717,23 @@ class ModDetailsPanel(
             2,
         )
 
+        info_grid.addWidget(
+            create_field(
+                self.path_caption,
+                self.path_value,
+            ),
+            6,
+            0,
+            1,
+            2,
+        )
+
         info_layout.addLayout(
             info_grid
+        )
+
+        info_layout.addWidget(
+            self.category_button
         )
 
         info_layout.addWidget(
@@ -809,6 +846,11 @@ class ModDetailsPanel(
             self.gamebanana_id_requested.emit()
         )
 
+        self.category_button.clicked.connect(
+            lambda _checked=False:
+            self.category_requested.emit()
+        )
+
     # ========================================================
     # Helpers
     # ========================================================
@@ -866,6 +908,7 @@ class ModDetailsPanel(
             self.character_caption,
             self.type_caption,
             self.gamebanana_id_caption,
+            self.categories_caption,
             self.location_caption,
             self.files_caption,
             self.ini_caption,
@@ -890,6 +933,7 @@ class ModDetailsPanel(
         )
 
         self._multiple_count = 0
+        self._category_names = ()
 
         self.preview_gallery.clear_preview()
 
@@ -927,6 +971,7 @@ class ModDetailsPanel(
                 count
             ),
         )
+        self._category_names = ()
 
         self.preview_gallery.clear_preview()
 
@@ -960,6 +1005,7 @@ class ModDetailsPanel(
         )
 
         self._multiple_count = 0
+        self._category_names = ()
 
         metadata = (
             load_mod_metadata(
@@ -990,6 +1036,8 @@ class ModDetailsPanel(
                 "common.unknown"
             )
         )
+
+        self._refresh_category_text()
 
         if (
             metadata.gamebanana_mod_id
@@ -1061,6 +1109,10 @@ class ModDetailsPanel(
             self._metadata_edit_enabled
         )
 
+        self.category_button.setEnabled(
+            self._category_edit_enabled
+        )
+
         self._set_status_style(
             state.value
         )
@@ -1088,6 +1140,40 @@ class ModDetailsPanel(
             and self._current_mod
             is not None
         )
+
+    def set_category_edit_enabled(
+        self,
+        enabled: bool,
+    ) -> None:
+        self._category_edit_enabled = bool(enabled)
+        self.category_button.setEnabled(
+            self._category_edit_enabled
+            and self._selection_mode == "mod"
+            and self._current_mod is not None
+        )
+
+    def set_categories(
+        self,
+        names,
+    ) -> None:
+        self._category_names = tuple(
+            str(name).strip()
+            for name in names
+            if str(name).strip()
+        )
+        self._refresh_category_text()
+
+    def _refresh_category_text(
+        self,
+    ) -> None:
+        if self._category_names:
+            self.categories_value.setText(
+                ", ".join(self._category_names)
+            )
+        else:
+            self.categories_value.setText(
+                tr("library.categories.none")
+            )
 
     # ========================================================
     # Übersetzung
@@ -1125,6 +1211,10 @@ class ModDetailsPanel(
             tr(
                 "library.details.gamebanana_id"
             )
+        )
+
+        self.categories_caption.setText(
+            tr("library.categories.details_caption")
         )
 
         self.location_caption.setText(
@@ -1206,6 +1296,14 @@ class ModDetailsPanel(
                     "set_gamebanana_id_tooltip"
                 )
             )
+        )
+
+        self.category_button.setText(
+            tr("library.categories.edit_for_mod")
+        )
+
+        self.category_button.setToolTip(
+            tr("library.categories.edit_for_mod_tooltip")
         )
 
         # ----------------------------------------------------
@@ -1347,6 +1445,8 @@ class ModDetailsPanel(
                 )
             )
 
+            self._refresh_category_text()
+
     # ========================================================
     # State Translation
     # ========================================================
@@ -1481,6 +1581,10 @@ class ModDetailsPanel(
             enabled
         )
 
+        self.category_button.setEnabled(
+            enabled
+        )
+
     def _clear_values(
         self,
     ) -> None:
@@ -1488,6 +1592,7 @@ class ModDetailsPanel(
             self.character_value,
             self.type_value,
             self.gamebanana_id_value,
+            self.categories_value,
             self.location_value,
             self.files_value,
             self.ini_value,

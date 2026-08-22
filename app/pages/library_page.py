@@ -11,6 +11,7 @@ from PySide6.QtCore import (
 
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QInputDialog,
@@ -82,6 +83,11 @@ from app.dialogs.library_bulk_confirmation import (
     confirm_bulk_action,
 )
 
+from app.dialogs.library_category_manager_dialog import (
+    LibraryCategoryManagerDialog,
+    LibraryModCategoryDialog,
+)
+
 from app.dialogs.library_import_picker import (
     choose_import_archives,
     choose_import_directory,
@@ -103,6 +109,10 @@ from app.dialogs.library_operation_dialogs import (
 
 from app.services.component_resources import (
     resolve_component_path,
+)
+
+from app.services.library_category_service import (
+    LibraryCategoryService,
 )
 
 from app.services.conflict_scanner import (
@@ -229,6 +239,10 @@ class LibraryPage(
                     .selected_game
                 ),
             )
+        )
+
+        self.category_service = (
+            LibraryCategoryService()
         )
 
         # ====================================================
@@ -621,6 +635,7 @@ class LibraryPage(
         self._build_ui()
 
         self._connect_signals()
+        self._refresh_category_filter_options()
 
         translation_manager.language_changed.connect(
             self._on_language_changed
@@ -1041,6 +1056,14 @@ class LibraryPage(
                 self._edit_selected_gamebanana_id
             )
 
+        if hasattr(
+            self.details_panel,
+            "category_requested",
+        ):
+            self.details_panel.category_requested.connect(
+                self._edit_selected_categories
+            )
+
         # Gallery cards
         self.gallery_widget.toggle_requested.connect(
             self._toggle_gallery_mod
@@ -1061,6 +1084,14 @@ class LibraryPage(
         self.gallery_details_panel.info_requested.connect(
             self._show_gallery_selected_mod_info
         )
+
+        if hasattr(
+            self.gallery_details_panel,
+            "category_requested",
+        ):
+            self.gallery_details_panel.category_requested.connect(
+                self._edit_gallery_selected_categories
+            )
 
         # View switch
         self.list_view_button.clicked.connect(
@@ -1093,6 +1124,14 @@ class LibraryPage(
         self.filter_bar.filters_changed.connect(
             self._apply_mod_filters
         )
+
+        if hasattr(
+            self.filter_bar,
+            "manage_categories_requested",
+        ):
+            self.filter_bar.manage_categories_requested.connect(
+                self._manage_library_categories
+            )
 
     # ========================================================
     # View
@@ -1198,18 +1237,29 @@ class LibraryPage(
             .selected_mods()
         )
 
-        self.details_panel.set_metadata_edit_enabled(
-            (
-                len(
-                    selected_mods
-                )
-                == 1
-            )
-            and not (
-                self.operation_state
-                .is_running()
-            )
+        can_edit_single = (
+            len(selected_mods) == 1
+            and not self.operation_state.is_running()
         )
+
+        self.details_panel.set_metadata_edit_enabled(
+            can_edit_single
+        )
+
+        if hasattr(
+            self.details_panel,
+            "set_category_edit_enabled",
+        ):
+            self.details_panel.set_category_edit_enabled(
+                can_edit_single
+            )
+
+        if len(selected_mods) == 1:
+            self.details_panel.set_categories(
+                self._category_names_for_mod(
+                    selected_mods[0]
+                )
+            )
 
         self.details_panel.retranslate_ui()
 
@@ -1235,6 +1285,13 @@ class LibraryPage(
             self.gallery_details_panel.toggle_button.setEnabled(
                 False
             )
+            if hasattr(
+                self.gallery_details_panel,
+                "set_category_edit_enabled",
+            ):
+                self.gallery_details_panel.set_category_edit_enabled(
+                    False
+                )
             return
 
         state = (
@@ -1254,6 +1311,13 @@ class LibraryPage(
             can_toggle
             and not running
         )
+        if hasattr(
+            self.gallery_details_panel,
+            "set_category_edit_enabled",
+        ):
+            self.gallery_details_panel.set_category_edit_enabled(
+                not running
+            )
 
     def _connect_gallery_card_selection_signals(
         self,
@@ -1350,6 +1414,18 @@ class LibraryPage(
             mod=mod,
             state=state,
         )
+
+        self.gallery_details_panel.set_categories(
+            self._category_names_for_mod(mod)
+        )
+
+        if hasattr(
+            self.gallery_details_panel,
+            "set_category_edit_enabled",
+        ):
+            self.gallery_details_panel.set_category_edit_enabled(
+                not self.operation_state.is_running()
+            )
 
         if hasattr(
             self.gallery_details_panel,
@@ -2313,6 +2389,7 @@ class LibraryPage(
         self.filter_bar.set_mods(
             result.mods
         )
+        self._refresh_category_filter_options()
 
         self._library_scan_completed = True
 
@@ -2342,6 +2419,11 @@ class LibraryPage(
             .selected_mod_type()
         )
 
+        category = (
+            self.filter_bar
+            .selected_category()
+        )
+
         status = (
             self.filter_bar
             .selected_status()
@@ -2353,7 +2435,10 @@ class LibraryPage(
                 search_term=search_term,
                 character=character,
                 mod_type=mod_type,
+                category=category,
                 status=status,
+                category_provider=self._category_ids_for_mod,
+                category_names_provider=self._category_names_for_mod,
             )
         )
 
@@ -2363,7 +2448,10 @@ class LibraryPage(
                 search_term=search_term,
                 character=character,
                 mod_type=mod_type,
+                category=category,
                 status=status,
+                category_provider=self._category_ids_for_mod,
+                category_names_provider=self._category_names_for_mod,
             )
         )
 
@@ -2527,6 +2615,18 @@ class LibraryPage(
                 mod=mod,
                 state=state,
             )
+
+            self.gallery_details_panel.set_categories(
+                self._category_names_for_mod(mod)
+            )
+
+            if hasattr(
+                self.gallery_details_panel,
+                "set_category_edit_enabled",
+            ):
+                self.gallery_details_panel.set_category_edit_enabled(
+                    not self.operation_state.is_running()
+                )
 
             if hasattr(
                 self.gallery_details_panel,
@@ -2749,6 +2849,136 @@ class LibraryPage(
         self.operation_status.set_status(
             result.message
         )
+
+    # ========================================================
+    # Library Categories
+    # ========================================================
+
+    def _category_mod_key(
+        self,
+        mod: ModInfo,
+    ) -> str:
+        relative = (
+            mod.relative_path
+            or Path(mod.path).name
+        )
+        return self.category_service.normalize_mod_key(
+            relative
+        )
+
+    def _category_ids_for_mod(
+        self,
+        mod: ModInfo,
+    ) -> set[str]:
+        try:
+            return set(
+                self.category_service.category_ids_for_mod(
+                    self.game_scope.game_id,
+                    self._category_mod_key(mod),
+                )
+            )
+        except Exception:
+            return set()
+
+    def _category_names_for_mod(
+        self,
+        mod: ModInfo,
+    ) -> tuple[str, ...]:
+        try:
+            return self.category_service.category_names_for_mod(
+                self.game_scope.game_id,
+                self._category_mod_key(mod),
+            )
+        except Exception:
+            return ()
+
+    def _refresh_category_filter_options(
+        self,
+    ) -> None:
+        categories = self.category_service.categories(
+            self.game_scope.game_id
+        )
+        self.filter_bar.set_categories(
+            tuple(
+                (category.id, category.name)
+                for category in categories
+            )
+        )
+
+    def _manage_library_categories(
+        self,
+    ) -> None:
+        dialog = LibraryCategoryManagerDialog(
+            service=self.category_service,
+            game_id=self.game_scope.game_id,
+            parent=self,
+        )
+        dialog.exec()
+        self._refresh_category_filter_options()
+        self._apply_mod_filters()
+        self._refresh_selection_ui()
+        self._refresh_gallery_category_details()
+
+    def _edit_categories_for_mod(
+        self,
+        mod: ModInfo | None,
+    ) -> None:
+        if mod is None:
+            return
+        if self.operation_state.is_running():
+            return
+
+        dialog = LibraryModCategoryDialog(
+            service=self.category_service,
+            game_id=self.game_scope.game_id,
+            mod_key=self._category_mod_key(mod),
+            mod_name=mod.name,
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        self._refresh_category_filter_options()
+        self._apply_mod_filters()
+        self._refresh_selection_ui()
+        self._refresh_gallery_category_details()
+        self.operation_status.set_status(
+            tr(
+                "library.categories.status_saved",
+                mod_name=mod.name,
+            )
+        )
+
+    def _edit_selected_categories(
+        self,
+    ) -> None:
+        self._edit_categories_for_mod(
+            self.mod_list_widget.selected_mod()
+        )
+
+    def _edit_gallery_selected_categories(
+        self,
+    ) -> None:
+        self._edit_categories_for_mod(
+            self._selected_gallery_mod()
+        )
+
+    def _refresh_gallery_category_details(
+        self,
+    ) -> None:
+        mod = self._selected_gallery_mod()
+        if mod is None:
+            return
+        self.gallery_details_panel.set_categories(
+            self._category_names_for_mod(mod)
+        )
+        if hasattr(
+            self.gallery_details_panel,
+            "set_category_edit_enabled",
+        ):
+            self.gallery_details_panel.set_category_edit_enabled(
+                not self.operation_state.is_running()
+            )
 
     # ========================================================
     # GameBanana-ID bearbeiten
@@ -3189,6 +3419,7 @@ class LibraryPage(
         self.filter_bar.set_mods(
             []
         )
+        self._refresh_category_filter_options()
 
         mods_directory = (
             self.game_scope

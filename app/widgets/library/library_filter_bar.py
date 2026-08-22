@@ -55,6 +55,7 @@ class LibraryFilterBar(QFrame):
     """
 
     filters_changed = Signal()
+    manage_categories_requested = Signal()
 
     def __init__(
         self,
@@ -73,8 +74,10 @@ class LibraryFilterBar(QFrame):
         self.search_input = QLineEdit()
         self.character_filter = QComboBox()
         self.mod_type_filter = QComboBox()
+        self.category_filter = QComboBox()
         self.status_filter = QComboBox()
 
+        self.manage_categories_button = QPushButton()
         self.reset_button = QPushButton()
 
         self._configure_widgets()
@@ -144,6 +147,24 @@ class LibraryFilterBar(QFrame):
             userData=None,
         )
 
+        self.category_filter.setObjectName(
+            "filterCombo"
+        )
+
+        self.category_filter.setMinimumWidth(
+            145
+        )
+
+        self.category_filter.addItem(
+            tr("library.filter.all_categories"),
+            userData=None,
+        )
+
+        self.category_filter.addItem(
+            tr("library.filter.uncategorized"),
+            userData="__uncategorized__",
+        )
+
         self.status_filter.setObjectName(
             "filterCombo"
         )
@@ -175,6 +196,10 @@ class LibraryFilterBar(QFrame):
                 userData=state.value,
             )
 
+        self.manage_categories_button.setObjectName(
+            "secondaryButton"
+        )
+
         self.reset_button.setObjectName(
             "secondaryButton"
         )
@@ -194,7 +219,34 @@ class LibraryFilterBar(QFrame):
         self._update_mod_type_options(
             mods
         )
-    
+
+    def set_categories(
+        self,
+        categories,
+    ) -> None:
+        """Refreshes the user-defined category filter options."""
+        selected_category = self.category_filter.currentData()
+        blocker = QSignalBlocker(self.category_filter)
+        self.category_filter.clear()
+        self.category_filter.addItem(
+            tr("library.filter.all_categories"),
+            userData=None,
+        )
+        self.category_filter.addItem(
+            tr("library.filter.uncategorized"),
+            userData="__uncategorized__",
+        )
+        for category_id, category_name in categories:
+            self.category_filter.addItem(
+                str(category_name),
+                userData=str(category_id),
+            )
+        index = self.category_filter.findData(selected_category)
+        self.category_filter.setCurrentIndex(
+            index if index >= 0 else 0
+        )
+        del blocker
+
     def _update_character_options(
         self,
         mods: list[ModInfo],
@@ -412,8 +464,16 @@ class LibraryFilterBar(QFrame):
             self._emit_filters_changed
         )
 
+        self.category_filter.currentIndexChanged.connect(
+            self._emit_filters_changed
+        )
+
         self.status_filter.currentIndexChanged.connect(
             self._emit_filters_changed
+        )
+
+        self.manage_categories_button.clicked.connect(
+            self.manage_categories_requested.emit
         )
 
         self.reset_button.clicked.connect(
@@ -437,6 +497,7 @@ class LibraryFilterBar(QFrame):
             self.search_input,
             self.character_filter,
             self.mod_type_filter,
+            self.category_filter,
             self.status_filter,
         )
 
@@ -450,6 +511,9 @@ class LibraryFilterBar(QFrame):
             0
         )
         self.mod_type_filter.setCurrentIndex(
+            0
+        )
+        self.category_filter.setCurrentIndex(
             0
         )
         self.status_filter.setCurrentIndex(
@@ -492,6 +556,14 @@ class LibraryFilterBar(QFrame):
 
         return str(value)
 
+    def selected_category(
+        self,
+    ) -> str | None:
+        value = self.category_filter.currentData()
+        if value is None:
+            return None
+        return str(value)
+
     def selected_status(
         self,
     ) -> str | None:
@@ -522,135 +594,94 @@ class LibraryFilterBar(QFrame):
     ) -> None:
         width = self.width()
 
-        if width < 620:
+        if width < 720:
             mode = "tight"
-        elif width < 920:
+        elif width < 1180:
             mode = "compact"
         else:
             mode = "wide"
 
-        if (
-            not force
-            and mode == self._responsive_mode
-        ):
+        if not force and mode == self._responsive_mode:
             return
 
         self._responsive_mode = mode
-        self.setProperty(
-            "responsiveMode",
-            mode,
-        )
+        self.setProperty("responsiveMode", mode)
 
         widgets = (
             self.search_input,
             self.character_filter,
             self.mod_type_filter,
+            self.category_filter,
             self.status_filter,
+            self.manage_categories_button,
             self.reset_button,
         )
-
         for widget in widgets:
-            self.filter_layout.removeWidget(
-                widget
-            )
+            self.filter_layout.removeWidget(widget)
 
-        for column in range(5):
-            self.filter_layout.setColumnStretch(
-                column,
-                0,
-            )
+        for column in range(7):
+            self.filter_layout.setColumnStretch(column, 0)
 
         if mode == "wide":
-            self.search_input.setMinimumWidth(280)
-            self.character_filter.setMinimumWidth(135)
-            self.mod_type_filter.setMinimumWidth(135)
-            self.status_filter.setMinimumWidth(125)
+            self.search_input.setMinimumWidth(260)
+            self.character_filter.setMinimumWidth(125)
+            self.mod_type_filter.setMinimumWidth(125)
+            self.category_filter.setMinimumWidth(145)
+            self.status_filter.setMinimumWidth(115)
 
-            self.filter_layout.addWidget(
-                self.search_input, 0, 0
-            )
-            self.filter_layout.addWidget(
-                self.character_filter, 0, 1
-            )
-            self.filter_layout.addWidget(
-                self.mod_type_filter, 0, 2
-            )
-            self.filter_layout.addWidget(
-                self.status_filter, 0, 3
-            )
-            self.filter_layout.addWidget(
-                self.reset_button, 0, 4
-            )
-            self.filter_layout.setColumnStretch(
-                0, 1
-            )
+            self.filter_layout.addWidget(self.search_input, 0, 0)
+            self.filter_layout.addWidget(self.character_filter, 0, 1)
+            self.filter_layout.addWidget(self.mod_type_filter, 0, 2)
+            self.filter_layout.addWidget(self.category_filter, 0, 3)
+            self.filter_layout.addWidget(self.status_filter, 0, 4)
+            self.filter_layout.addWidget(self.manage_categories_button, 0, 5)
+            self.filter_layout.addWidget(self.reset_button, 0, 6)
+            self.filter_layout.setColumnStretch(0, 1)
 
         elif mode == "compact":
             self.search_input.setMinimumWidth(0)
-            self.character_filter.setMinimumWidth(120)
-            self.mod_type_filter.setMinimumWidth(120)
-            self.status_filter.setMinimumWidth(110)
+            for widget in (
+                self.character_filter,
+                self.mod_type_filter,
+                self.category_filter,
+                self.status_filter,
+            ):
+                widget.setMinimumWidth(110)
 
-            self.filter_layout.addWidget(
-                self.search_input,
-                0, 0, 1, 4,
-            )
-            self.filter_layout.addWidget(
-                self.character_filter, 1, 0
-            )
-            self.filter_layout.addWidget(
-                self.mod_type_filter, 1, 1
-            )
-            self.filter_layout.addWidget(
-                self.status_filter, 1, 2
-            )
-            self.filter_layout.addWidget(
-                self.reset_button, 1, 3
-            )
-
-            for column in range(4):
-                self.filter_layout.setColumnStretch(
-                    column, 1
-                )
+            self.filter_layout.addWidget(self.search_input, 0, 0, 1, 6)
+            self.filter_layout.addWidget(self.character_filter, 1, 0)
+            self.filter_layout.addWidget(self.mod_type_filter, 1, 1)
+            self.filter_layout.addWidget(self.category_filter, 1, 2)
+            self.filter_layout.addWidget(self.status_filter, 1, 3)
+            self.filter_layout.addWidget(self.manage_categories_button, 1, 4)
+            self.filter_layout.addWidget(self.reset_button, 1, 5)
+            for column in range(6):
+                self.filter_layout.setColumnStretch(column, 1)
 
         else:
-            self.search_input.setMinimumWidth(0)
-            self.character_filter.setMinimumWidth(0)
-            self.mod_type_filter.setMinimumWidth(0)
-            self.status_filter.setMinimumWidth(0)
-
-            self.filter_layout.addWidget(
+            for widget in (
                 self.search_input,
-                0, 0, 1, 2,
-            )
-            self.filter_layout.addWidget(
-                self.character_filter, 1, 0
-            )
-            self.filter_layout.addWidget(
-                self.mod_type_filter, 1, 1
-            )
-            self.filter_layout.addWidget(
-                self.status_filter, 2, 0
-            )
-            self.filter_layout.addWidget(
-                self.reset_button, 2, 1
-            )
+                self.character_filter,
+                self.mod_type_filter,
+                self.category_filter,
+                self.status_filter,
+            ):
+                widget.setMinimumWidth(0)
 
-            self.filter_layout.setColumnStretch(
-                0, 1
-            )
-            self.filter_layout.setColumnStretch(
-                1, 1
-            )
+            self.filter_layout.addWidget(self.search_input, 0, 0, 1, 2)
+            self.filter_layout.addWidget(self.character_filter, 1, 0)
+            self.filter_layout.addWidget(self.mod_type_filter, 1, 1)
+            self.filter_layout.addWidget(self.category_filter, 2, 0)
+            self.filter_layout.addWidget(self.status_filter, 2, 1)
+            self.filter_layout.addWidget(self.manage_categories_button, 3, 0)
+            self.filter_layout.addWidget(self.reset_button, 3, 1)
+            self.filter_layout.setColumnStretch(0, 1)
+            self.filter_layout.setColumnStretch(1, 1)
 
-        self.folder_caption.setVisible(
-            mode != "tight"
-        )
-
+        self.folder_caption.setVisible(mode != "tight")
         style = self.style()
         style.unpolish(self)
         style.polish(self)
-
         self._refresh_path_display()
 
     def set_path_text(
@@ -711,6 +742,27 @@ class LibraryFilterBar(QFrame):
         self.reset_button.setText(
             tr("library.filter.reset")
         )
+
+        self.manage_categories_button.setText(
+            tr("library.filter.manage_categories")
+        )
+
+        category_blocker = QSignalBlocker(
+            self.category_filter
+        )
+        for index in range(self.category_filter.count()):
+            value = self.category_filter.itemData(index)
+            if value is None:
+                self.category_filter.setItemText(
+                    index,
+                    tr("library.filter.all_categories"),
+                )
+            elif value == "__uncategorized__":
+                self.category_filter.setItemText(
+                    index,
+                    tr("library.filter.uncategorized"),
+                )
+        del category_blocker
 
         character_blocker = QSignalBlocker(
             self.character_filter
