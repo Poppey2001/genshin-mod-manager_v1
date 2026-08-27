@@ -1,0 +1,345 @@
+/* ============================================================
+   PROFILES PAGE
+   ============================================================ */
+
+QWidget#profilesPage {
+    background-color: #101319;
+    color: #e7e9ef;
+}
+
+/* Windows fallback: every label stays readable even if a specific
+   object-name rule is missing or a native palette leaks through. */
+QWidget#profilesPage QLabel {
+    background-color: transparent;
+    color: #d9dee8;
+}
+
+QFrame#profilesEmptyState QLabel {
+    background-color: transparent;
+    color: #d9dee8;
+}
+
+QWidget#profilesPage QLabel#pageTitle {
+    background-color: transparent;
+    color: #f5f6f8;
+    font-size: 27px;
+    font-weight: 850;
+}
+
+QWidget#profilesPage QLabel#pageDescription {
+    background-color: transparent;
+    color: #838d9b;
+    font-size: 12px;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+
+QFrame#profilesHeaderActions {
+    background-color: #15191f;
+    border: 1px solid #292f38;
+    border-radius: 11px;
+}
+
+QPushButton#profilesRefreshButton,
+QPushButton#profilesNewButton {
+    min-height: 36px;
+    padding-left: 15px;
+    padding-right: 15px;
+    border-radius: 7px;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QPushButton#profilesRefreshButton {
+    background-color: #20262e;
+    color: #ccd2da;
+    border: 1px solid #303843;
+}
+
+QPushButton#profilesRefreshButton:hover {
+    background-color: #29313a;
+    color: #ffffff;
+    border-color: #424c59;
+}
+
+QPushButton#profilesNewButton {
+    min-width: 126px;
+    background-color: #6651d7;
+    color: #ffffff;
+    border: 1px solid #7b66eb;
+}
+
+QPushButton#profilesNewButton:hover {
+    background-color: #7560ea;
+    border-color: #9180f5;
+}
+
+/* ============================================================
+   SUMMARY
+   ============================================================ */
+
+QFrame#profilesSummary {
+    min-height: 58px;
+    background-color: #171c22;
+    border: 1px solid #2b323b;
+    border-left: 3px solid #7157e8;
+    border-radius: 11px;
+}
+
+QLabel#profilesSummaryTitle {
+    background-color: transparent;
+    color: #8b95a2;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLabel#profilesSummaryValue {
+    background-color: transparent;
+    color: #edf0f4;
+    font-size: 13px;
+    font-weight: 850;
+}
+
+QLabel#profilesSummaryCount {
+    min-width: 76px;
+    min-height: 28px;
+    padding-left: 10px;
+    padding-right: 10px;
+    background-color: #28233f;
+    color: #b9adff;
+    border: 1px solid #4b3f80;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 850;
+}
+
+/* ============================================================
+   SCROLL / CONTENT
+   ============================================================ */
+
+QScrollArea#profilesScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QScrollArea#profilesScrollArea > QWidget,
+QScrollArea#profilesScrollArea > QWidget > QWidget,
+QWidget#profilesCardsContent {
+    background-color: #101319;
+}
+
+/* ============================================================
+   EMPTY STATE
+   ============================================================ */
+
+QFrame#profilesEmptyState {
+    background-color: #14181e;
+    border: 1px solid #282e37;
+    border-radius: 12px;
+}
+
+QLabel#profilesEmptyIcon {
+    background-color: transparent;
+    color: #8067ff;
+    font-size: 42px;
+    font-weight: 900;
+}
+
+QLabel#profilesEmptyTitle {
+    background-color: transparent;
+    color: #edf1f4;
+    font-size: 17px;
+    font-weight: 850;
+}
+
+QLabel#profilesEmptyDescription {
+    background-color: transparent;
+    color: #7f8997;
+    font-size: 11px;
+}
+
+/* ============================================================
+   PROFILE CARD
+   ============================================================ */
+
+QFrame#profileCard {
+    min-height: 164px;
+    background-color: #181d24;
+    border: 1px solid #303641;
+    border-left: 3px solid #454d59;
+    border-radius: 11px;
+}
+
+QFrame#profileCard:hover {
+    background-color: #1c222a;
+    border-color: #3b4450;
+}
+
+QFrame#profileCard[active="true"] {
+    background-color: #1d1a2a;
+    border: 1px solid #4d4180;
+    border-left: 3px solid #8067ff;
+}
+
+QLabel#profileCardName {
+    background-color: transparent;
+    color: #f3f5f7;
+    font-size: 14px;
+    font-weight: 850;
+}
+
+QLabel#profileActiveBadge {
+    min-height: 22px;
+    padding-left: 9px;
+    padding-right: 9px;
+    background-color: #302955;
+    color: #bcb0ff;
+    border: 1px solid #56478f;
+    border-radius: 7px;
+    font-size: 9px;
+    font-weight: 850;
+}
+
+QLabel#profileCardStats {
+    background-color: transparent;
+    color: #b4bbc5;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+QLabel#profileCardUpdated {
+    background-color: transparent;
+    color: #737e8c;
+    font-size: 9px;
+}
+
+QPushButton#profileActivateButton,
+QPushButton#profileSecondaryButton,
+QPushButton#profileDeleteButton {
+    min-height: 32px;
+    padding-left: 12px;
+    padding-right: 12px;
+    border-radius: 7px;
+    font-size: 9px;
+    font-weight: 800;
+}
+
+QPushButton#profileActivateButton {
+    background-color: #6651d7;
+    color: #ffffff;
+    border: 1px solid #7b66eb;
+}
+
+QPushButton#profileActivateButton:hover {
+    background-color: #7560ea;
+    border-color: #9180f5;
+}
+
+QPushButton#profileSecondaryButton {
+    background-color: #20262e;
+    color: #ccd2da;
+    border: 1px solid #303843;
+}
+
+QPushButton#profileSecondaryButton:hover {
+    background-color: #29313a;
+    color: #ffffff;
+    border-color: #424c59;
+}
+
+QPushButton#profileDeleteButton {
+    background-color: #332026;
+    color: #ee929c;
+    border: 1px solid #5a3039;
+}
+
+QPushButton#profileDeleteButton:hover {
+    background-color: #47262e;
+    color: #ffadb6;
+    border-color: #733b46;
+}
+
+QWidget#profilesPage QPushButton:disabled {
+    background-color: #181d23;
+    color: #59616d;
+    border-color: #252c34;
+}
+
+/* ============================================================
+   OPERATION BAR
+   ============================================================ */
+
+QFrame#profilesOperationBar {
+    background-color: #15191f;
+    border: 1px solid #292f38;
+    border-radius: 10px;
+}
+
+QLabel#profilesOperationLabel {
+    background-color: transparent;
+    color: #c7cdd6;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QProgressBar#profilesOperationProgress {
+    min-height: 20px;
+    background-color: #101419;
+    color: #d9dde4;
+    border: 1px solid #303742;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 9px;
+    font-weight: 750;
+}
+
+QProgressBar#profilesOperationProgress::chunk {
+    background-color: #7157e8;
+    border-radius: 5px;
+}
+
+QPushButton#profilesCancelButton {
+    min-height: 32px;
+    padding-left: 12px;
+    padding-right: 12px;
+    background-color: #332026;
+    color: #ee929c;
+    border: 1px solid #5a3039;
+    border-radius: 7px;
+    font-size: 9px;
+    font-weight: 800;
+}
+
+QPushButton#profilesCancelButton:hover {
+    background-color: #47262e;
+    color: #ffadb6;
+    border-color: #733b46;
+}
+
+QScrollBar:vertical {
+    background-color: #101319;
+    width: 11px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #363d47;
+    border-radius: 5px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #48515e;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+}

@@ -1,0 +1,506 @@
+QWidget#gameBananaPage {
+    background-color: #101319;
+    color: #e7e9ef;
+}
+
+QWidget#gameBananaPage QLabel#pageTitle {
+    background-color: transparent;
+    color: #f5f6f8;
+    font-size: 27px;
+    font-weight: 850;
+}
+
+QWidget#gameBananaPage QLabel#pageDescription {
+    background-color: transparent;
+    color: #838d9b;
+    font-size: 11px;
+}
+
+QLabel#gameBananaGameBadge {
+    min-height: 36px;
+    padding-left: 14px;
+    padding-right: 14px;
+    background-color: #1d2130;
+    color: #c6bcff;
+    border: 1px solid #41376a;
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QFrame#gameBananaBrowseCard,
+QFrame#gameBananaDirectCard {
+    background-color: #171c22;
+    border: 1px solid #2b323b;
+    border-radius: 11px;
+}
+
+QLabel#gameBananaSectionTitle {
+    background-color: transparent;
+    color: #eef1f5;
+    font-size: 12px;
+    font-weight: 850;
+}
+
+QLabel#gameBananaHint {
+    background-color: transparent;
+    color: #77818f;
+    font-size: 9px;
+}
+
+QLabel#gameBananaBrowseStatus {
+    background-color: #20262e;
+    color: #949eab;
+    border: 1px solid #303843;
+    border-radius: 7px;
+    padding: 5px 9px;
+    font-size: 9px;
+    font-weight: 750;
+}
+
+QLineEdit#gameBananaSearchInput,
+QLineEdit#gameBananaReferenceInput {
+    min-height: 38px;
+    padding-left: 11px;
+    padding-right: 11px;
+    background-color: #11151a;
+    color: #e7eaef;
+    border: 1px solid #303742;
+    border-radius: 8px;
+    selection-background-color: #7157e8;
+}
+
+QLineEdit#gameBananaSearchInput:hover,
+QLineEdit#gameBananaReferenceInput:hover {
+    border-color: #414a56;
+}
+
+QLineEdit#gameBananaSearchInput:focus,
+QLineEdit#gameBananaReferenceInput:focus {
+    border-color: #8067ff;
+}
+
+QPushButton#gameBananaPrimaryButton {
+    min-height: 36px;
+    padding-left: 14px;
+    padding-right: 14px;
+    background-color: #6651d7;
+    color: #ffffff;
+    border: 1px solid #7b66eb;
+    border-radius: 7px;
+    font-size: 10px;
+    font-weight: 850;
+}
+
+QPushButton#gameBananaPrimaryButton:hover {
+    background-color: #7560ea;
+    border-color: #9180f5;
+}
+
+QPushButton#gameBananaSecondaryButton,
+QPushButton#gameBananaResultOpenButton {
+    min-height: 34px;
+    padding-left: 12px;
+    padding-right: 12px;
+    background-color: #20262e;
+    color: #ccd2da;
+    border: 1px solid #303843;
+    border-radius: 7px;
+    font-size: 10px;
+    font-weight: 750;
+}
+
+QPushButton#gameBananaSecondaryButton:hover,
+QPushButton#gameBananaResultOpenButton:hover {
+    background-color: #29313a;
+    color: #ffffff;
+    border-color: #424c59;
+}
+
+QPushButton#gameBananaDangerButton {
+    min-height: 32px;
+    padding-left: 12px;
+    padding-right: 12px;
+    background-color: #3d2026;
+    color: #ff9da7;
+    border: 1px solid #67313b;
+    border-radius: 7px;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QPushButton#gameBananaDangerButton:hover {
+    background-color: #512831;
+    border-color: #82404b;
+}
+
+QWidget#gameBananaPage QPushButton:disabled {
+    background-color: #181d23;
+    color: #59616d;
+    border-color: #252c34;
+}
+
+QSplitter#gameBananaSplitter {
+    background-color: #151920;
+    border: 1px solid #292f39;
+    border-radius: 12px;
+}
+
+QSplitter#gameBananaSplitter::handle {
+    background-color: #101319;
+    width: 8px;
+}
+
+QSplitter#gameBananaSplitter::handle:hover {
+    background-color: #30275b;
+}
+
+QFrame#gameBananaBrowserPanel {
+    background-color: #151920;
+    border: none;
+    border-radius: 11px;
+}
+
+QScrollArea#gameBananaResultsScroll,
+QScrollArea#gameBananaDetailsScroll {
+    background-color: #151920;
+    border: none;
+}
+
+QWidget#gameBananaResultsContent,
+QWidget#gameBananaDetailsContent,
+QScrollArea#gameBananaResultsScroll > QWidget,
+QScrollArea#gameBananaResultsScroll > QWidget > QWidget,
+QScrollArea#gameBananaDetailsScroll > QWidget,
+QScrollArea#gameBananaDetailsScroll > QWidget > QWidget {
+    background-color: #151920;
+}
+
+QFrame#gameBananaResultCard {
+    background-color: #1a1f27;
+    border: 1px solid #2c333e;
+    border-radius: 10px;
+}
+
+QFrame#gameBananaResultCard:hover {
+    background-color: #20262f;
+    border-color: #5b4d9e;
+}
+
+QLabel#gameBananaResultTitle {
+    background-color: transparent;
+    color: #f1f3f6;
+    font-size: 12px;
+    font-weight: 850;
+}
+
+QLabel#gameBananaResultMeta {
+    background-color: transparent;
+    color: #8b95a3;
+    font-size: 9px;
+}
+
+QLabel#gameBananaResultId {
+    background-color: #252a33;
+    color: #a9b1be;
+    border: 1px solid #363d48;
+    border-radius: 6px;
+    padding: 4px 7px;
+    font-size: 8px;
+    font-weight: 750;
+}
+
+QFrame#gameBananaPagination {
+    background-color: #181d24;
+    border: none;
+    border-top: 1px solid #292f39;
+}
+
+QFrame#gameBananaModCard {
+    background-color: #181d24;
+    border: 1px solid #303641;
+    border-left: 3px solid #7157e8;
+    border-radius: 11px;
+}
+
+QLabel#gameBananaModTitle {
+    background-color: transparent;
+    color: #f5f6f8;
+    font-size: 15px;
+    font-weight: 850;
+}
+
+QLabel#gameBananaModId {
+    background-color: #252a33;
+    color: #b0b7c3;
+    border: 1px solid #373e49;
+    border-radius: 6px;
+    padding: 4px 7px;
+    font-size: 8px;
+    font-weight: 750;
+}
+
+QLabel#gameBananaModMeta {
+    background-color: transparent;
+    color: #929ca9;
+    font-size: 10px;
+}
+
+QLabel#gameBananaFieldLabel {
+    background-color: transparent;
+    color: #c9ced6;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QTextBrowser#gameBananaDescription {
+    background-color: #11151a;
+    color: #b2bac5;
+    border: 1px solid #2a313a;
+    border-radius: 8px;
+    padding: 9px;
+    font-size: 10px;
+}
+
+QComboBox#gameBananaFileCombo {
+    min-height: 36px;
+    padding-left: 10px;
+    padding-right: 10px;
+    background-color: #11151a;
+    color: #e2e6eb;
+    border: 1px solid #303742;
+    border-radius: 7px;
+}
+
+QComboBox#gameBananaFileCombo:hover {
+    border-color: #424b58;
+}
+
+QComboBox#gameBananaFileCombo QAbstractItemView {
+    background-color: #191e25;
+    color: #e2e6eb;
+    border: 1px solid #333a45;
+    selection-background-color: #342c5e;
+}
+
+QFrame#gameBananaOperationCard {
+    background-color: #161b22;
+    border: 1px solid #2c333d;
+    border-radius: 9px;
+}
+
+QLabel#gameBananaStatus {
+    background-color: transparent;
+    color: #9da6b3;
+    font-size: 9px;
+    font-weight: 650;
+}
+
+QProgressBar#gameBananaProgress {
+    min-height: 12px;
+    max-height: 12px;
+    background-color: #101419;
+    color: transparent;
+    border: 1px solid #2b323c;
+    border-radius: 6px;
+    text-align: center;
+}
+
+QProgressBar#gameBananaProgress::chunk {
+    background-color: #7157e8;
+    border-radius: 5px;
+}
+
+QWidget#gameBananaPage QScrollBar:vertical {
+    width: 10px;
+    background-color: #11151a;
+    margin: 0;
+}
+
+QWidget#gameBananaPage QScrollBar::handle:vertical {
+    min-height: 30px;
+    background-color: #343c47;
+    border-radius: 5px;
+}
+
+QWidget#gameBananaPage QScrollBar::handle:vertical:hover {
+    background-color: #4b5564;
+}
+
+QWidget#gameBananaPage QScrollBar::add-line:vertical,
+QWidget#gameBananaPage QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+
+/* ============================================================
+   MULTILANGUAGE SAFETY
+   ============================================================ */
+
+QWidget#gameBananaPage QPushButton {
+    min-width: 0px;
+}
+
+QLabel#gameBananaBrowseStatus {
+    min-height: 24px;
+}
+
+QPushButton#gameBananaResultOpenButton {
+    min-height: 36px;
+}
+
+QLabel#gameBananaModId {
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+
+/* ============================================================
+   PREVIEW GALLERY
+   ============================================================ */
+
+QFrame#gameBananaPreviewGallery {
+    background-color: transparent;
+    border: none;
+}
+
+QLabel#gameBananaPreviewTitle {
+    background-color: transparent;
+    color: #cfd4dc;
+    font-size: 10px;
+    font-weight: 850;
+}
+
+QLabel#gameBananaPreviewCounter {
+    background-color: #242a33;
+    color: #aeb6c2;
+    border: 1px solid #343c48;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 9px;
+    font-weight: 750;
+}
+
+QLabel#gameBananaPreviewMainImage {
+    min-height: 280px;
+    background-color: #0d1015;
+    color: #7f8997;
+    border: 1px solid #2b323c;
+    border-radius: 10px;
+    padding: 8px;
+    font-size: 10px;
+}
+
+QScrollArea#gameBananaPreviewThumbnailScroll {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#gameBananaPreviewThumbnailContainer,
+QScrollArea#gameBananaPreviewThumbnailScroll > QWidget,
+QScrollArea#gameBananaPreviewThumbnailScroll > QWidget > QWidget {
+    background-color: transparent;
+}
+
+QToolButton#gameBananaPreviewThumbnail {
+    background-color: #11151a;
+    color: #858f9d;
+    border: 1px solid #303742;
+    border-radius: 7px;
+    padding: 3px;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QToolButton#gameBananaPreviewThumbnail:hover {
+    background-color: #1d232b;
+    border-color: #5a4e91;
+}
+
+QToolButton#gameBananaPreviewThumbnail:checked,
+QToolButton#gameBananaPreviewThumbnail[selected="true"] {
+    background-color: #25203b;
+    border: 2px solid #8067ff;
+}
+
+
+/* ============================================================
+   PREVIEW LIGHTBOX
+   ============================================================ */
+
+QDialog#gameBananaPreviewLightbox {
+    background-color: #0d1015;
+    color: #eef1f5;
+}
+
+QLabel#gameBananaLightboxImage {
+    background-color: #090b0f;
+    border: 1px solid #2a313a;
+    border-radius: 9px;
+}
+
+QLabel#gameBananaLightboxCounter {
+    color: #aab2be;
+    font-size: 10px;
+    font-weight: 750;
+}
+
+
+/* ============================================================
+   UNIFIED CONTENT STATES
+   ============================================================ */
+
+QWidget#gameBananaBrowseStatePanel,
+QWidget#gameBananaDetailsStatePanel {
+    background-color: transparent;
+    border: none;
+    min-width: 0px;
+}
+
+QWidget#gameBananaDetailsStatePanel {
+    min-height: 220px;
+}
+
+
+/* ============================================================
+   RESPONSIVE POLISH V1
+   ============================================================ */
+
+QSplitter#gameBananaSplitter::handle:vertical {
+    height: 8px;
+    width: auto;
+}
+
+QWidget#gameBananaPage[responsiveMode="tight"] QLabel#pageTitle {
+    font-size: 24px;
+}
+
+QWidget#gameBananaPage[responsiveMode="tight"]
+QPushButton#gameBananaPrimaryButton,
+QWidget#gameBananaPage[responsiveMode="tight"]
+QPushButton#gameBananaSecondaryButton,
+QWidget#gameBananaPage[responsiveMode="tight"]
+QPushButton#gameBananaResultOpenButton {
+    padding-left: 9px;
+    padding-right: 9px;
+}
+
+
+/* ============================================================
+   WINDOWS / TRANSLATION BOX SIZING SAFETY V1
+   ============================================================ */
+
+QFrame#gameBananaBrowseCard,
+QFrame#gameBananaDirectCard,
+QFrame#gameBananaResultCard,
+QFrame#gameBananaModCard,
+QFrame#gameBananaOperationCard {
+    max-height: 16777215px;
+}
+
+QWidget#gameBananaPage QPushButton,
+QComboBox#gameBananaFileCombo,
+QLineEdit#gameBananaSearchInput,
+QLineEdit#gameBananaReferenceInput {
+    min-width: 0px;
+}
