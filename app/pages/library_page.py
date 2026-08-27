@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import (
     Qt,
+    QThreadPool,
     QTimer,
     Signal,
 )
@@ -88,6 +89,10 @@ from app.dialogs.library_category_manager_dialog import (
     LibraryModCategoryDialog,
 )
 
+from app.dialogs.library_mod_update_dialog import (
+    LibraryModUpdateDialog,
+)
+
 from app.dialogs.library_import_picker import (
     choose_import_archives,
     choose_import_directory,
@@ -113,6 +118,23 @@ from app.services.component_resources import (
 
 from app.services.library_category_service import (
     LibraryCategoryService,
+)
+
+from app.services.library_mod_update_service import (
+    LibraryModUpdateService,
+    ModUpdateResult,
+    ModUpdateStatus,
+)
+
+from app.services.library_mod_backup_service import (
+    LibraryModBackupService,
+    ModBackupRecord,
+)
+
+from app.services.library_mod_update_installer import (
+    LibraryModUpdateInstaller,
+    ModUpdateInstallResult,
+    ModUpdateRestoreResult,
 )
 
 from app.services.conflict_scanner import (
@@ -190,6 +212,15 @@ from app.workers.bulk_mod_worker import (
     BulkBatchResult,
 )
 
+from app.workers.mod_update_check_worker import (
+    ModUpdateCheckWorker,
+)
+
+from app.workers.mod_update_install_worker import (
+    ModUpdateInstallWorker,
+    ModUpdateRestoreWorker,
+)
+
 
 class LibraryPage(
     QWidget
@@ -244,6 +275,44 @@ class LibraryPage(
         self.category_service = (
             LibraryCategoryService()
         )
+
+        self.mod_update_service = (
+            LibraryModUpdateService()
+        )
+
+        self.mod_backup_service = (
+            LibraryModBackupService()
+        )
+
+        self.mod_update_installer = (
+            LibraryModUpdateInstaller(
+                update_service=self.mod_update_service,
+                backup_service=self.mod_backup_service,
+            )
+        )
+
+        self._mod_update_install_worker: (
+            ModUpdateInstallWorker
+            | ModUpdateRestoreWorker
+            | None
+        ) = None
+
+        self._mod_update_dialog: (
+            LibraryModUpdateDialog
+            | None
+        ) = None
+
+        self._mod_update_needs_rescan = False
+
+        self._mod_update_results: dict[
+            str,
+            ModUpdateResult,
+        ] = {}
+
+        self._mod_update_worker: (
+            ModUpdateCheckWorker
+            | None
+        ) = None
 
         # ====================================================
         # Gemeinsamer ModManager
@@ -1131,6 +1200,14 @@ class LibraryPage(
         ):
             self.filter_bar.manage_categories_requested.connect(
                 self._manage_library_categories
+            )
+
+        if hasattr(
+            self.filter_bar,
+            "check_updates_requested",
+        ):
+            self.filter_bar.check_updates_requested.connect(
+                self.check_mod_updates
             )
 
     # ========================================================
@@ -2373,6 +2450,9 @@ class LibraryPage(
         self.mod_list_widget.set_mods(
             mods=result.mods,
             state_provider=state_provider,
+            update_status_provider=(
+                self._mod_update_status_for_mod
+            ),
         )
 
         # Neue Gallery-Card-Liste bedeutet auch eine neue Auswahl.
@@ -2382,6 +2462,9 @@ class LibraryPage(
         self.gallery_widget.set_mods(
             mods=result.mods,
             state_provider=state_provider,
+            update_status_provider=(
+                self._mod_update_status_for_mod
+            ),
         )
 
         self._connect_gallery_card_selection_signals()
@@ -2429,6 +2512,11 @@ class LibraryPage(
             .selected_status()
         )
 
+        update_status = (
+            self.filter_bar
+            .selected_update_status()
+        )
+
         list_visible = (
             self.mod_list_widget
             .apply_filters(
@@ -2437,8 +2525,12 @@ class LibraryPage(
                 mod_type=mod_type,
                 category=category,
                 status=status,
+                update_status=update_status,
                 category_provider=self._category_ids_for_mod,
                 category_names_provider=self._category_names_for_mod,
+                update_status_provider=(
+                    self._mod_update_status_for_mod
+                ),
             )
         )
 
@@ -2450,8 +2542,12 @@ class LibraryPage(
                 mod_type=mod_type,
                 category=category,
                 status=status,
+                update_status=update_status,
                 category_provider=self._category_ids_for_mod,
                 category_names_provider=self._category_names_for_mod,
+                update_status_provider=(
+                    self._mod_update_status_for_mod
+                ),
             )
         )
 
@@ -2851,6 +2947,449 @@ class LibraryPage(
         )
 
     # ========================================================
+    # GameBanana Mod Updates
+    # ========================================================
+
+    def _mod_update_key(
+        self,
+        mod: ModInfo,
+    ) -> str:
+        try:
+            return self.mod_update_service.mod_key(mod)
+        except Exception:
+            return str(mod.path)
+
+    def _mod_update_result_for_mod(
+        self,
+        mod: ModInfo,
+    ) -> ModUpdateResult:
+        key = self._mod_update_key(mod)
+        cached = self._mod_update_results.get(key)
+        if cached is not None:
+            return cached
+
+        result = self.mod_update_service.cached_result(
+            game_id=self.game_scope.game_id,
+            mod=mod,
+        )
+        self._mod_update_results[key] = result
+        return result
+
+    def _mod_update_status_for_mod(
+        self,
+        mod: ModInfo,
+    ) -> str:
+        return self._mod_update_result_for_mod(mod).status.value
+
+    def _refresh_mod_update_ui(self) -> None:
+        self.mod_list_widget.refresh_update_statuses(
+            self._mod_update_status_for_mod
+        )
+        self.gallery_widget.refresh_update_statuses(
+            self._mod_update_status_for_mod
+        )
+        self._apply_mod_filters()
+
+    def check_mod_updates(
+        self,
+        _checked: bool = False,
+    ) -> None:
+        if self._mod_update_install_worker is not None:
+            QMessageBox.information(
+                self,
+                tr("library.mod_updates.dialog.title"),
+                tr("library.mod_updates.operation.busy"),
+            )
+            return
+
+        if self._mod_update_worker is not None:
+            self._mod_update_worker.cancel()
+            self.filter_bar.check_updates_button.setEnabled(False)
+            self.operation_status.set_status(
+                tr("library.mod_updates.cancelling")
+            )
+            return
+
+        if self.operation_state.is_running():
+            QMessageBox.information(
+                self,
+                tr("library.mod_updates.dialog.title"),
+                tr("library.mod_updates.busy"),
+            )
+            return
+
+        mods = tuple(self._last_scanned_mods)
+        if not mods:
+            QMessageBox.information(
+                self,
+                tr("library.mod_updates.dialog.title"),
+                tr("library.mod_updates.no_mods"),
+            )
+            return
+
+        worker = ModUpdateCheckWorker(
+            service=self.mod_update_service,
+            game_id=self.game_scope.game_id,
+            mods=mods,
+        )
+        self._mod_update_worker = worker
+
+        worker.signals.progress.connect(
+            self._on_mod_update_progress
+        )
+        worker.signals.result.connect(
+            self._on_mod_update_result
+        )
+        worker.signals.finished.connect(
+            self._on_mod_update_finished
+        )
+        worker.signals.failed.connect(
+            self._on_mod_update_failed
+        )
+        worker.signals.cancelled.connect(
+            self._on_mod_update_cancelled
+        )
+
+        self.filter_bar.set_update_check_running(True)
+        self.operation_status.set_status(
+            tr("library.mod_updates.checking")
+        )
+        QThreadPool.globalInstance().start(worker)
+
+    def _on_mod_update_progress(
+        self,
+        current: int,
+        total: int,
+        mod_name: str,
+    ) -> None:
+        self.operation_status.set_status(
+            tr(
+                "library.mod_updates.progress",
+                current=current,
+                total=total,
+                mod_name=mod_name,
+            )
+        )
+
+    def _on_mod_update_result(
+        self,
+        result: object,
+    ) -> None:
+        if not isinstance(result, ModUpdateResult):
+            return
+        if result.game_id != self.game_scope.game_id:
+            return
+        self._mod_update_results[result.mod_key] = result
+
+    def _finish_mod_update_check(self) -> None:
+        self._mod_update_worker = None
+        self.filter_bar.set_update_check_running(False)
+        self._refresh_mod_update_ui()
+
+    def _on_mod_update_finished(
+        self,
+        results: object,
+    ) -> None:
+        if self._mod_update_worker is None:
+            return
+        self._finish_mod_update_check()
+
+        typed_results = tuple(
+            result
+            for result in (results or ())
+            if isinstance(result, ModUpdateResult)
+        )
+        updates = sum(
+            result.status == ModUpdateStatus.UPDATE_AVAILABLE
+            for result in typed_results
+        )
+        linked = sum(
+            result.gamebanana_mod_id is not None
+            for result in typed_results
+        )
+
+        self.operation_status.set_status(
+            tr(
+                "library.mod_updates.finished",
+                updates=updates,
+                linked=linked,
+            )
+        )
+
+        dialog = LibraryModUpdateDialog(
+            results=typed_results,
+            mark_current_callback=(
+                self.mod_update_service.mark_current
+            ),
+            backups_provider=(
+                self._backups_for_update_result
+            ),
+            changed_callback=(
+                self._on_mod_update_marked_current
+            ),
+            parent=self,
+        )
+        dialog.install_requested.connect(
+            self._install_mod_update
+        )
+        dialog.restore_requested.connect(
+            self._restore_mod_update_backup
+        )
+        self._mod_update_dialog = dialog
+        self._mod_update_needs_rescan = False
+        dialog.exec()
+        self._mod_update_dialog = None
+
+        if self._mod_update_needs_rescan:
+            self._mod_update_needs_rescan = False
+            QTimer.singleShot(0, self.scan_mods)
+
+    def _on_mod_update_marked_current(
+        self,
+        result: ModUpdateResult,
+    ) -> None:
+        self._mod_update_results[result.mod_key] = result
+        self._refresh_mod_update_ui()
+
+    def _on_mod_update_failed(
+        self,
+        message: str,
+    ) -> None:
+        if self._mod_update_worker is None:
+            return
+        self._finish_mod_update_check()
+        QMessageBox.warning(
+            self,
+            tr("library.mod_updates.error.title"),
+            tr(
+                "library.mod_updates.error.message",
+                error=message,
+            ),
+        )
+
+    def _on_mod_update_cancelled(self) -> None:
+        if self._mod_update_worker is None:
+            return
+        self._finish_mod_update_check()
+        self.operation_status.set_status(
+            tr("library.mod_updates.cancelled")
+        )
+
+    def _find_mod_for_update_result(
+        self,
+        result: ModUpdateResult,
+    ) -> ModInfo | None:
+        for mod in self._last_scanned_mods:
+            if self._mod_update_key(mod) == result.mod_key:
+                return mod
+        return None
+
+    def _backups_for_update_result(
+        self,
+        result: ModUpdateResult,
+    ) -> tuple[ModBackupRecord, ...]:
+        try:
+            return self.mod_backup_service.list_backups(
+                game_id=result.game_id,
+                mod_key=result.mod_key,
+                mod_name=result.mod_name,
+            )
+        except Exception:
+            return ()
+
+    def _install_mod_update(
+        self,
+        result: object,
+    ) -> None:
+        if not isinstance(result, ModUpdateResult):
+            return
+        if self._mod_update_install_worker is not None:
+            return
+
+        mod = self._find_mod_for_update_result(result)
+        if mod is None:
+            QMessageBox.warning(
+                self,
+                tr("library.mod_updates.error.title"),
+                tr("library.mod_updates.install.mod_missing"),
+            )
+            return
+
+        answer = QMessageBox.question(
+            self,
+            tr("library.mod_updates.install.confirm.title"),
+            tr(
+                "library.mod_updates.install.confirm.message",
+                mod_name=result.mod_name,
+            ),
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        worker = ModUpdateInstallWorker(
+            installer=self.mod_update_installer,
+            result=result,
+            mod=mod,
+            mod_manager=self.mod_manager,
+        )
+        self._start_mod_update_operation(worker)
+
+    def _restore_mod_update_backup(
+        self,
+        result: object,
+        record: object,
+    ) -> None:
+        if not isinstance(result, ModUpdateResult):
+            return
+        if not isinstance(record, ModBackupRecord):
+            return
+        if self._mod_update_install_worker is not None:
+            return
+
+        mod = self._find_mod_for_update_result(result)
+        if mod is None:
+            return
+
+        answer = QMessageBox.question(
+            self,
+            tr("library.mod_updates.restore.confirm.title"),
+            tr(
+                "library.mod_updates.restore.confirm.message",
+                mod_name=result.mod_name,
+            ),
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+
+        worker = ModUpdateRestoreWorker(
+            installer=self.mod_update_installer,
+            result=result,
+            mod=mod,
+            record=record,
+            mod_manager=self.mod_manager,
+        )
+        self._start_mod_update_operation(worker)
+
+    def _start_mod_update_operation(
+        self,
+        worker: ModUpdateInstallWorker | ModUpdateRestoreWorker,
+    ) -> None:
+        self._mod_update_install_worker = worker
+        worker.signals.progress.connect(
+            self._on_mod_update_operation_progress
+        )
+        worker.signals.finished.connect(
+            self._on_mod_update_operation_finished
+        )
+        worker.signals.failed.connect(
+            self._on_mod_update_operation_failed
+        )
+        worker.signals.cancelled.connect(
+            self._on_mod_update_operation_cancelled
+        )
+        if self._mod_update_dialog is not None:
+            self._mod_update_dialog.set_busy(
+                True,
+                tr("library.mod_updates.progress.backup"),
+            )
+        QThreadPool.globalInstance().start(worker)
+
+    @staticmethod
+    def _mod_update_stage_key(stage: str) -> str:
+        return {
+            "backup": "library.mod_updates.progress.backup",
+            "download": "library.mod_updates.progress.download",
+            "extract": "library.mod_updates.progress.extract",
+            "stage": "library.mod_updates.progress.stage",
+            "replace": "library.mod_updates.progress.replace",
+            "sync": "library.mod_updates.progress.sync",
+            "tracking": "library.mod_updates.progress.tracking",
+            "restore": "library.mod_updates.progress.restore",
+            "finished": "library.mod_updates.progress.finished",
+        }.get(stage, "library.mod_updates.progress.working")
+
+    def _on_mod_update_operation_progress(
+        self,
+        current: int,
+        total: int,
+        stage: str,
+    ) -> None:
+        text = tr(self._mod_update_stage_key(stage))
+        if self._mod_update_dialog is not None:
+            self._mod_update_dialog.update_progress(
+                current,
+                total,
+                text,
+            )
+        self.operation_status.set_status(text)
+
+    def _on_mod_update_operation_finished(
+        self,
+        payload: object,
+    ) -> None:
+        self._mod_update_install_worker = None
+        updated: ModUpdateResult | None = None
+        status_text = tr("library.mod_updates.progress.finished")
+
+        if isinstance(payload, ModUpdateInstallResult):
+            updated = payload.update_result
+            status_text = tr(
+                "library.mod_updates.install.success",
+                mod_name=updated.mod_name,
+            )
+        elif isinstance(payload, ModUpdateRestoreResult):
+            updated = payload.update_result
+            status_text = tr(
+                "library.mod_updates.restore.success",
+                mod_name=updated.mod_name,
+            )
+
+        if updated is not None:
+            self._mod_update_results[updated.mod_key] = updated
+            self._mod_update_needs_rescan = True
+            self._refresh_mod_update_ui()
+            if self._mod_update_dialog is not None:
+                self._mod_update_dialog.replace_result(updated)
+
+        if self._mod_update_dialog is not None:
+            self._mod_update_dialog.set_busy(False, status_text)
+            self._mod_update_dialog.show_status(status_text)
+        self.operation_status.set_status(status_text)
+
+    def _on_mod_update_operation_failed(
+        self,
+        message: str,
+    ) -> None:
+        self._mod_update_install_worker = None
+        if self._mod_update_dialog is not None:
+            self._mod_update_dialog.set_busy(False)
+            self._mod_update_dialog.show_status(
+                tr("library.mod_updates.operation.failed_short")
+            )
+        QMessageBox.critical(
+            self,
+            tr("library.mod_updates.operation.failed.title"),
+            tr(
+                "library.mod_updates.operation.failed.message",
+                error=message,
+            ),
+        )
+
+    def _on_mod_update_operation_cancelled(self) -> None:
+        self._mod_update_install_worker = None
+        text = tr("library.mod_updates.operation.cancelled")
+        if self._mod_update_dialog is not None:
+            self._mod_update_dialog.set_busy(False, text)
+            self._mod_update_dialog.show_status(text)
+        self.operation_status.set_status(text)
+
+    # ========================================================
     # Library Categories
     # ========================================================
 
@@ -3072,6 +3611,18 @@ class LibraryPage(
             )
 
             return
+
+        try:
+            self.mod_update_service.reset_tracking(
+                game_id=self.game_scope.game_id,
+                mod=mod,
+            )
+            self._mod_update_results.pop(
+                self._mod_update_key(mod),
+                None,
+            )
+        except Exception:
+            pass
 
         state = (
             self.mod_action_controller
@@ -3362,6 +3913,7 @@ class LibraryPage(
         return not (
             self.operation_state
             .is_running()
+            or self._mod_update_install_worker is not None
         )
 
     def on_game_changed(
@@ -3371,6 +3923,7 @@ class LibraryPage(
         if (
             self.operation_state
             .is_running()
+            or self._mod_update_install_worker is not None
         ):
             return
 
@@ -3389,6 +3942,12 @@ class LibraryPage(
         )
 
         self._pending_gamebanana_imports.clear()
+
+        if self._mod_update_worker is not None:
+            self._mod_update_worker.cancel()
+            self._mod_update_worker = None
+        self._mod_update_results.clear()
+        self.filter_bar.set_update_check_running(False)
 
         self._library_scan_completed = False
 
@@ -3411,6 +3970,9 @@ class LibraryPage(
             state_provider=(
                 self.mod_action_controller
                 .get_state_for_path
+            ),
+            update_status_provider=(
+                self._mod_update_status_for_mod
             ),
         )
 

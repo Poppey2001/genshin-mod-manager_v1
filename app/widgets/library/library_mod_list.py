@@ -102,6 +102,7 @@ class LibraryModListWidget(QFrame):
         self.table = QTableWidget()
 
         self._toolbar_mode = ""
+        self._update_status_provider = None
 
         self._configure_buttons()
         self._configure_table()
@@ -557,6 +558,7 @@ class LibraryModListWidget(QFrame):
             [Path],
             ModState,
         ],
+        update_status_provider=None,
     ) -> None:
         """
         Ersetzt den gesamten Tabelleninhalt.
@@ -564,6 +566,8 @@ class LibraryModListWidget(QFrame):
         Der state_provider liefert den aktuellen
         Verwaltungsstatus eines Mods.
         """
+        self._update_status_provider = update_status_provider
+
         self.table.setSortingEnabled(
             False
         )
@@ -811,6 +815,33 @@ class LibraryModListWidget(QFrame):
         )
 
         # ----------------------------------------------------
+        # Mod update badge
+        # ----------------------------------------------------
+
+        update_status = None
+        if self._update_status_provider is not None:
+            try:
+                update_status = self._update_status_provider(mod)
+            except Exception:
+                update_status = None
+
+        update_badge = None
+        if update_status == "update_available":
+            update_badge = QLabel(
+                tr("library.mod_updates.badge")
+            )
+            update_badge.setObjectName(
+                "modUpdateBadge"
+            )
+            update_badge.setToolTip(
+                tr("library.mod_updates.badge_tooltip")
+            )
+            update_badge.setAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+                True,
+            )
+
+        # ----------------------------------------------------
         # Info Button
         # ----------------------------------------------------
 
@@ -851,6 +882,11 @@ class LibraryModListWidget(QFrame):
             name_label,
             stretch=1,
         )
+
+        if update_badge is not None:
+            layout.addWidget(
+                update_badge
+            )
 
         layout.addWidget(
             info_button
@@ -966,6 +1002,22 @@ class LibraryModListWidget(QFrame):
             3,
             container,
         )
+    def refresh_update_statuses(
+        self,
+        update_status_provider,
+    ) -> None:
+        self._update_status_provider = update_status_provider
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item is None:
+                continue
+            mod = item.data(MOD_OBJECT_ROLE)
+            if isinstance(mod, ModInfo):
+                self._set_mod_name_widget(
+                    row=row,
+                    mod=mod,
+                )
+
     def selected_mod(
         self,
     ) -> ModInfo | None:
@@ -1147,8 +1199,10 @@ class LibraryModListWidget(QFrame):
         mod_type: object | None = None,
         category: object | None = None,
         status: object | None = None,
+        update_status: object | None = None,
         category_provider: Callable[[ModInfo], set[str]] | None = None,
         category_names_provider: Callable[[ModInfo], tuple[str, ...]] | None = None,
+        update_status_provider: Callable[[ModInfo], str] | None = None,
     ) -> int:
         """
         Wendet die aktuellen Filter auf die Tabelle an.
@@ -1276,6 +1330,31 @@ class LibraryModListWidget(QFrame):
                 or row_status == status
             )
 
+            # Mod update status
+            row_update_status = None
+            if update_status_provider is not None:
+                try:
+                    row_update_status = update_status_provider(mod)
+                except Exception:
+                    row_update_status = None
+
+            if update_status is None:
+                matches_update_status = True
+            elif update_status == "current":
+                matches_update_status = row_update_status in {
+                    "current",
+                    "tracking_started",
+                }
+            elif update_status == "error":
+                matches_update_status = row_update_status in {
+                    "error",
+                    "no_download",
+                }
+            else:
+                matches_update_status = (
+                    row_update_status == update_status
+                )
+
             category_names: tuple[str, ...] = ()
             if category_names_provider is not None:
                 try:
@@ -1306,6 +1385,7 @@ class LibraryModListWidget(QFrame):
                 and matches_mod_type
                 and matches_category
                 and matches_status
+                and matches_update_status
                 and matches_search
             )
 

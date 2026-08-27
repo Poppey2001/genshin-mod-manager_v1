@@ -710,6 +710,7 @@ class LibraryModCard(
         *,
         mod: ModInfo,
         state: ModState,
+        update_status: str | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(
@@ -801,6 +802,15 @@ class LibraryModCard(
         self.status_label.setObjectName(
             "libraryCardState"
         )
+
+        self.update_badge = QLabel(
+            self
+        )
+        self.update_badge.setObjectName(
+            "modUpdateBadge"
+        )
+        self.update_badge.hide()
+        self.set_update_status(update_status)
 
         # ----------------------------------------------------
         # More menu
@@ -954,6 +964,14 @@ class LibraryModCard(
         )
 
         title_row.addWidget(
+            self.update_badge,
+            alignment=(
+                Qt.AlignmentFlag.AlignRight
+                | Qt.AlignmentFlag.AlignVCenter
+            ),
+        )
+
+        title_row.addWidget(
             self.more_button,
             alignment=(
                 Qt.AlignmentFlag.AlignRight
@@ -1097,6 +1115,20 @@ class LibraryModCard(
         self.meta_label.setToolTip(
             meta_text
         )
+
+    def set_update_status(
+        self,
+        status: str | None,
+    ) -> None:
+        visible = status == "update_available"
+        self.update_badge.setVisible(visible)
+        if visible:
+            self.update_badge.setText(
+                tr("library.mod_updates.badge")
+            )
+            self.update_badge.setToolTip(
+                tr("library.mod_updates.badge_tooltip")
+            )
 
     # ========================================================
     # State
@@ -1441,8 +1473,10 @@ class LibraryGalleryWidget(
         self._mod_type = None
         self._category = None
         self._status = None
+        self._update_status = None
         self._category_provider = None
         self._category_names_provider = None
+        self._update_status_provider = None
 
         self._operation_running = (
             False
@@ -1606,6 +1640,7 @@ class LibraryGalleryWidget(
             ]
         ),
         state_provider: StateProvider,
+        update_status_provider=None,
     ) -> None:
         self.clear()
 
@@ -1614,9 +1649,17 @@ class LibraryGalleryWidget(
                 mod.path
             )
 
+            update_status = None
+            if update_status_provider is not None:
+                try:
+                    update_status = update_status_provider(mod)
+                except Exception:
+                    update_status = None
+
             card = LibraryModCard(
                 mod=mod,
                 state=state,
+                update_status=update_status,
                 parent=self.content,
             )
 
@@ -1742,8 +1785,10 @@ class LibraryGalleryWidget(
         mod_type=None,
         category=None,
         status=None,
+        update_status=None,
         category_provider=None,
         category_names_provider=None,
+        update_status_provider=None,
     ) -> int:
         self._search_term = (
             search_term
@@ -1767,8 +1812,10 @@ class LibraryGalleryWidget(
             status
         )
 
+        self._update_status = update_status
         self._category_provider = category_provider
         self._category_names_provider = category_names_provider
+        self._update_status_provider = update_status_provider
 
         return self._apply_current_filters()
 
@@ -1854,6 +1901,30 @@ class LibraryGalleryWidget(
                 == self._status
             )
 
+            row_update_status = None
+            if self._update_status_provider is not None:
+                try:
+                    row_update_status = self._update_status_provider(mod)
+                except Exception:
+                    row_update_status = None
+
+            if self._update_status is None:
+                update_matches = True
+            elif self._update_status == "current":
+                update_matches = row_update_status in {
+                    "current",
+                    "tracking_started",
+                }
+            elif self._update_status == "error":
+                update_matches = row_update_status in {
+                    "error",
+                    "no_download",
+                }
+            else:
+                update_matches = (
+                    row_update_status == self._update_status
+                )
+
             category_names: tuple[str, ...] = ()
             if self._category_names_provider is not None:
                 try:
@@ -1895,6 +1966,7 @@ class LibraryGalleryWidget(
                 and type_matches
                 and category_matches
                 and status_matches
+                and update_matches
                 and search_matches
             )
 
@@ -1934,6 +2006,21 @@ class LibraryGalleryWidget(
         return len(
             visible_cards
         )
+
+    def refresh_update_statuses(
+        self,
+        update_status_provider,
+    ) -> None:
+        self._update_status_provider = update_status_provider
+        for card in self._cards:
+            status = None
+            if update_status_provider is not None:
+                try:
+                    status = update_status_provider(card.mod)
+                except Exception:
+                    status = None
+            card.set_update_status(status)
+        self._apply_current_filters()
 
     # ========================================================
     # Selection

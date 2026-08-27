@@ -1,1325 +1,398 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import shutil
-import subprocess
-import sys
-import tempfile
-import threading
 import zlib
-
-from collections.abc import (
-    Callable,
-)
-
-from dataclasses import (
-    dataclass,
-)
-
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
-from app.platform_support import (
-    resource_path,
+
+ProgressCallback = Callable[[int, int, str], None]
+CancelCallback = Callable[[], bool]
+
+# Manager metadata exists only on Active-Mods copies and must not make an
+# otherwise identical Library mod appear different.
+IGNORED_FILE_NAMES = frozenset(
+    {
+        ".gmm-managed.json",
+        ".xxmimm-managed.json",
+    }
 )
 
-
-GENSHIN_GAME_ID = (
-    "genshin-impact"
-)
-
-ORFIX_FILENAME = (
-    "orfixapplier_ver_4_2_e863a.exe"
-)
-
-RELEASE57_FILENAME = (
-    "57ReleaseVersion.exe"
-)
+CHUNK_SIZE = 1024 * 1024
 
 
-ProgressCallback = Callable[
-    [
-        int,
-        int,
-        str,
-    ],
-    None,
-]
+class DuplicateCheckError(RuntimeError):
+    """A duplicate scan could not be completed safely."""
 
 
-# ============================================================
-# Exceptions
-# ============================================================
-
-class ModDuplicateError(
-    RuntimeError
-):
-    pass
+class DuplicateCheckCancelled(DuplicateCheckError):
+    """The user cancelled the duplicate scan."""
 
 
-class NormalizerUnavailableError(
-    ModDuplicateError
-):
-    pass
-
-
-class NormalizerExecutionError(
-    ModDuplicateError
-):
-    pass
-
-
-class DuplicateDeleteError(
-    ModDuplicateError
-):
-    pass
-
-
-# ============================================================
-# Models
-# ============================================================
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class ModFingerprint:
+@dataclass(frozen=True, slots=True)
+class DirectoryFingerprint:
     crc32: str
-
     sha256: str
-
     file_count: int
+    total_bytes: int
 
-    total_size: int
 
-
-@dataclass(
-    frozen=True,
-    slots=True,
-)
+@dataclass(frozen=True, slots=True)
 class DuplicateCheckResult:
     source: Path
-
-    source_fingerprint: ModFingerprint
-
-    duplicate_path: Path | None
-
-    duplicate_fingerprint: (
-        ModFingerprint
-        | None
-    )
-
-    compared_count: int
-
-    normalized: bool
+    source_fingerprint: DirectoryFingerprint
+    duplicate_path: Path | None = None
+    duplicate_fingerprint: DirectoryFingerprint | None = None
 
     @property
-    def is_duplicate(
-        self,
-    ) -> bool:
-        duplicate = (
-            self.duplicate_fingerprint
-        )
-
-        if (
-            self.duplicate_path
-            is None
-            or duplicate is None
-        ):
-            return False
-
-        # CRC32 ist der schnelle Vorfilter.
-        if (
-            self.source_fingerprint.crc32
-            != duplicate.crc32
-        ):
-            return False
-
-        # SHA-256 entscheidet endgültig.
-        return (
-            self.source_fingerprint.sha256
-            == duplicate.sha256
-        )
+    def is_duplicate(self) -> bool:
+        return self.duplicate_path is not None
 
 
-@dataclass(
-    frozen=True,
-    slots=True,
-)
-class _TreeStamp:
-    file_count: int
+@dataclass(frozen=True, slots=True)
+class _Entry:
+    path: Path
+    relative: str
+    kind: str
+    size: int
+    link_target: str = ""
 
-    total_size: int
-
-    newest_mtime_ns: int
-
-
-# ============================================================
-# Service
-# ============================================================
 
 class ModDuplicateService:
-    """
-    Vergleicht Mods nach einer normalisierten Arbeitskopie.
+    """Pure-Python CRC32/SHA256 duplicate checker.
 
-    Genshin:
-        1. temporäre Kopie
-        2. ORFix
-        3. 57ReleaseVersion
-        4. CRC32
-        5. SHA-256
-
-    Andere Spiele:
-        1. temporäre Kopie
-        2. CRC32
-        3. SHA-256
-
-    Die Originaldateien werden dabei niemals verändert.
+    No ORFix, external SHA256 executable or normalizer is used here. That is
+    intentional: a duplicate check must work in Windows and Linux/AppImage
+    even when no optional repair tool is configured.
     """
 
-    def __init__(
+    def check_for_duplicate(
         self,
         *,
-        tool_timeout_seconds: int = 600,
-    ) -> None:
-        self.tool_timeout_seconds = (
-            max(
-                30,
-                int(
-                    tool_timeout_seconds
-                ),
-            )
-        )
-
-        self._cache: dict[
-            tuple[
-                str,
-                str,
-                _TreeStamp,
-            ],
-            ModFingerprint,
-        ] = {}
-
-        self._cache_lock = (
-            threading.Lock()
-        )
-
-    # ========================================================
-    # Public
-    # ========================================================
-
-    def find_duplicate(
-        self,
-        *,
-        source: Path,
-        library_paths: tuple[
-            Path,
-            ...,
-        ],
-        game_id: str,
-        progress_callback: (
-            ProgressCallback
-            | None
-        ) = None,
+        source: Path | str,
+        library_paths: Iterable[Path | str],
+        game_id: str | None = None,
+        progress_callback: ProgressCallback | None = None,
+        cancel_callback: CancelCallback | None = None,
     ) -> DuplicateCheckResult:
-        source = (
-            self._normalize_source_path(
-                source
-            )
+        del game_id  # reserved for future game-specific policies
+
+        source_path = self._validated_directory(source, label="source")
+        candidates: list[Path] = []
+        source_key = self._resolved_key(source_path)
+
+        for value in library_paths:
+            candidate = Path(value).expanduser().absolute()
+            if not candidate.is_dir() or candidate.is_symlink():
+                continue
+            if self._resolved_key(candidate) == source_key:
+                continue
+            candidates.append(candidate)
+
+        source_entries = self._entries(source_path)
+        candidate_entries = [
+            (candidate, self._entries(candidate))
+            for candidate in candidates
+        ]
+
+        total_work = len(source_entries) + sum(
+            len(entries)
+            for _candidate, entries in candidate_entries
+        )
+        total_work = max(total_work, 1)
+        current = 0
+
+        source_fingerprint, current = self._fingerprint_entries(
+            source_path,
+            source_entries,
+            current=current,
+            total=total_work,
+            progress_callback=progress_callback,
+            cancel_callback=cancel_callback,
         )
 
-        candidates = tuple(
-            self._normalize_source_path(
-                path
-            )
-            for path
-            in library_paths
-            if Path(
-                path
-            ).exists()
-        )
+        for candidate, entries in candidate_entries:
+            self._check_cancelled(cancel_callback)
 
-        total = len(
-            candidates
-        )
-
-        if progress_callback:
-            progress_callback(
-                0,
-                total,
-                source.name,
-            )
-
-        source_fingerprint = (
-            self.fingerprint_mod(
-                source=source,
-                game_id=game_id,
-            )
-        )
-
-        compared = 0
-
-        for (
-            index,
-            candidate,
-        ) in enumerate(
-            candidates,
-            start=1,
-        ):
-            # -----------------------------------------------
-            # Gleicher tatsächlicher Ordner?
-            # -----------------------------------------------
-
-            try:
-                if (
-                    candidate.resolve()
-                    == source.resolve()
-                ):
-                    continue
-
-            except OSError:
-                pass
-
-            if progress_callback:
-                progress_callback(
-                    index,
-                    total,
-                    candidate.name,
-                )
-
-            compared += 1
-
-            candidate_fingerprint = (
-                self.fingerprint_mod(
-                    source=candidate,
-                    game_id=game_id,
-                )
-            )
-
-            # ===============================================
-            # CRC32: schneller Vorfilter
-            # ===============================================
+            candidate_count = len(entries)
+            candidate_size = sum(entry.size for entry in entries)
 
             if (
-                source_fingerprint.crc32
-                != candidate_fingerprint.crc32
+                candidate_count != source_fingerprint.file_count
+                or candidate_size != source_fingerprint.total_bytes
             ):
+                current += candidate_count
+                if progress_callback is not None:
+                    progress_callback(
+                        min(current, total_work),
+                        total_work,
+                        candidate.name,
+                    )
                 continue
 
-            # ===============================================
-            # SHA-256: endgültiger Vergleich
-            # ===============================================
+            candidate_fingerprint, current = self._fingerprint_entries(
+                candidate,
+                entries,
+                current=current,
+                total=total_work,
+                progress_callback=progress_callback,
+                cancel_callback=cancel_callback,
+            )
 
             if (
-                source_fingerprint.sha256
-                != candidate_fingerprint.sha256
+                candidate_fingerprint.sha256 == source_fingerprint.sha256
+                and candidate_fingerprint.crc32 == source_fingerprint.crc32
             ):
-                continue
-
-            return DuplicateCheckResult(
-                source=source,
-                source_fingerprint=(
-                    source_fingerprint
-                ),
-                duplicate_path=(
-                    candidate
-                ),
-                duplicate_fingerprint=(
-                    candidate_fingerprint
-                ),
-                compared_count=(
-                    compared
-                ),
-                normalized=(
-                    game_id
-                    == GENSHIN_GAME_ID
-                ),
-            )
+                return DuplicateCheckResult(
+                    source=source_path,
+                    source_fingerprint=source_fingerprint,
+                    duplicate_path=candidate,
+                    duplicate_fingerprint=candidate_fingerprint,
+                )
 
         return DuplicateCheckResult(
-            source=source,
-            source_fingerprint=(
-                source_fingerprint
-            ),
-            duplicate_path=None,
-            duplicate_fingerprint=None,
-            compared_count=compared,
-            normalized=(
-                game_id
-                == GENSHIN_GAME_ID
-            ),
+            source=source_path,
+            source_fingerprint=source_fingerprint,
         )
 
-    # ========================================================
-    # Fingerprint
-    # ========================================================
-
-    def fingerprint_mod(
-        self,
-        *,
-        source: Path,
-        game_id: str,
-    ) -> ModFingerprint:
-        source = (
-            self._normalize_source_path(
-                source
-            )
-        )
-
-        stamp = (
-            self._tree_stamp(
-                source
-            )
-        )
-
-        cache_key = (
-            str(
-                source
-            ),
-            game_id,
-            stamp,
-        )
-
-        with self._cache_lock:
-            cached = (
-                self._cache.get(
-                    cache_key
-                )
-            )
-
-        if cached is not None:
-            return cached
-
-        with tempfile.TemporaryDirectory(
-            prefix=(
-                "xxmimm-fingerprint-"
-            )
-        ) as temp_directory:
-            temp_root = Path(
-                temp_directory
-            )
-
-            # -----------------------------------------------
-            # 57ReleaseVersion prüft, ob es innerhalb
-            # eines "Mods"-Pfades ausgeführt wird.
-            # -----------------------------------------------
-
-            mods_root = (
-                temp_root
-                / "Mods"
-            )
-
-            work_root = (
-                mods_root
-                / "ModUnderTest"
-            )
-
-            mods_root.mkdir(
-                parents=True,
-                exist_ok=True,
-            )
-
-            shutil.copytree(
-                source,
-                work_root,
-                symlinks=False,
-            )
-
-            # ===============================================
-            # Genshin-Normalisierung
-            # ===============================================
-
-            if (
-                game_id
-                == GENSHIN_GAME_ID
-            ):
-                self._run_genshin_normalizers(
-                    work_root
-                )
-
-            fingerprint = (
-                self._hash_tree(
-                    work_root
-                )
-            )
-
-        with self._cache_lock:
-            self._cache[
-                cache_key
-            ] = fingerprint
-
-        return fingerprint
-
-    # ========================================================
-    # ORFix + 57ReleaseVersion
-    # ========================================================
-
-    def _run_genshin_normalizers(
-        self,
-        work_root: Path,
-    ) -> None:
-        orfix = (
-            self._tool_path(
-                ORFIX_FILENAME
-            )
-        )
-
-        release57 = (
-            self._tool_path(
-                RELEASE57_FILENAME
-            )
-        )
-
-        # ===============================================
-        # 1. ORFix
-        # ===============================================
-
-        self._run_windows_tool(
-            executable=orfix,
-            arguments=(
-                "--nonverbose",
-                "--ignoredisabled",
-            ),
-            cwd=work_root,
-            display_name="ORFix",
-            stdin_text=(
-                "\n"
-                "\n"
-                "\n"
-                "\n"
-            ),
-        )
-
-        # ===============================================
-        # 2. 57ReleaseVersion
-        #
-        # --nolog:
-        #   keine interaktive Log-Abfrage
-        #
-        # -df:
-        #   disabled Dateien auslassen
-        # ===============================================
-
-        self._run_windows_tool(
-            executable=release57,
-            arguments=(
-                "--nolog",
-                "-df",
-            ),
-            cwd=work_root,
-            display_name=(
-                "57ReleaseVersion"
-            ),
-            stdin_text=(
-                "\n"
-                "\n"
-                "\n"
-                "\n"
-            ),
-        )
-
-    # ========================================================
-    # Tool Runner
-    # ========================================================
-
-    def _run_windows_tool(
-        self,
-        *,
-        executable: Path,
-        arguments: tuple[
-            str,
-            ...,
-        ],
-        cwd: Path,
-        display_name: str,
-        stdin_text: str | None = None,
-    ) -> None:
-        """
-        Startet ein Windows-Normalisierungstool.
-
-        Windows:
-            EXE direkt
-
-        Linux:
-            EXE über Wine
-
-        stdin_text kann für Tools verwendet werden,
-        die trotz CLI-Modus auf "Press Enter" warten.
-        """
-
-        # ====================================================
-        # EXE vorhanden?
-        # ====================================================
-
-        if not executable.is_file():
-            raise (
-                NormalizerUnavailableError(
-                    (
-                        f"{display_name} wurde "
-                        "nicht gefunden:\n"
-                        f"{executable}"
-                    )
-                )
-            )
-
-        # ====================================================
-        # Command
-        # ====================================================
-
-        command = (
-            self._build_tool_command(
-                executable
-            )
-        )
-
-        command.extend(
-            arguments
-        )
-
-        # ====================================================
-        # Environment
-        # ====================================================
-
-        env = os.environ.copy()
-
-        if not (
-            sys.platform.startswith(
-                "win"
-            )
-        ):
-            # Wine selbst soll möglichst ruhig bleiben.
-            env.setdefault(
-                "WINEDEBUG",
-                "-all",
-            )
-
-            # Verhindert einige unnötige Grafikinitialisierungen.
-            env.setdefault(
-                "WINEDLLOVERRIDES",
-                (
-                    "winemenubuilder.exe=d;"
-                )
-            )
-
-        # ====================================================
-        # Windows Flags
-        # ====================================================
-
-        creation_flags = 0
-
-        if (
-            sys.platform.startswith(
-                "win"
-            )
-        ):
-            creation_flags = getattr(
-                subprocess,
-                "CREATE_NO_WINDOW",
-                0,
-            )
-
-        # ====================================================
-        # Run
-        # ====================================================
-
-        try:
-            completed = subprocess.run(
-                command,
-                cwd=str(
-                    cwd
-                ),
-
-                # --------------------------------------------
-                # WICHTIG:
-                #
-                # Kein DEVNULL mehr.
-                #
-                # ORFix benutzt Python input() für
-                # "Press Enter".
-                # --------------------------------------------
-
-                input=(
-                    stdin_text
-                    if stdin_text is not None
-                    else ""
-                ),
-
-                stdout=(
-                    subprocess.PIPE
-                ),
-
-                stderr=(
-                    subprocess.STDOUT
-                ),
-
-                text=True,
-
-                encoding="utf-8",
-
-                errors="replace",
-
-                timeout=(
-                    self.tool_timeout_seconds
-                ),
-
-                check=False,
-
-                env=env,
-
-                creationflags=(
-                    creation_flags
-                ),
-            )
-
-        except subprocess.TimeoutExpired as error:
-            raise (
-                NormalizerExecutionError(
-                    (
-                        f"{display_name} hat "
-                        "das Zeitlimit überschritten."
-                    )
-                )
-            ) from error
-
-        except OSError as error:
-            raise (
-                NormalizerExecutionError(
-                    (
-                        f"{display_name} konnte "
-                        "nicht gestartet werden.\n\n"
-                        f"{error}"
-                    )
-                )
-            ) from error
-
-        # ====================================================
-        # Output
-        # ====================================================
-
-        output = (
-            completed.stdout
-            or ""
-        )
-
-        # ----------------------------------------------------
-        # Wine-Grafikwarnungen aus der sichtbaren
-        # Fehlermeldung entfernen.
-        # ----------------------------------------------------
-
-        output = (
-            self._clean_tool_output(
-                output
-            )
-        )
-
-        # ====================================================
-        # Success
-        # ====================================================
-
-        if (
-            completed.returncode
-            == 0
-        ):
-            return
-
-        # ====================================================
-        # Error
-        # ====================================================
-
-        if len(
-            output
-        ) > 4000:
-            output = output[
-                -4000:
-            ]
-
-        raise (
-            NormalizerExecutionError(
-                (
-                    f"{display_name} wurde mit "
-                    f"Exit-Code "
-                    f"{completed.returncode} beendet."
-                    "\n\n"
-                    f"{output}"
-                )
-            )
-        )
-        
-    @staticmethod
-    def _clean_tool_output(
-        output: str,
-    ) -> str:
-        """
-        Entfernt bekannte Wine/Mesa-Warnungen aus der
-        sichtbaren Programmausgabe.
-
-        Die Ausgabe des eigentlichen Fixers bleibt erhalten.
-        """
-
-        ignored_fragments = (
-            "libegl warning:",
-            "pci id for fd ",
-            "egl: failed to create dri2 screen",
-        )
-
-        cleaned_lines: list[
-            str
-        ] = []
-
-        for line in (
-            output.splitlines()
-        ):
-            stripped = (
-                line.strip()
-            )
-
-            lowered = (
-                stripped.casefold()
-            )
-
-            if any(
-                fragment
-                in lowered
-                for fragment
-                in ignored_fragments
-            ):
-                continue
-
-            cleaned_lines.append(
-                line
-            )
-
-        return (
-            "\n".join(
-                cleaned_lines
-            )
-            .strip()
-        )     
-    
-    def _build_tool_command(
-        self,
-        executable: Path,
-    ) -> list[
-        str
-    ]:
-        if (
-            sys.platform.startswith(
-                "win"
-            )
-        ):
-            return [
-                str(
-                    executable
-                )
-            ]
-
-        wine = (
-            shutil.which(
-                "wine"
-            )
-            or shutil.which(
-                "wine64"
-            )
-        )
-
-        if wine is None:
-            raise (
-                NormalizerUnavailableError(
-                    (
-                        "Für ORFix und "
-                        "57ReleaseVersion wird "
-                        "unter Linux Wine benötigt."
-                    )
-                )
-            )
-
-        return [
-            wine,
-            str(
-                executable
-            ),
-        ]
-
-    # ========================================================
-    # Hash
-    # ========================================================
-
-    def _hash_tree(
-        self,
-        root: Path,
-    ) -> ModFingerprint:
-        crc_value = 0
-
-        sha_value = (
-            hashlib.sha256()
-        )
-
-        file_count = 0
-
-        total_size = 0
-
-        preview_paths = (
-            self._metadata_preview_paths(
-                root
-            )
-        )
-
-        paths = [
-            path
-            for path
-            in root.rglob(
-                "*"
-            )
-            if path.is_file()
-        ]
-
-        paths.sort(
-            key=lambda path: (
-                path.relative_to(
-                    root
-                )
-                .as_posix()
-                .casefold()
-            )
-        )
-
-        for path in paths:
-            relative = (
-                path.relative_to(
-                    root
-                )
-                .as_posix()
-            )
-
-            if self._ignore_hash_file(
-                relative_path=relative,
-                preview_paths=(
-                    preview_paths
-                ),
-            ):
-                continue
-
-            try:
-                size = (
-                    path.stat()
-                    .st_size
-                )
-
-            except OSError as error:
-                raise ModDuplicateError(
-                    (
-                        "Eine Mod-Datei konnte "
-                        "nicht gelesen werden:\n"
-                        f"{path}\n\n"
-                        f"{error}"
-                    )
-                ) from error
-
-            # -----------------------------------------------
-            # Der relative Pfad gehört zum Fingerprint.
-            #
-            # Zwei Mods mit unterschiedlichen internen
-            # Dateinamen gelten damit nicht automatisch
-            # als identisch.
-            # -----------------------------------------------
-
-            header = (
-                relative.encode(
-                    "utf-8",
-                    errors="surrogatepass",
-                )
-                + b"\0"
-                + int(
-                    size
-                ).to_bytes(
-                    8,
-                    byteorder="little",
-                    signed=False,
-                )
-            )
-
-            crc_value = zlib.crc32(
-                header,
-                crc_value,
-            )
-
-            sha_value.update(
-                header
-            )
-
-            try:
-                with path.open(
-                    "rb"
-                ) as handle:
-                    while True:
-                        chunk = handle.read(
-                            1024
-                            * 1024
-                        )
-
-                        if not chunk:
-                            break
-
-                        crc_value = (
-                            zlib.crc32(
-                                chunk,
-                                crc_value,
-                            )
-                        )
-
-                        sha_value.update(
-                            chunk
-                        )
-
-            except OSError as error:
-                raise ModDuplicateError(
-                    (
-                        "Eine Mod-Datei konnte "
-                        "nicht gehasht werden:\n"
-                        f"{path}\n\n"
-                        f"{error}"
-                    )
-                ) from error
-
-            file_count += 1
-
-            total_size += size
-
-        return ModFingerprint(
-            crc32=(
-                f"{crc_value & 0xFFFFFFFF:08X}"
-            ),
-            sha256=(
-                sha_value.hexdigest()
-            ),
-            file_count=file_count,
-            total_size=total_size,
-        )
-
-    # ========================================================
-    # Dateien ignorieren
-    # ========================================================
-
-    @staticmethod
-    def _ignore_hash_file(
-        *,
-        relative_path: str,
-        preview_paths: set[
-            str
-        ],
-    ) -> bool:
-        normalized = (
-            relative_path
-            .replace(
-                "\\",
-                "/",
-            )
-        )
-
-        name = (
-            Path(
-                normalized
-            )
-            .name
-        )
-
-        lower_name = (
-            name.casefold()
-        )
-
-        # -----------------------------------------------
-        # Manager-Metadaten
-        # -----------------------------------------------
-
-        if lower_name in {
-            ".gmm-managed.json",
-            ".xxmimm-managed.json",
-            ".xxmimm-mod.json",
-            ".xxmimm-source.json",
-            ".ds_store",
-            "thumbs.db",
-        }:
-            return True
-
-        # -----------------------------------------------
-        # Vom Manager bekannte Preview-Datei
-        # -----------------------------------------------
-
-        if (
-            normalized.casefold()
-            in preview_paths
-        ):
-            return True
-
-        # -----------------------------------------------
-        # ORFix / ReleaseVersion Backups
-        # -----------------------------------------------
-
-        if (
-            lower_name.startswith(
-                "backup_orfix_applier_"
-            )
-        ):
-            return True
-
-        if (
-            lower_name.startswith(
-                "original_"
-            )
-        ):
-            return True
-
-        if (
-            lower_name
-            == "processing_log.txt"
-        ):
-            return True
-
-        return False
-
-    # ========================================================
-    # Preview-Metadata
-    # ========================================================
-
-    @staticmethod
-    def _metadata_preview_paths(
-        root: Path,
-    ) -> set[
-        str
-    ]:
-        metadata_path = (
-            root
-            / ".xxmimm-mod.json"
-        )
-
-        if not metadata_path.is_file():
-            return set()
-
-        try:
-            data = json.loads(
-                metadata_path.read_text(
-                    encoding="utf-8"
-                )
-            )
-
-        except (
-            OSError,
-            json.JSONDecodeError,
-        ):
-            return set()
-
-        if not isinstance(
-            data,
-            dict,
-        ):
-            return set()
-
-        value = data.get(
-            "preview_file"
-        )
-
-        if not isinstance(
-            value,
-            str,
-        ):
-            return set()
-
-        normalized = (
-            value.replace(
-                "\\",
-                "/",
-            )
-            .lstrip(
-                "/"
-            )
-            .casefold()
-        )
-
-        return {
-            normalized
-        }
-
-    # ========================================================
-    # Cache Stamp
-    # ========================================================
-
-    @staticmethod
-    def _tree_stamp(
-        root: Path,
-    ) -> _TreeStamp:
-        count = 0
-
-        size = 0
-
-        newest = 0
-
-        for path in root.rglob(
-            "*"
-        ):
-            if not path.is_file():
-                continue
-
-            try:
-                stat = (
-                    path.stat()
-                )
-
-            except OSError:
-                continue
-
-            count += 1
-
-            size += (
-                stat.st_size
-            )
-
-            newest = max(
-                newest,
-                stat.st_mtime_ns,
-            )
-
-        return _TreeStamp(
-            file_count=count,
-            total_size=size,
-            newest_mtime_ns=newest,
-        )
-
-    # ========================================================
-    # Löschen
-    # ========================================================
+    # Compatibility aliases for older workers / development builds.
+    def check_duplicate(self, **kwargs) -> DuplicateCheckResult:
+        return self.check_for_duplicate(**kwargs)
+
+    def check(self, **kwargs) -> DuplicateCheckResult:
+        return self.check_for_duplicate(**kwargs)
 
     def delete_confirmed_duplicate(
         self,
         *,
         result: DuplicateCheckResult,
-        active_root: Path,
+        active_root: Path | str,
     ) -> None:
-        if not (
-            result.is_duplicate
+        """Delete only the redundant Active-Mods source after re-verifying it.
+
+        The Library copy is never deleted. Both sides are hashed again directly
+        before deletion so a stale UI result cannot remove a changed folder.
+        """
+
+        if not result.is_duplicate or result.duplicate_path is None:
+            raise DuplicateCheckError("No confirmed duplicate is available.")
+
+        source = self._validated_directory(result.source, label="source")
+        library_copy = self._validated_directory(
+            result.duplicate_path,
+            label="library duplicate",
+        )
+        root = Path(active_root).expanduser().absolute()
+
+        if not root.is_dir():
+            raise DuplicateCheckError(
+                f"Active Mods directory does not exist: {root}"
+            )
+
+        if not self._is_within(source, root):
+            raise DuplicateCheckError(
+                "Refusing to delete a duplicate outside the Active Mods directory."
+            )
+
+        source_now = self._fingerprint_directory(source)
+        library_now = self._fingerprint_directory(library_copy)
+
+        if (
+            source_now.sha256 != library_now.sha256
+            or source_now.crc32 != library_now.crc32
         ):
-            raise DuplicateDeleteError(
-                (
-                    "Der Mod wurde nicht als "
-                    "SHA-256-Duplikat bestätigt."
-                )
-            )
-
-        source = (
-            result.source
-            .expanduser()
-            .absolute()
-        )
-
-        active_root = (
-            Path(
-                active_root
-            )
-            .expanduser()
-            .absolute()
-        )
-
-        try:
-            source.relative_to(
-                active_root
-            )
-
-        except ValueError as error:
-            raise DuplicateDeleteError(
-                (
-                    "Aus Sicherheitsgründen dürfen "
-                    "nur Mods innerhalb des aktiven "
-                    "XXMI-Mod-Ordners gelöscht werden."
-                )
-            ) from error
-
-        if source == active_root:
-            raise DuplicateDeleteError(
-                (
-                    "Der Active-Mods-Hauptordner "
-                    "darf nicht gelöscht werden."
-                )
+            raise DuplicateCheckError(
+                "The folders changed after the duplicate check. Nothing was deleted."
             )
 
         if source.is_symlink():
-            source.unlink()
+            raise DuplicateCheckError("Refusing to delete a symbolic-link directory.")
 
-            return
+        try:
+            shutil.rmtree(source)
+        except OSError as error:
+            raise DuplicateCheckError(
+                f"The confirmed duplicate could not be deleted: {error}"
+            ) from error
 
-        if source.is_dir():
-            shutil.rmtree(
-                source
-            )
+    def _fingerprint_directory(self, root: Path) -> DirectoryFingerprint:
+        entries = self._entries(root)
+        fingerprint, _current = self._fingerprint_entries(
+            root,
+            entries,
+            current=0,
+            total=max(len(entries), 1),
+            progress_callback=None,
+            cancel_callback=None,
+        )
+        return fingerprint
 
-            return
+    def _fingerprint_entries(
+        self,
+        root: Path,
+        entries: list[_Entry],
+        *,
+        current: int,
+        total: int,
+        progress_callback: ProgressCallback | None,
+        cancel_callback: CancelCallback | None,
+    ) -> tuple[DirectoryFingerprint, int]:
+        sha = hashlib.sha256()
+        crc = 0
+        total_bytes = 0
 
-        if source.exists():
-            source.unlink()
+        # Versioned domain separator makes future format changes explicit.
+        header = b"GMM-DIRECTORY-FINGERPRINT-V2\0"
+        sha.update(header)
+        crc = zlib.crc32(header, crc)
 
-            return
+        for entry in entries:
+            self._check_cancelled(cancel_callback)
 
-        raise DuplicateDeleteError(
-            (
-                "Der zu löschende Mod "
-                "existiert nicht mehr."
-            )
+            metadata = (
+                f"{entry.kind}\0{entry.relative}\0{entry.size}\0"
+            ).encode("utf-8", errors="surrogateescape")
+            sha.update(metadata)
+            crc = zlib.crc32(metadata, crc)
+
+            if entry.kind == "link":
+                link_data = entry.link_target.encode(
+                    "utf-8",
+                    errors="surrogateescape",
+                )
+                sha.update(link_data)
+                crc = zlib.crc32(link_data, crc)
+            else:
+                try:
+                    with entry.path.open("rb") as handle:
+                        while True:
+                            self._check_cancelled(cancel_callback)
+                            chunk = handle.read(CHUNK_SIZE)
+                            if not chunk:
+                                break
+                            sha.update(chunk)
+                            crc = zlib.crc32(chunk, crc)
+                except OSError as error:
+                    raise DuplicateCheckError(
+                        f"Could not read file: {entry.path}\n\n{error}"
+                    ) from error
+
+            total_bytes += entry.size
+            current += 1
+            if progress_callback is not None:
+                progress_callback(
+                    min(current, total),
+                    total,
+                    entry.relative,
+                )
+
+        return (
+            DirectoryFingerprint(
+                crc32=f"{crc & 0xFFFFFFFF:08x}",
+                sha256=sha.hexdigest(),
+                file_count=len(entries),
+                total_bytes=total_bytes,
+            ),
+            current,
         )
 
-    # ========================================================
-    # Helpers
-    # ========================================================
+    def _entries(self, root: Path) -> list[_Entry]:
+        result: list[_Entry] = []
+
+        try:
+            paths = sorted(
+                root.rglob("*"),
+                key=lambda path: (
+                    path.relative_to(root).as_posix().casefold(),
+                    path.relative_to(root).as_posix(),
+                ),
+            )
+        except OSError as error:
+            raise DuplicateCheckError(
+                f"Could not enumerate directory: {root}\n\n{error}"
+            ) from error
+
+        for path in paths:
+            relative = path.relative_to(root).as_posix()
+            if path.name in IGNORED_FILE_NAMES:
+                continue
+
+            try:
+                if path.is_symlink():
+                    target = os.readlink(path)
+                    data_size = len(
+                        target.encode("utf-8", errors="surrogateescape")
+                    )
+                    result.append(
+                        _Entry(
+                            path=path,
+                            relative=relative,
+                            kind="link",
+                            size=data_size,
+                            link_target=target,
+                        )
+                    )
+                    continue
+
+                if not path.is_file():
+                    continue
+
+                result.append(
+                    _Entry(
+                        path=path,
+                        relative=relative,
+                        kind="file",
+                        size=path.stat().st_size,
+                    )
+                )
+            except OSError as error:
+                raise DuplicateCheckError(
+                    f"Could not inspect file: {path}\n\n{error}"
+                ) from error
+
+        return result
 
     @staticmethod
-    def _normalize_source_path(
-        source: Path,
-    ) -> Path:
-        path = (
-            Path(
-                source
+    def _validated_directory(value: Path | str, *, label: str) -> Path:
+        path = Path(value).expanduser().absolute()
+        if path.is_symlink() or not path.is_dir():
+            raise DuplicateCheckError(
+                f"Invalid {label} directory: {path}"
             )
-            .expanduser()
-            .absolute()
-        )
-
-        if path.is_symlink():
-            try:
-                path = path.resolve()
-
-            except OSError:
-                pass
-
-        if not path.is_dir():
-            raise ModDuplicateError(
-                (
-                    "Für den Duplikatvergleich "
-                    "wird ein Mod-Ordner benötigt:"
-                    "\n"
-                    f"{path}"
-                )
-            )
-
         return path
 
     @staticmethod
-    def _tool_path(
-        filename: str,
-    ) -> Path:
-        return Path(
-            resource_path(
-                "assets",
-                "tools",
-                "genshin",
-                filename,
-            )
-        )
+    def _resolved_key(path: Path) -> str:
+        try:
+            resolved = path.resolve(strict=False)
+        except OSError:
+            resolved = path.absolute()
+        return os.path.normcase(str(resolved))
+
+    @classmethod
+    def _is_within(cls, child: Path, parent: Path) -> bool:
+        try:
+            child_resolved = child.resolve(strict=False)
+            parent_resolved = parent.resolve(strict=False)
+            return os.path.commonpath(
+                (str(child_resolved), str(parent_resolved))
+            ) == str(parent_resolved)
+        except (OSError, ValueError):
+            return False
+
+    @staticmethod
+    def _check_cancelled(cancel_callback: CancelCallback | None) -> None:
+        if cancel_callback is not None and cancel_callback():
+            raise DuplicateCheckCancelled("Duplicate check was cancelled.")
 
 
 __all__ = [
+    "DirectoryFingerprint",
+    "DuplicateCheckCancelled",
+    "DuplicateCheckError",
     "DuplicateCheckResult",
-    "DuplicateDeleteError",
-    "ModDuplicateError",
     "ModDuplicateService",
-    "ModFingerprint",
-    "NormalizerExecutionError",
-    "NormalizerUnavailableError",
 ]

@@ -3,197 +3,122 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-
-from dataclasses import (
-    asdict,
-    dataclass,
-)
-
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from app.config import (
-    CONFIG_DIR,
-)
+from app.config import CONFIG_DIR
 
 
-TOOL_PATHS_FILE = (
-    CONFIG_DIR
-    / "tool-paths.json"
-)
+TOOL_PATHS_FILE = CONFIG_DIR / "tool-paths.json"
 
 ORFIX_ENVIRONMENT_KEYS = (
     "GMM_ORFIX_PATH",
     "ORFIX_PATH",
 )
 
-CONFLICT_HASH_ENVIRONMENT_KEYS = (
-    "GMM_CONFLICT_HASH_TOOL_PATH",
-    "GMM_SHA256_TOOL_PATH",
+GENSHIN_MOD_FIXER_ENVIRONMENT_KEYS = (
+    "GMM_GENSHIN_MOD_FIXER_PATH",
+    "GMM_57FIX_PATH",
 )
 
 
-@dataclass(
-    slots=True,
-)
+@dataclass(slots=True)
 class ToolPathsSettings:
+    """User-selected external repair tools.
+
+    Duplicate CRC32/SHA256 checking intentionally does *not* live here.
+    It is implemented internally by ModDuplicateService.
+    """
+
     orfix_path: str | None = None
+    genshin_mod_fixer_path: str | None = None
 
-    conflict_hash_tool_path: (
-        str
-        | None
-    ) = None
+    def orfix_file(self) -> Path | None:
+        return _existing_file(self.orfix_path)
 
-    def orfix_file(
-        self,
-    ) -> Path | None:
-        return _existing_file(
-            self.orfix_path
-        )
-
-    def conflict_hash_tool_file(
-        self,
-    ) -> Path | None:
-        return _existing_file(
-            self.conflict_hash_tool_path
-        )
+    def genshin_mod_fixer_file(self) -> Path | None:
+        return _existing_file(self.genshin_mod_fixer_path)
 
 
-def _clean_path(
-    value: object,
-) -> str | None:
-    if not isinstance(
-        value,
-        str,
-    ):
+def _clean_path(value: object) -> str | None:
+    if not isinstance(value, str):
         return None
 
     text = value.strip()
-
     if not text:
         return None
 
-    path = (
-        Path(
-            text
-        )
-        .expanduser()
-    )
-
+    path = Path(text).expanduser()
     try:
-        path = path.resolve(
-            strict=False
-        )
-
+        path = path.resolve(strict=False)
     except OSError:
         path = path.absolute()
 
-    return str(
-        path
-    )
+    return str(path)
 
 
-def _existing_file(
-    value: str | None,
-) -> Path | None:
-    cleaned = _clean_path(
-        value
-    )
-
+def _existing_file(value: str | None) -> Path | None:
+    cleaned = _clean_path(value)
     if cleaned is None:
         return None
 
-    path = Path(
-        cleaned
-    )
-
+    path = Path(cleaned)
     if not path.is_file():
         return None
 
     return path
 
 
-def load_tool_paths_settings(
-) -> ToolPathsSettings:
+def load_tool_paths_settings() -> ToolPathsSettings:
+    """Load tool paths and transparently migrate the old two-tool schema.
+
+    Old ``conflict_hash_tool_path`` values are deliberately ignored because
+    duplicate hashing is now performed inside GMM. The old JSON key may still
+    exist on disk until the user saves Settings once; it is never executed.
+    """
+
     try:
-        raw = json.loads(
-            TOOL_PATHS_FILE.read_text(
-                encoding="utf-8"
-            )
-        )
-
-    except (
-        FileNotFoundError,
-        json.JSONDecodeError,
-        OSError,
-    ):
+        raw = json.loads(TOOL_PATHS_FILE.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
         settings = ToolPathsSettings()
-
-        apply_tool_paths_to_environment(
-            settings
-        )
-
+        apply_tool_paths_to_environment(settings)
         return settings
 
-    if not isinstance(
-        raw,
-        dict,
-    ):
+    if not isinstance(raw, dict):
         settings = ToolPathsSettings()
-
-        apply_tool_paths_to_environment(
-            settings
-        )
-
+        apply_tool_paths_to_environment(settings)
         return settings
+
+    fixer_value = raw.get("genshin_mod_fixer_path")
+    if fixer_value is None:
+        # Accepted aliases from development builds / manual configs.
+        fixer_value = raw.get("mod_fixer_path")
+    if fixer_value is None:
+        fixer_value = raw.get("genshin_fixer_path")
 
     settings = ToolPathsSettings(
-        orfix_path=_clean_path(
-            raw.get(
-                "orfix_path"
-            )
-        ),
-        conflict_hash_tool_path=(
-            _clean_path(
-                raw.get(
-                    "conflict_hash_tool_path"
-                )
-            )
-        ),
+        orfix_path=_clean_path(raw.get("orfix_path")),
+        genshin_mod_fixer_path=_clean_path(fixer_value),
     )
 
-    apply_tool_paths_to_environment(
-        settings
-    )
-
+    apply_tool_paths_to_environment(settings)
     return settings
 
 
-def save_tool_paths_settings(
-    settings: ToolPathsSettings,
-) -> None:
-    CONFIG_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
+def save_tool_paths_settings(settings: ToolPathsSettings) -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    normalized = ToolPathsSettings(
+        orfix_path=_clean_path(settings.orfix_path),
+        genshin_mod_fixer_path=_clean_path(settings.genshin_mod_fixer_path),
     )
 
-    normalized = (
-        ToolPathsSettings(
-            orfix_path=_clean_path(
-                settings.orfix_path
-            ),
-            conflict_hash_tool_path=(
-                _clean_path(
-                    settings
-                    .conflict_hash_tool_path
-                )
-            ),
-        )
-    )
-
+    payload_object = {
+        "version": 2,
+        **asdict(normalized),
+    }
     payload = json.dumps(
-        asdict(
-            normalized
-        ),
+        payload_object,
         ensure_ascii=False,
         indent=4,
     ) + "\n"
@@ -202,55 +127,31 @@ def save_tool_paths_settings(
     temporary_path: Path | None = None
 
     try:
-        temporary_handle = (
-            tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                prefix="tool-paths-",
-                suffix=".tmp",
-                dir=CONFIG_DIR,
-                delete=False,
-            )
+        temporary_handle = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix="tool-paths-",
+            suffix=".tmp",
+            dir=CONFIG_DIR,
+            delete=False,
         )
-
-        temporary_path = Path(
-            temporary_handle.name
-        )
-
-        temporary_handle.write(
-            payload
-        )
-
+        temporary_path = Path(temporary_handle.name)
+        temporary_handle.write(payload)
         temporary_handle.flush()
-
-        os.fsync(
-            temporary_handle.fileno()
-        )
-
+        os.fsync(temporary_handle.fileno())
         temporary_handle.close()
         temporary_handle = None
-
-        os.replace(
-            temporary_path,
-            TOOL_PATHS_FILE,
-        )
-
+        os.replace(temporary_path, TOOL_PATHS_FILE)
     finally:
         if temporary_handle is not None:
             temporary_handle.close()
-
-        if (
-            temporary_path is not None
-            and temporary_path.exists()
-        ):
+        if temporary_path is not None and temporary_path.exists():
             try:
                 temporary_path.unlink()
             except OSError:
                 pass
 
-    apply_tool_paths_to_environment(
-        normalized
-    )
+    apply_tool_paths_to_environment(normalized)
 
 
 def apply_tool_paths_to_environment(
@@ -261,130 +162,78 @@ def apply_tool_paths_to_environment(
         return
 
     configured_files = (
+        (settings.orfix_file(), ORFIX_ENVIRONMENT_KEYS),
         (
-            settings.orfix_file(),
-            ORFIX_ENVIRONMENT_KEYS,
-        ),
-        (
-            settings.conflict_hash_tool_file(),
-            CONFLICT_HASH_ENVIRONMENT_KEYS,
+            settings.genshin_mod_fixer_file(),
+            GENSHIN_MOD_FIXER_ENVIRONMENT_KEYS,
         ),
     )
 
-    prepend_directories: list[
-        str
-    ] = []
+    prepend_directories: list[str] = []
 
-    for (
-        file_path,
-        environment_keys,
-    ) in configured_files:
+    for file_path, environment_keys in configured_files:
         if file_path is None:
             for key in environment_keys:
-                os.environ.pop(
-                    key,
-                    None,
-                )
-
+                os.environ.pop(key, None)
             continue
 
-        file_text = str(
-            file_path
-        )
-
+        file_text = str(file_path)
         for key in environment_keys:
-            os.environ[
-                key
-            ] = file_text
+            os.environ[key] = file_text
 
-        directory = str(
-            file_path.parent
-        )
-
+        directory = str(file_path.parent)
         if directory not in prepend_directories:
-            prepend_directories.append(
-                directory
-            )
+            prepend_directories.append(directory)
+
+    # Remove obsolete external-hash environment variables from older builds.
+    for obsolete_key in (
+        "GMM_CONFLICT_HASH_TOOL_PATH",
+        "GMM_SHA256_TOOL_PATH",
+    ):
+        os.environ.pop(obsolete_key, None)
 
     if not prepend_directories:
         return
 
-    current_path = os.environ.get(
-        "PATH",
-        "",
-    )
-
+    current_path = os.environ.get("PATH", "")
     current_parts = [
         item
-        for item in current_path.split(
-            os.pathsep
-        )
+        for item in current_path.split(os.pathsep)
         if item
     ]
 
     normalized_existing = {
-        os.path.normcase(
-            os.path.abspath(
-                item
-            )
-        )
+        os.path.normcase(os.path.abspath(item))
         for item in current_parts
     }
 
-    additions: list[
-        str
-    ] = []
-
+    additions: list[str] = []
     for directory in prepend_directories:
-        normalized = os.path.normcase(
-            os.path.abspath(
-                directory
-            )
-        )
-
+        normalized = os.path.normcase(os.path.abspath(directory))
         if normalized in normalized_existing:
             continue
-
-        normalized_existing.add(
-            normalized
-        )
-
-        additions.append(
-            directory
-        )
+        normalized_existing.add(normalized)
+        additions.append(directory)
 
     if additions:
-        os.environ[
-            "PATH"
-        ] = os.pathsep.join(
-            additions
-            + current_parts
-        )
+        os.environ["PATH"] = os.pathsep.join(additions + current_parts)
 
 
-def configured_orfix_path(
-) -> Path | None:
-    return (
-        load_tool_paths_settings()
-        .orfix_file()
-    )
+def configured_orfix_path() -> Path | None:
+    return load_tool_paths_settings().orfix_file()
 
 
-def configured_conflict_hash_tool_path(
-) -> Path | None:
-    return (
-        load_tool_paths_settings()
-        .conflict_hash_tool_file()
-    )
+def configured_genshin_mod_fixer_path() -> Path | None:
+    return load_tool_paths_settings().genshin_mod_fixer_file()
 
 
 __all__ = [
-    "CONFLICT_HASH_ENVIRONMENT_KEYS",
+    "GENSHIN_MOD_FIXER_ENVIRONMENT_KEYS",
     "ORFIX_ENVIRONMENT_KEYS",
     "TOOL_PATHS_FILE",
     "ToolPathsSettings",
     "apply_tool_paths_to_environment",
-    "configured_conflict_hash_tool_path",
+    "configured_genshin_mod_fixer_path",
     "configured_orfix_path",
     "load_tool_paths_settings",
     "save_tool_paths_settings",

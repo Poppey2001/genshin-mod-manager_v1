@@ -2667,3 +2667,168 @@ QDialog#libraryCategoryAssignmentDialog QPushButton:disabled {
     background-color: #171c23;
     border-color: #292f39;
 }
+
+/* ============================================================
+   GameBanana Mod Update Detection V21.7
+   ============================================================ */
+
+QLabel#modUpdateBadge {
+    background-color: #3b245e;
+    color: #cbb8ff;
+    border: 1px solid #7656c9;
+    border-radius: 7px;
+    padding: 2px 7px;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+QDialog#libraryModUpdateDialog {
+    background-color: #11151b;
+    color: #f4f6fb;
+}
+
+QDialog#libraryModUpdateDialog QLabel#modUpdateDialogTitle {
+    color: #ffffff;
+    font-size: 22px;
+    font-weight: 800;
+}
+
+QDialog#libraryModUpdateDialog QLabel#modUpdateDialogSummary {
+    color: #9da7b8;
+    font-size: 12px;
+}
+
+QDialog#libraryModUpdateDialog QTableWidget#modUpdateTable {
+    background-color: #151a22;
+    alternate-background-color: #181e27;
+    color: #eef2f8;
+    border: 1px solid #303846;
+    border-radius: 10px;
+    gridline-color: transparent;
+    outline: 0;
+}
+
+QDialog#libraryModUpdateDialog QTableWidget#modUpdateTable::item {
+    padding: 7px 8px;
+    border: none;
+}
+
+QDialog#libraryModUpdateDialog QHeaderView::section {
+    background-color: #1d232d;
+    color: #aeb7c6;
+    border: none;
+    border-bottom: 1px solid #303846;
+    padding: 8px 9px;
+    font-weight: 700;
+}
+
+/* ============================================================
+   Mod Update Center UI Fix V21.7.1
+   ============================================================ */
+
+QDialog#libraryModUpdateDialog QPushButton#modUpdateActionButton {
+    background-color: #202631;
+    color: #f2f5fb;
+    border: 1px solid #394252;
+    border-radius: 7px;
+    padding: 6px 10px;
+    min-width: 0px;
+    font-weight: 650;
+}
+
+QDialog#libraryModUpdateDialog QPushButton#modUpdateActionButton:hover {
+    background-color: #2a3240;
+    border-color: #6f54d9;
+}
+
+QDialog#libraryModUpdateDialog QPushButton#modUpdateActionButton:disabled {
+    color: #697486;
+    background-color: #191e26;
+    border-color: #2a313d;
+}
+
+
+/* ============================================================
+   Mod Update Center button clipping fix V21.7.2
+   ============================================================ */
+
+QDialog#libraryModUpdateDialog QPushButton#modUpdateActionButton {
+    min-height: 32px;
+    padding-top: 0px;
+    padding-bottom: 0px;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+QDialog#libraryModUpdateDialog QTableWidget#modUpdateTable::item {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+/* ============================================================
+   V21.8 Mod Update Center + Backup/Rollback
+   ============================================================ */
+QDialog#libraryModUpdateDialog QTableWidget#modUpdateTable {
+    selection-background-color: transparent;
+}
+
+QDialog#libraryModUpdateDialog QWidget#modUpdateActionsWidget {
+    background: transparent;
+}
+
+QDialog#libraryModUpdateDialog QPushButton#modUpdateActionButton {
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 11px;
+    border-radius: 7px;
+}
+
+QDialog#libraryModUpdateDialog QLabel#modUpdateOperationLabel {
+    color: #aebad1;
+    padding: 2px 0;
+}
+
+QDialog#libraryModUpdateDialog QProgressBar#modUpdateProgress {
+    min-height: 16px;
+    max-height: 16px;
+    border: 1px solid #30394a;
+    border-radius: 8px;
+    background: #141922;
+    text-align: center;
+}
+
+QDialog#libraryModUpdateDialog QProgressBar#modUpdateProgress::chunk {
+    border-radius: 7px;
+    background: #7257e8;
+}
+
+QDialog#libraryModBackupDialog {
+    background: #10151d;
+}
+
+QDialog#libraryModBackupDialog QLabel#modBackupDialogTitle {
+    color: #f4f7ff;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+QDialog#libraryModBackupDialog QLabel#modBackupDialogHelp {
+    color: #9eabc2;
+}
+
+QDialog#libraryModBackupDialog QTableWidget#modBackupTable {
+    background: #141a23;
+    alternate-background-color: #171e28;
+    border: 1px solid #2b3442;
+    border-radius: 8px;
+    color: #eef2fb;
+}
+
+QDialog#libraryModBackupDialog QTableWidget#modBackupTable::item {
+    padding: 7px 9px;
+}
+
+QDialog#libraryModBackupDialog QTableWidget#modBackupTable::item:selected {
+    background: #332958;
+    color: #ffffff;
+}

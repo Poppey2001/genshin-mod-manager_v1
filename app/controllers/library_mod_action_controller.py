@@ -8,7 +8,7 @@ from app.services.mod_manager import (
     ModManager,
     ModState,
 )
-from app.i18n import tr
+
 
 class ModActionStatus(Enum):
     SUCCESS = auto()
@@ -70,13 +70,25 @@ class LibraryModActionController:
                 mod
             )
 
+            mode = getattr(
+                self._mod_manager,
+                "last_enable_mode",
+                None,
+            )
+            if mode in {"rename_exact", "rename_discovered"}:
+                action_text = "reaktiviert (nur umbenannt, nicht kopiert)"
+            elif mode == "copy_first_activation":
+                action_text = "erstmals aktiviert (einmalig kopiert)"
+            elif mode in {"already_enabled", "already_enabled_discovered", "already_enabled_symlink"}:
+                action_text = "war bereits aktiviert"
+            else:
+                action_text = "aktiviert"
+
             return ModActionResult(
                 status=ModActionStatus.SUCCESS,
                 state=resulting_state,
-                message=tr(
-                    "library.mod_action.enabled",
-                    mod_name=mod.name,
-                    destination=destination,
+                message=(
+                    f"„{mod.name}“ wurde {action_text}: {destination}"
                 ),
             )
 
@@ -91,13 +103,15 @@ class LibraryModActionController:
             resulting_state = self.get_state(
                 mod
             )
-            
+
             return ModActionResult(
                 status=ModActionStatus.SUCCESS,
                 state=resulting_state,
-                message=tr(
-                    "library.mod_action.disabled",
-                    mod_name=mod.name,
+                message=(
+                    f"„{mod.name}“ wurde "
+                    "deaktiviert und die "
+                    "reparierte Version wurde "
+                    "gespeichert."
                 ),
             )
 
@@ -107,16 +121,22 @@ class LibraryModActionController:
                     ModActionStatus.NOT_CONFIGURED
                 ),
                 state=state,
-                message=tr(
-                    "library.mod_action.not_configured"
+                message=(
+                    "Wähle unter Einstellungen "
+                    "zuerst den aktiven "
+                    "Mods-Ordner aus."
                 ),
             )
 
         return ModActionResult(
             status=ModActionStatus.CONFLICT,
             state=state,
-            message=tr(
-                "library.mod_action.conflict"
+            message=(
+                "Am Ziel befindet sich bereits "
+                "ein fremder Ordner oder eine "
+                "fremde Verknüpfung.\n\n"
+                "Der Manager überschreibt "
+                "diese Daten nicht."
             ),
         )
 
@@ -134,8 +154,9 @@ class LibraryModActionController:
                     ModActionStatus.NOT_CONFLICT
                 ),
                 state=state,
-                message=tr(
-                    "library.mod_action.not_conflict"
+                message=(
+                    "Der ausgewählte Mod besitzt "
+                    "aktuell keinen Konflikt."
                 ),
             )
 
@@ -146,22 +167,17 @@ class LibraryModActionController:
         )
 
         if resulting_state == ModState.ENABLED:
-            message_key = (
-                "library.mod_action."
-                "adopted_enabled"
-            )
+            state_text = "aktiviert"
         else:
-            message_key = (
-                "library.mod_action."
-                "adopted_disabled"
-            )
+            state_text = "deaktiviert"
 
         return ModActionResult(
             status=ModActionStatus.SUCCESS,
             state=resulting_state,
-            message=tr(
-                message_key,
-                mod_name=mod.name,
+            message=(
+                f"„{mod.name}“ wurde als "
+                f"vorhandener {state_text}er "
+                "Mod übernommen."
             ),
         )
         
@@ -181,7 +197,8 @@ class LibraryModActionController:
                 ModActionStatus.NOT_CONFLICT
             ),
             state=state,
-            message=tr(
-                "library.mod_action.not_conflict"
+            message=(
+                "Der ausgewählte Mod besitzt "
+                "aktuell keinen Konflikt."
             ),
         )

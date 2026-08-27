@@ -56,6 +56,7 @@ class LibraryFilterBar(QFrame):
 
     filters_changed = Signal()
     manage_categories_requested = Signal()
+    check_updates_requested = Signal()
 
     def __init__(
         self,
@@ -76,8 +77,10 @@ class LibraryFilterBar(QFrame):
         self.mod_type_filter = QComboBox()
         self.category_filter = QComboBox()
         self.status_filter = QComboBox()
+        self.update_filter = QComboBox()
 
         self.manage_categories_button = QPushButton()
+        self.check_updates_button = QPushButton()
         self.reset_button = QPushButton()
 
         self._configure_widgets()
@@ -196,7 +199,17 @@ class LibraryFilterBar(QFrame):
                 userData=state.value,
             )
 
+        self.update_filter.setObjectName(
+            "filterCombo"
+        )
+        self.update_filter.setMinimumWidth(145)
+        self._populate_update_filter()
+
         self.manage_categories_button.setObjectName(
+            "secondaryButton"
+        )
+
+        self.check_updates_button.setObjectName(
             "secondaryButton"
         )
 
@@ -204,6 +217,34 @@ class LibraryFilterBar(QFrame):
             "secondaryButton"
         )
     
+    def _populate_update_filter(self) -> None:
+        current = self.update_filter.currentData()
+        blocker = QSignalBlocker(self.update_filter)
+        self.update_filter.clear()
+        options = (
+            ("library.mod_updates.filter.all", None),
+            ("library.mod_updates.filter.available", "update_available"),
+            ("library.mod_updates.filter.current", "current"),
+            ("library.mod_updates.filter.not_linked", "not_linked"),
+            ("library.mod_updates.filter.error", "error"),
+        )
+        for key, value in options:
+            self.update_filter.addItem(tr(key), userData=value)
+        index = self.update_filter.findData(current)
+        self.update_filter.setCurrentIndex(index if index >= 0 else 0)
+        del blocker
+
+    def set_update_check_running(self, running: bool) -> None:
+        running = bool(running)
+        self.check_updates_button.setEnabled(True)
+        self.check_updates_button.setText(
+            tr(
+                "library.mod_updates.cancel_button"
+                if running
+                else "library.mod_updates.check_button"
+            )
+        )
+
     def set_mods(
         self,
         mods: list[ModInfo],
@@ -472,8 +513,16 @@ class LibraryFilterBar(QFrame):
             self._emit_filters_changed
         )
 
+        self.update_filter.currentIndexChanged.connect(
+            self._emit_filters_changed
+        )
+
         self.manage_categories_button.clicked.connect(
             self.manage_categories_requested.emit
+        )
+
+        self.check_updates_button.clicked.connect(
+            self.check_updates_requested.emit
         )
 
         self.reset_button.clicked.connect(
@@ -499,6 +548,7 @@ class LibraryFilterBar(QFrame):
             self.mod_type_filter,
             self.category_filter,
             self.status_filter,
+            self.update_filter,
         )
 
         blockers = [
@@ -517,6 +567,9 @@ class LibraryFilterBar(QFrame):
             0
         )
         self.status_filter.setCurrentIndex(
+            0
+        )
+        self.update_filter.setCurrentIndex(
             0
         )
 
@@ -576,6 +629,12 @@ class LibraryFilterBar(QFrame):
 
         return str(value)
 
+    def selected_update_status(self) -> str | None:
+        value = self.update_filter.currentData()
+        if value is None:
+            return None
+        return str(value)
+
     def resizeEvent(
         self,
         event,
@@ -613,13 +672,15 @@ class LibraryFilterBar(QFrame):
             self.mod_type_filter,
             self.category_filter,
             self.status_filter,
+            self.update_filter,
             self.manage_categories_button,
+            self.check_updates_button,
             self.reset_button,
         )
         for widget in widgets:
             self.filter_layout.removeWidget(widget)
 
-        for column in range(7):
+        for column in range(9):
             self.filter_layout.setColumnStretch(column, 0)
 
         if mode == "wide":
@@ -628,14 +689,17 @@ class LibraryFilterBar(QFrame):
             self.mod_type_filter.setMinimumWidth(125)
             self.category_filter.setMinimumWidth(145)
             self.status_filter.setMinimumWidth(115)
+            self.update_filter.setMinimumWidth(145)
 
             self.filter_layout.addWidget(self.search_input, 0, 0)
             self.filter_layout.addWidget(self.character_filter, 0, 1)
             self.filter_layout.addWidget(self.mod_type_filter, 0, 2)
             self.filter_layout.addWidget(self.category_filter, 0, 3)
             self.filter_layout.addWidget(self.status_filter, 0, 4)
-            self.filter_layout.addWidget(self.manage_categories_button, 0, 5)
-            self.filter_layout.addWidget(self.reset_button, 0, 6)
+            self.filter_layout.addWidget(self.update_filter, 0, 5)
+            self.filter_layout.addWidget(self.manage_categories_button, 1, 0, 1, 2)
+            self.filter_layout.addWidget(self.check_updates_button, 1, 2, 1, 2)
+            self.filter_layout.addWidget(self.reset_button, 1, 4, 1, 2)
             self.filter_layout.setColumnStretch(0, 1)
 
         elif mode == "compact":
@@ -645,6 +709,7 @@ class LibraryFilterBar(QFrame):
                 self.mod_type_filter,
                 self.category_filter,
                 self.status_filter,
+                self.update_filter,
             ):
                 widget.setMinimumWidth(110)
 
@@ -653,8 +718,10 @@ class LibraryFilterBar(QFrame):
             self.filter_layout.addWidget(self.mod_type_filter, 1, 1)
             self.filter_layout.addWidget(self.category_filter, 1, 2)
             self.filter_layout.addWidget(self.status_filter, 1, 3)
-            self.filter_layout.addWidget(self.manage_categories_button, 1, 4)
+            self.filter_layout.addWidget(self.update_filter, 1, 4)
             self.filter_layout.addWidget(self.reset_button, 1, 5)
+            self.filter_layout.addWidget(self.manage_categories_button, 2, 0, 1, 3)
+            self.filter_layout.addWidget(self.check_updates_button, 2, 3, 1, 3)
             for column in range(6):
                 self.filter_layout.setColumnStretch(column, 1)
 
@@ -665,6 +732,7 @@ class LibraryFilterBar(QFrame):
                 self.mod_type_filter,
                 self.category_filter,
                 self.status_filter,
+                self.update_filter,
             ):
                 widget.setMinimumWidth(0)
 
@@ -673,8 +741,10 @@ class LibraryFilterBar(QFrame):
             self.filter_layout.addWidget(self.mod_type_filter, 1, 1)
             self.filter_layout.addWidget(self.category_filter, 2, 0)
             self.filter_layout.addWidget(self.status_filter, 2, 1)
-            self.filter_layout.addWidget(self.manage_categories_button, 3, 0)
-            self.filter_layout.addWidget(self.reset_button, 3, 1)
+            self.filter_layout.addWidget(self.update_filter, 3, 0, 1, 2)
+            self.filter_layout.addWidget(self.manage_categories_button, 4, 0)
+            self.filter_layout.addWidget(self.check_updates_button, 4, 1)
+            self.filter_layout.addWidget(self.reset_button, 5, 0, 1, 2)
             self.filter_layout.setColumnStretch(0, 1)
             self.filter_layout.setColumnStretch(1, 1)
 
@@ -746,6 +816,12 @@ class LibraryFilterBar(QFrame):
         self.manage_categories_button.setText(
             tr("library.filter.manage_categories")
         )
+
+        self.check_updates_button.setText(
+            tr("library.mod_updates.check_button")
+        )
+
+        self._populate_update_filter()
 
         category_blocker = QSignalBlocker(
             self.category_filter

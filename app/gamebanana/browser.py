@@ -144,15 +144,35 @@ class GameBananaBrowserService:
 
         client = GameBananaClient(timeout=self.timeout)
         mods: list[GameBananaMod] = []
+        first_error: Exception | None = None
+
         for mod_id in ids:
             self._check_cancelled(cancel_callback)
+
             try:
-                mod = client.fetch_mod(mod_id, include_screenshots=False)
-            except Exception:
+                mod = client.fetch_mod(
+                    mod_id,
+                    include_screenshots=False,
+                )
+
+            except Exception as error:
                 # Ein einzelner gelöschter/versteckter Eintrag soll die
                 # komplette Browser-Seite nicht unbrauchbar machen.
+                # Wenn jedoch ALLE Mod-Requests fehlschlagen, darf das
+                # nicht fälschlich als leere GameBanana-Seite erscheinen.
+                if first_error is None:
+                    first_error = error
                 continue
+
             mods.append(mod)
+
+        if not mods and first_error is not None:
+            raise GameBananaBrowserError(
+                "GameBanana hat Mod-Einträge geliefert, aber die "
+                "Mod-Daten konnten nicht geladen werden.\n\n"
+                f"{type(first_error).__name__}: {first_error}"
+            ) from first_error
+
         return mods
 
     def _request_json(self, url: str) -> Any:

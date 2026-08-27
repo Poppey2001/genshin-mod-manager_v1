@@ -114,7 +114,7 @@ class GlobalSettingsPage(QWidget):
         self.update_channel_combo = QComboBox(self)
 
         # ----------------------------------------------------
-        # External tool paths
+        # External repair tool paths
         # ----------------------------------------------------
 
         self.tools_group = QGroupBox(self)
@@ -139,17 +139,17 @@ class GlobalSettingsPage(QWidget):
         self.choose_orfix_button = QPushButton(self)
         self.clear_orfix_button = QPushButton(self)
 
-        self.hash_tool_label = QLabel(self)
-        self.hash_tool_description_label = QLabel(self)
-        self.hash_tool_description_label.setObjectName(
+        self.mod_fixer_label = QLabel(self)
+        self.mod_fixer_description_label = QLabel(self)
+        self.mod_fixer_description_label.setObjectName(
             "settingsMutedText"
         )
-        self.hash_tool_description_label.setWordWrap(
+        self.mod_fixer_description_label.setWordWrap(
             True
         )
-        self.hash_tool_path_input = QLineEdit(self)
-        self.choose_hash_tool_button = QPushButton(self)
-        self.clear_hash_tool_button = QPushButton(self)
+        self.mod_fixer_path_input = QLineEdit(self)
+        self.choose_mod_fixer_button = QPushButton(self)
+        self.clear_mod_fixer_button = QPushButton(self)
 
         # ----------------------------------------------------
         # GameBanana cache widgets
@@ -396,25 +396,25 @@ class GlobalSettingsPage(QWidget):
         )
 
         tools_layout.addWidget(
-            self.hash_tool_label
+            self.mod_fixer_label
         )
         tools_layout.addWidget(
-            self.hash_tool_description_label
+            self.mod_fixer_description_label
         )
 
-        self._hash_tool_grid = QGridLayout()
-        self._hash_tool_grid.setContentsMargins(
+        self._mod_fixer_grid = QGridLayout()
+        self._mod_fixer_grid.setContentsMargins(
             0, 0, 0, 0
         )
-        self._hash_tool_grid.setHorizontalSpacing(8)
-        self._hash_tool_grid.setVerticalSpacing(8)
+        self._mod_fixer_grid.setHorizontalSpacing(8)
+        self._mod_fixer_grid.setVerticalSpacing(8)
 
         tools_layout.addLayout(
-            self._hash_tool_grid
+            self._mod_fixer_grid
         )
 
         self.orfix_path_input.setMinimumWidth(0)
-        self.hash_tool_path_input.setMinimumWidth(0)
+        self.mod_fixer_path_input.setMinimumWidth(0)
 
         self.tools_group.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -495,8 +495,8 @@ class GlobalSettingsPage(QWidget):
             self.default_cache_button,
             self.choose_orfix_button,
             self.clear_orfix_button,
-            self.choose_hash_tool_button,
-            self.clear_hash_tool_button,
+            self.choose_mod_fixer_button,
+            self.clear_mod_fixer_button,
             self.refresh_cache_button,
             self.clear_cache_button,
             self.reset_button,
@@ -595,11 +595,11 @@ class GlobalSettingsPage(QWidget):
             ),
         )
         self._remove_from_grid(
-            self._hash_tool_grid,
+            self._mod_fixer_grid,
             (
-                self.hash_tool_path_input,
-                self.choose_hash_tool_button,
-                self.clear_hash_tool_button,
+                self.mod_fixer_path_input,
+                self.choose_mod_fixer_button,
+                self.clear_mod_fixer_button,
             ),
         )
         self._remove_from_grid(
@@ -666,22 +666,22 @@ class GlobalSettingsPage(QWidget):
                 1, 1
             )
 
-            self._hash_tool_grid.addWidget(
-                self.hash_tool_path_input,
+            self._mod_fixer_grid.addWidget(
+                self.mod_fixer_path_input,
                 0, 0, 1, 2,
             )
-            self._hash_tool_grid.addWidget(
-                self.choose_hash_tool_button,
+            self._mod_fixer_grid.addWidget(
+                self.choose_mod_fixer_button,
                 1, 0,
             )
-            self._hash_tool_grid.addWidget(
-                self.clear_hash_tool_button,
+            self._mod_fixer_grid.addWidget(
+                self.clear_mod_fixer_button,
                 1, 1,
             )
-            self._hash_tool_grid.setColumnStretch(
+            self._mod_fixer_grid.setColumnStretch(
                 0, 1
             )
-            self._hash_tool_grid.setColumnStretch(
+            self._mod_fixer_grid.setColumnStretch(
                 1, 1
             )
 
@@ -783,19 +783,19 @@ class GlobalSettingsPage(QWidget):
                 0, 1
             )
 
-            self._hash_tool_grid.addWidget(
-                self.hash_tool_path_input,
+            self._mod_fixer_grid.addWidget(
+                self.mod_fixer_path_input,
                 0, 0,
             )
-            self._hash_tool_grid.addWidget(
-                self.choose_hash_tool_button,
+            self._mod_fixer_grid.addWidget(
+                self.choose_mod_fixer_button,
                 0, 1,
             )
-            self._hash_tool_grid.addWidget(
-                self.clear_hash_tool_button,
+            self._mod_fixer_grid.addWidget(
+                self.clear_mod_fixer_button,
                 0, 2,
             )
-            self._hash_tool_grid.setColumnStretch(
+            self._mod_fixer_grid.setColumnStretch(
                 0, 1
             )
 
@@ -894,12 +894,12 @@ class GlobalSettingsPage(QWidget):
             self.orfix_path_input.clear
         )
 
-        self.choose_hash_tool_button.clicked.connect(
-            self._choose_hash_tool_file
+        self.choose_mod_fixer_button.clicked.connect(
+            self._choose_mod_fixer_file
         )
 
-        self.clear_hash_tool_button.clicked.connect(
-            self.hash_tool_path_input.clear
+        self.clear_mod_fixer_button.clicked.connect(
+            self.mod_fixer_path_input.clear
         )
 
         self.choose_cache_button.clicked.connect(
@@ -1248,15 +1248,15 @@ class GlobalSettingsPage(QWidget):
             )
         )
 
-        self.hash_tool_label.setText(
+        self.mod_fixer_label.setText(
             tr(
-                "settings.global.tools.hash_checker"
+                "settings.global.tools.genshin_mod_fixer"
             )
         )
 
-        self.hash_tool_description_label.setText(
+        self.mod_fixer_description_label.setText(
             tr(
-                "settings.global.tools.hash_checker_description"
+                "settings.global.tools.genshin_mod_fixer_description"
             )
         )
 
@@ -1272,13 +1272,13 @@ class GlobalSettingsPage(QWidget):
             )
         )
 
-        self.choose_hash_tool_button.setText(
+        self.choose_mod_fixer_button.setText(
             tr(
                 "settings.button.choose"
             )
         )
 
-        self.clear_hash_tool_button.setText(
+        self.clear_mod_fixer_button.setText(
             tr(
                 "settings.button.clear"
             )
@@ -1290,7 +1290,7 @@ class GlobalSettingsPage(QWidget):
             )
         )
 
-        self.hash_tool_path_input.setPlaceholderText(
+        self.mod_fixer_path_input.setPlaceholderText(
             tr(
                 "settings.global.tools.not_configured"
             )
@@ -1451,10 +1451,10 @@ class GlobalSettingsPage(QWidget):
             or ""
         )
 
-        self.hash_tool_path_input.setText(
+        self.mod_fixer_path_input.setText(
             (
                 self.tool_paths_settings
-                .conflict_hash_tool_path
+                .genshin_mod_fixer_path
             )
             or ""
         )
@@ -1523,8 +1523,8 @@ class GlobalSettingsPage(QWidget):
             .strip()
         )
 
-        hash_tool_path = (
-            self.hash_tool_path_input
+        mod_fixer_path = (
+            self.mod_fixer_path_input
             .text()
             .strip()
         )
@@ -1538,8 +1538,8 @@ class GlobalSettingsPage(QWidget):
                 orfix_path,
             ),
             (
-                "settings.global.tools.hash_checker",
-                hash_tool_path,
+                "settings.global.tools.genshin_mod_fixer",
+                mod_fixer_path,
             ),
         ):
             if not configured_path:
@@ -1575,8 +1575,8 @@ class GlobalSettingsPage(QWidget):
                     orfix_path
                     or None
                 ),
-                conflict_hash_tool_path=(
-                    hash_tool_path
+                genshin_mod_fixer_path=(
+                    mod_fixer_path
                     or None
                 ),
             )
@@ -1691,22 +1691,22 @@ class GlobalSettingsPage(QWidget):
                 selected
             )
 
-    def _choose_hash_tool_file(
+    def _choose_mod_fixer_file(
         self,
     ) -> None:
         selected, _filter = QFileDialog.getOpenFileName(
             self,
             tr(
-                "settings.global.tools.choose_hash_checker"
+                "settings.global.tools.choose_genshin_mod_fixer"
             ),
-            self.hash_tool_path_input.text().strip(),
+            self.mod_fixer_path_input.text().strip(),
             tr(
                 "settings.global.tools.file_filter"
             ),
         )
 
         if selected:
-            self.hash_tool_path_input.setText(
+            self.mod_fixer_path_input.setText(
                 selected
             )
 
