@@ -32,5 +32,6 @@
   "rust.library.action_failed": "{count} Aktion(en) fehlgeschlagen",
   "rust.library.launch": "Spiel starten",
   "rust.library.stat.mods": "Mods",
-  "rust.library.stat.characters": "Charaktere"
+  "rust.library.stat.characters": "Charaktere",
+  "rust.import.accept_warnings": "Ich vertraue der Quelle und möchte trotzdem importieren"
 }

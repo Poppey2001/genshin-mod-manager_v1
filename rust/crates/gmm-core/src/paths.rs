@@ -196,9 +196,47 @@ pub fn casefold(value: &str) -> String {
     value.to_lowercase()
 }
 
+/// Linux- und Windows-kompatibler Ordnername (Port von `sanitize_path_segment`).
+///
+/// Die Windows-Regeln gelten auf allen Plattformen, damit eine Bibliothek
+/// später auch unter Windows funktioniert.
+pub fn sanitize_path_segment(value: &str) -> String {
+    sanitize_path_segment_with(value, "Imported Mod", 180)
+}
+
+pub fn sanitize_path_segment_with(value: &str, fallback: &str, maximum_length: usize) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    let normalized: String = value.nfkc().collect();
+    let replaced: String =
+        normalized.chars().map(|c| if "<>:\"/\\|?*".contains(c) || (c as u32) < 0x20 { '_' } else { c }).collect();
+    let collapsed = replaced.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut cleaned = collapsed.trim_matches([' ', '.']).to_string();
+    if cleaned.is_empty() {
+        cleaned = fallback.to_string();
+    }
+    if crate::archive::is_windows_reserved(&cleaned) {
+        cleaned = format!("_{cleaned}");
+    }
+    let truncated: String = cleaned.chars().take(maximum_length).collect();
+    let result = truncated.trim_end_matches([' ', '.']).to_string();
+    if result.is_empty() {
+        fallback.to_string()
+    } else {
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sanitize_matches_python() {
+        assert_eq!(sanitize_path_segment("  a<b>:c  d. "), "a_b__c d");
+        assert_eq!(sanitize_path_segment("CON.txt"), "_CON.txt");
+        assert_eq!(sanitize_path_segment(" .. "), "Imported Mod");
+        assert_eq!(sanitize_path_segment("ｆｕｌｌ"), "full");
+    }
 
     #[test]
     fn normalize_removes_dots() {

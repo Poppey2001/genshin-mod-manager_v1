@@ -6,6 +6,8 @@
   import LibraryPage from "./pages/LibraryPage.svelte";
   import SettingsPage from "./pages/SettingsPage.svelte";
   import NotPortedPage from "./pages/NotPortedPage.svelte";
+  import ConflictsPage from "./pages/ConflictsPage.svelte";
+  import ProfilesPage from "./pages/ProfilesPage.svelte";
   import UpdateDialog from "./components/UpdateDialog.svelte";
   import libraryIcon from "@assets/icons/navigation/library.svg?raw";
   import gamebananaIcon from "@assets/icons/navigation/gamebanana.svg?raw";
@@ -78,6 +80,9 @@
             <button class:active={app.page === item.page} onclick={() => (app.page = item.page)}>
               <span class="icon">{@html item.icon}</span>
               {tr(item.key)}
+              {#if item.page === "conflicts" && app.conflictCount}
+                <span class="nav-badge">{app.conflictCount}</span>
+              {/if}
             </button>
           {/each}
         </nav>
@@ -103,6 +108,14 @@
           {/key}
         {:else if app.page === "settings"}
           <SettingsPage />
+        {:else if app.page === "profiles"}
+          {#key app.game.id}
+            <ProfilesPage game={app.game} />
+          {/key}
+        {:else if app.page === "conflicts"}
+          {#key app.game.id}
+            <ConflictsPage game={app.game} />
+          {/key}
         {:else}
           <NotPortedPage titleKey={`navigation.${app.page}`} />
         {/if}
@@ -278,6 +291,19 @@
 
   .icon {
     display: inline-flex;
+  }
+
+  .nav-badge {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 900;
+    display: inline-grid;
+    place-items: center;
   }
 
   .icon :global(svg) {

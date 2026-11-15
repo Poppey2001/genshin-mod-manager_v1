@@ -36,14 +36,27 @@ Ein von Python aktivierter Mod wird von Rust erkannt und umgekehrt
 | Bibliotheks-Scan, Struktur- & Charakter-Erkennung, Netzlaufwerke | ✅ |
 | Aktivieren / Deaktivieren / Konflikt übernehmen (einzeln & Sammelaktion) | ✅ |
 | Bibliothek: Liste, Filter, Suche, Details, Vorschau | ✅ |
+| Import: Ordner & Archive (ZIP/7z/RAR/TAR), Sicherheitsprüfung, Drag & Drop | ✅ |
+| INI-Analyse (Tasten, Zustände, Werte) | ✅ |
+| Konflikte-Seite | ✅ (ohne Duplikatprüfung per Hash) |
+| Profile (speichern, anwenden, umbenennen, löschen) | ✅ |
 | Einstellungen: Pfade pro Spiel, Sprache, Updates, Hintergrund, Autostart | ✅ |
 | **Auto-Updater** (Linux AppImage + Windows, signiert, Tray, Hintergrund) | ✅ |
-| Import (Ordner/Archive inkl. Sicherheitsprüfung) | ⏳ |
-| INI-Analyse, Galerie-Ansicht | ⏳ |
-| Konflikte-Seite | ⏳ |
-| Profile | ⏳ |
+| Galerie-Ansicht | ⏳ |
+| Duplikatprüfung (CRC32/SHA256) | ⏳ |
 | GameBanana (Suche, Download, Mod-Updates, Backups) | ⏳ |
 | Icons-Seite | ⏳ |
+
+## Releases
+
+Der Workflow `.github/workflows/rust.yml` veröffentlicht automatisch ein **Pre-Release**,
+sobald auf `main` eine neue Version in `rust/Cargo.toml` (`[workspace.package] version`)
+landet. Das Tag lautet `rust-v<version>` – der Updater der Python-Version ignoriert solche
+Tags, Python-Nutzer werden also nicht automatisch umgestellt. Text des Releases:
+`rust/RELEASE_NOTES.md`.
+
+Für ein neues Release: Version in `rust/Cargo.toml` und `rust/package.json` erhöhen,
+Release-Notes anpassen, auf `main` pushen.
 
 ## Entwickeln
 
@@ -85,18 +98,19 @@ Intervall. Mit Autostart startet sie direkt im Tray. Ein separater Update-Agent 
 
 Updates müssen signiert sein, sonst installiert der Updater sie nicht.
 
-1. Schlüssel lokal erzeugen (den privaten Schlüssel niemals committen):
+Der öffentliche Schlüssel ist bereits in `src-tauri/tauri.conf.json`
+(`plugins.updater.pubkey`) eingetragen. Der private Schlüssel gehört **nur** als Secret
+ins GitHub-Repository (*Settings → Secrets and variables → Actions*):
 
-   ```bash
-   cd rust
-   npx tauri signer generate -w ~/.tauri/gmm-updater.key
-   ```
+- `TAURI_SIGNING_PRIVATE_KEY`: Inhalt der privaten Schlüsseldatei
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: leer lassen bzw. nicht anlegen (Schlüssel ohne Passwort)
 
-2. Den Inhalt von `~/.tauri/gmm-updater.key.pub` in `src-tauri/tauri.conf.json` unter
-   `plugins.updater.pubkey` eintragen.
-3. Im GitHub-Repository unter *Settings → Secrets and variables → Actions* anlegen:
-   `TAURI_SIGNING_PRIVATE_KEY` (Inhalt von `gmm-updater.key`) und
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+Neuen Schlüssel erzeugen (nur falls der alte verloren geht – dann können bestehende
+Installationen nicht mehr automatisch aktualisieren):
 
-Solange kein Schlüssel eingetragen ist, meldet die App bei der Prüfung
-„Der Updater ist in diesem Build nicht eingerichtet“. Die CI baut dann ohne Update-Pakete.
+```bash
+cd rust
+npx tauri signer generate -w ~/.tauri/gmm-updater.key
+```
+
+Fehlt das Secret, baut die CI das Release trotzdem, aber ohne Update-Pakete (`latest.json`).

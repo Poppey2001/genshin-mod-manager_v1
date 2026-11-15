@@ -9,6 +9,8 @@ pub struct AppState {
     pub config: Mutex<AppConfig>,
     /// Abbruch-Flag des laufenden Bibliotheks-Scans.
     pub scan_cancel: Mutex<Option<Arc<AtomicBool>>>,
+    /// Abbruch-Flag des laufenden Imports.
+    pub import_cancel: Mutex<Option<Arc<AtomicBool>>>,
     /// Zuletzt gefundenes, noch nicht installiertes Update.
     pub pending_update: Mutex<Option<Update>>,
     /// Läuft gerade eine Updateprüfung oder Installation?
@@ -20,6 +22,7 @@ impl AppState {
         Self {
             config: Mutex::new(AppConfig::load(app_dirs())),
             scan_cancel: Mutex::new(None),
+            import_cancel: Mutex::new(None),
             pending_update: Mutex::new(None),
             update_busy: AtomicBool::new(false),
         }

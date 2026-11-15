@@ -16,6 +16,8 @@ class AppStore {
   boot = $state<Bootstrap | null>(null);
   config = $state<AppConfig | null>(null);
   page = $state<Page>("library");
+  /** Anzahl Konflikte (Badge in der Navigation), null = noch nicht geprüft. */
+  conflictCount = $state<number | null>(null);
   toast = $state<{ text: string; error: boolean } | null>(null);
 
   update = $state<UpdateMeta | null>(null);
@@ -76,6 +78,7 @@ class AppStore {
   }
 
   async selectGame(gameId: string): Promise<void> {
+    this.conflictCount = null;
     await this.saveConfig((config) => (config.selected_game = gameId));
   }
 

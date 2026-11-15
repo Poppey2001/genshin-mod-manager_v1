@@ -3,12 +3,17 @@
 //! Dieses Crate ist der Rust-Port der Python-Services unter `app/`. Es ist
 //! bewusst unabhängig von Tauri, damit es vollständig getestet werden kann.
 
+pub mod archive;
 pub mod characters;
 pub mod config;
+pub mod conflicts;
 pub mod games;
+pub mod importer;
+pub mod ini;
 pub mod manager;
 pub mod network;
 pub mod paths;
+pub mod profiles;
 pub mod scanner;
 pub mod structure;
 

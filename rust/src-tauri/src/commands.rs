@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use gmm_core::archive::{inspect_archive, is_supported_archive, SecurityReport};
+use gmm_core::importer::{ImportBatchResult, ImportOptions, ModImporter};
 use gmm_core::{all_games, app_dirs, AppConfig, GameDefinition, GameScope, ModInfo, ModManager, ModScanner, ModState};
 use serde::Serialize;
 use serde_json::Value;
@@ -24,6 +26,12 @@ pub struct CommandError {
 impl From<gmm_core::Error> for CommandError {
     fn from(error: gmm_core::Error) -> Self {
         Self { kind: error.kind(), message: error.to_string() }
+    }
+}
+
+impl From<tauri::Error> for CommandError {
+    fn from(error: tauri::Error) -> Self {
+        Self { kind: "error", message: error.to_string() }
     }
 }
 
@@ -248,4 +256,224 @@ pub fn skip_update(app: AppHandle, state: State<'_, AppState>, version: String) 
     state.pending_update.lock().expect("update lock").take();
     crate::tray::set_update_available(&app, None);
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Import
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct ImportCheck {
+    pub path: PathBuf,
+    pub is_directory: bool,
+    pub supported: bool,
+    pub report: Option<SecurityReport>,
+    pub error: Option<String>,
+}
+
+/// Prüft die Quellen vor dem Import (Archive: Sicherheitsbericht).
+#[tauri::command]
+pub async fn check_import_sources(paths: Vec<PathBuf>) -> CommandResult<Vec<ImportCheck>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        paths
+            .into_iter()
+            .map(|path| {
+                if path.is_dir() {
+                    return ImportCheck { path, is_directory: true, supported: true, report: None, error: None };
+                }
+                if !path.is_file() || !is_supported_archive(&path) {
+                    return ImportCheck { path, is_directory: false, supported: false, report: None, error: None };
+                }
+                match inspect_archive(&path) {
+                    Ok(report) => {
+                        ImportCheck { path, is_directory: false, supported: true, report: Some(report), error: None }
+                    }
+                    Err(error) => ImportCheck {
+                        path,
+                        is_directory: false,
+                        supported: true,
+                        report: None,
+                        error: Some(error.to_string()),
+                    },
+                }
+            })
+            .collect()
+    })
+    .await
+    .map_err(|error| CommandError::from(error.to_string()))
+}
+
+#[derive(Serialize, Clone)]
+struct ImportProgressEvent {
+    current: usize,
+    total: usize,
+    name: String,
+}
+
+#[tauri::command]
+pub async fn import_mods(
+    app: AppHandle,
+    game_id: String,
+    paths: Vec<PathBuf>,
+    options: ImportOptions,
+) -> CommandResult<ImportBatchResult> {
+    let state = app.state::<AppState>();
+    let cancel = Arc::new(AtomicBool::new(false));
+    *state.import_cancel.lock().expect("import lock") = Some(cancel.clone());
+    let scope = scope_for(&state, &game_id);
+    let emitter = app.clone();
+    let task_cancel = cancel.clone();
+    let temp_root = app_dirs().cache_dir.join("import");
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let progress = |current: usize, total: usize, name: &str| {
+            let _ = emitter.emit("import-progress", ImportProgressEvent { current, total, name: name.to_string() });
+        };
+        ModImporter::new().with_cancel(&task_cancel).with_temp_root(temp_root).import_sources(
+            &paths,
+            &scope.library_dir,
+            &options,
+            Some(&progress),
+        )
+    })
+    .await
+    .map_err(|error| CommandError::from(error.to_string()))?;
+    state.import_cancel.lock().expect("import lock").take();
+    Ok(result?)
+}
+
+#[tauri::command]
+pub fn cancel_import(state: State<'_, AppState>) {
+    if let Some(flag) = state.import_cancel.lock().expect("import lock").as_ref() {
+        flag.store(true, Ordering::Relaxed);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// INI-Analyse
+// ---------------------------------------------------------------------------
+
+/// Analysiert die steuernden INIs eines Mods (aktive Kopie bevorzugt).
+#[tauri::command]
+pub async fn analyze_mod(
+    app: AppHandle,
+    game_id: String,
+    path: PathBuf,
+) -> CommandResult<gmm_core::ini::ModIniAnalysis> {
+    let scope = scope_for(&app.state::<AppState>(), &game_id);
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = ModManager::new(scope).inspection_path_for(&path).unwrap_or(path);
+        gmm_core::ini::analyze_mod_ini(&target)
+    })
+    .await
+    .map_err(|error| CommandError::from(error.to_string()))
+}
+
+// ---------------------------------------------------------------------------
+// Konflikte
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn scan_conflicts(app: AppHandle, game_id: String) -> CommandResult<Vec<gmm_core::conflicts::ConflictItem>> {
+    let scope = scope_for(&app.state::<AppState>(), &game_id);
+    tauri::async_runtime::spawn_blocking(move || -> gmm_core::Result<_> {
+        std::fs::create_dir_all(&scope.library_dir).ok();
+        let mods = ModScanner::new().scan(&scope.library_dir, None)?.mods;
+        let manager = ModManager::new(scope.clone());
+        Ok(gmm_core::conflicts::ConflictScanner::new(&scope, &manager).scan(&mods))
+    })
+    .await
+    .map_err(|error| CommandError::from(error.to_string()))?
+    .map_err(CommandError::from)
+}
+
+// ---------------------------------------------------------------------------
+// Profile
+// ---------------------------------------------------------------------------
+
+fn profile_service() -> CommandResult<gmm_core::profiles::ProfileService> {
+    Ok(gmm_core::profiles::ProfileService::new(&app_dirs().profile_dir())?)
+}
+
+#[tauri::command]
+pub fn list_profiles(game_id: String) -> CommandResult<Vec<gmm_core::profiles::ModProfile>> {
+    Ok(profile_service()?.list_profiles(&game_id))
+}
+
+/// Speichert den aktuellen Zustand der Bibliothek als (neues oder bestehendes) Profil.
+#[tauri::command]
+pub async fn save_profile(
+    app: AppHandle,
+    game_id: String,
+    name: String,
+    overwrite: bool,
+) -> CommandResult<gmm_core::profiles::ModProfile> {
+    let scope = scope_for(&app.state::<AppState>(), &game_id);
+    let profile = tauri::async_runtime::spawn_blocking(move || -> gmm_core::Result<_> {
+        let mods = ModScanner::new().scan(&scope.library_dir, None)?.mods;
+        let manager = ModManager::new(scope.clone());
+        gmm_core::profiles::ProfileService::new(&app_dirs().profile_dir())?.capture_profile(
+            &name,
+            scope.game.id,
+            &mods,
+            &manager,
+            overwrite,
+        )
+    })
+    .await
+    .map_err(|error| CommandError::from(error.to_string()))??;
+    app.state::<AppState>().update_config(|config| config.selected_profile = profile.name.clone())?;
+    Ok(profile)
+}
+
+#[tauri::command]
+pub fn rename_profile(
+    state: State<'_, AppState>,
+    game_id: String,
+    old_name: String,
+    new_name: String,
+) -> CommandResult<gmm_core::profiles::ModProfile> {
+    let renamed = profile_service()?.rename_profile(&game_id, &old_name, &new_name)?;
+    if state.config().selected_profile == old_name {
+        state.update_config(|config| config.selected_profile = renamed.name.clone())?;
+    }
+    Ok(renamed)
+}
+
+#[tauri::command]
+pub fn delete_profile(game_id: String, name: String) -> CommandResult<()> {
+    Ok(profile_service()?.delete_profile(&game_id, &name)?)
+}
+
+#[derive(Serialize, Clone)]
+struct ProfileProgress {
+    current: usize,
+    total: usize,
+    name: String,
+}
+
+#[tauri::command]
+pub async fn apply_profile(
+    app: AppHandle,
+    game_id: String,
+    name: String,
+) -> CommandResult<gmm_core::profiles::ApplyResult> {
+    let profile = profile_service()?.load_profile(&game_id, &name)?;
+    let scope = scope_for(&app.state::<AppState>(), &game_id);
+    let emitter = app.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || -> gmm_core::Result<_> {
+        let mods = ModScanner::new().scan(&scope.library_dir, None)?.mods;
+        let mut manager = ModManager::new(scope);
+        let progress = |current: usize, total: usize, name: &str| {
+            let _ = emitter.emit("profile-progress", ProfileProgress { current, total, name: name.to_string() });
+        };
+        Ok(gmm_core::profiles::apply_profile(&profile, &mods, &mut manager, None, Some(&progress)))
+    })
+    .await
+    .map_err(|error| CommandError::from(error.to_string()))??;
+    // Nur ein vollständig angewendetes Profil gilt als aktiv.
+    let complete = result.missing_count + result.blocked_count + result.failed_count == 0 && !result.cancelled;
+    if complete {
+        app.state::<AppState>().update_config(|config| config.selected_profile = result.profile_name.clone())?;
+    }
+    Ok(result)
 }

@@ -14,6 +14,14 @@ walkdir.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 log.workspace = true
+unicode-normalization = "0.1"
+zip = { version = "9", default-features = false, features = ["deflate", "deflate64", "bzip2", "lzma", "zstd", "time"] }
+tar = "0.4"
+flate2 = "1"
+bzip2 = "0.6"
+xz2 = { version = "0.1", features = ["static"] }
+sevenz-rust2 = "0.25"
+unrar = "0.5"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }

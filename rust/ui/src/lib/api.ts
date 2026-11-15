@@ -21,6 +21,7 @@ export interface GameConfig {
 
 export interface AppConfig {
   selected_game: string;
+  selected_profile: string;
   games: Record<string, GameConfig>;
   language: "de" | "en";
   library_view_mode: "list" | "gallery";
@@ -93,6 +94,108 @@ export type InstallProgress =
   | { event: "progress"; downloaded: number; total: number | null }
   | { event: "installing" };
 
+export interface ArchiveIssue {
+  severity: "warning" | "block";
+  code: string;
+  message: string;
+  member: string | null;
+}
+
+export interface SecurityReport {
+  source: string;
+  entry_count: number;
+  total_uncompressed: number;
+  issues: ArchiveIssue[];
+  warning_files: string[];
+  blocked: boolean;
+}
+
+export interface ImportCheck {
+  path: string;
+  is_directory: boolean;
+  supported: boolean;
+  report: SecurityReport | null;
+  error: string | null;
+}
+
+export interface ImportOptions {
+  character: string | null;
+  mod_type: string | null;
+  conflict_policy: "rename" | "skip";
+}
+
+export interface ImportItemResult {
+  source: string;
+  destination: string | null;
+  status: "imported" | "skipped" | "failed";
+  message: string;
+  warnings: string[];
+}
+
+export interface ImportBatchResult {
+  items: ImportItemResult[];
+  duration_seconds: number;
+  imported_count: number;
+  skipped_count: number;
+  failed_count: number;
+}
+
+export interface IniKeyBinding {
+  section_name: string;
+  keys: string[];
+  back_keys: string[];
+  key_type: string;
+  condition: string | null;
+  assignments: { name: string; raw_value: string; values: string[] }[];
+  run_commands: string[];
+  comments: string[];
+  state_labels: { index: number; label: string }[];
+  smart: string | null;
+  wrap: string | null;
+}
+
+export interface ModIniAnalysis {
+  root_path: string;
+  files: {
+    path: string;
+    namespace: string | null;
+    merged_sources: string[];
+    key_bindings: IniKeyBinding[];
+    warnings: string[];
+  }[];
+  warnings: string[];
+  has_controls: boolean;
+}
+
+export interface ConflictItem {
+  kind: "library" | "unmanaged_active" | "invalid_marker" | "orphaned_managed";
+  title: string;
+  path: string;
+  message: string;
+  library_mod_path: string | null;
+  can_adopt: boolean;
+}
+
+export interface ModProfile {
+  schema_version: number;
+  name: string;
+  game_id: string;
+  created_at: string;
+  updated_at: string;
+  mods: { relative_path: string; name: string; enabled: boolean }[];
+}
+
+export interface ProfileApplyResult {
+  profile_name: string;
+  items: { relative_path: string; name: string; desired_enabled: boolean; status: string; message: string }[];
+  cancelled: boolean;
+  changed_count: number;
+  unchanged_count: number;
+  missing_count: number;
+  blocked_count: number;
+  failed_count: number;
+}
+
 export function errorMessage(error: unknown): string {
   if (error && typeof error === "object" && "message" in error) return String((error as CommandError).message);
   return String(error);
@@ -112,4 +215,17 @@ export const api = {
   checkForUpdate: () => invoke<UpdateMeta | null>("check_for_update"),
   installUpdate: () => invoke<void>("install_update"),
   skipUpdate: (version: string) => invoke<void>("skip_update", { version }),
+  checkImportSources: (paths: string[]) => invoke<ImportCheck[]>("check_import_sources", { paths }),
+  importMods: (gameId: string, paths: string[], options: ImportOptions) =>
+    invoke<ImportBatchResult>("import_mods", { gameId, paths, options }),
+  cancelImport: () => invoke<void>("cancel_import"),
+  analyzeMod: (gameId: string, path: string) => invoke<ModIniAnalysis>("analyze_mod", { gameId, path }),
+  scanConflicts: (gameId: string) => invoke<ConflictItem[]>("scan_conflicts", { gameId }),
+  listProfiles: (gameId: string) => invoke<ModProfile[]>("list_profiles", { gameId }),
+  saveProfile: (gameId: string, name: string, overwrite: boolean) =>
+    invoke<ModProfile>("save_profile", { gameId, name, overwrite }),
+  renameProfile: (gameId: string, oldName: string, newName: string) =>
+    invoke<ModProfile>("rename_profile", { gameId, oldName, newName }),
+  deleteProfile: (gameId: string, name: string) => invoke<void>("delete_profile", { gameId, name }),
+  applyProfile: (gameId: string, name: string) => invoke<ProfileApplyResult>("apply_profile", { gameId, name }),
 };

@@ -33,7 +33,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["appimage", "nsis"],
+    "targets": [
+      "appimage",
+      "nsis"
+    ],
     "createUpdaterArtifacts": true,
     "category": "Utility",
     "shortDescription": "Mod-Manager für XXMI-Spiele",
@@ -47,7 +50,10 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["German", "English"],
+        "languages": [
+          "German",
+          "English"
+        ],
         "displayLanguageSelector": false
       }
     },
@@ -59,7 +65,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCQ0NGQjM4NzE2OTM5MkQKUldRdE9XbHhPUHZNdXpqT0pzUldwM2FMRWJHU21wUG5JVHFyd2p2STY5TlFsdEJIaG04KzFHUWUK",
       "endpoints": [],
       "windows": {
         "installMode": "passive"

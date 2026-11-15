@@ -62,8 +62,12 @@ struct GithubRelease {
     assets: Vec<GithubAsset>,
 }
 
+/// Rust-Releases tragen das Tag `rust-v<version>`, damit der Updater der
+/// Python-Version sie ignoriert. Später sind auch normale `v<version>`-Tags gültig.
 fn parse_version(tag: &str) -> Option<semver::Version> {
-    semver::Version::parse(tag.trim().trim_start_matches(['v', 'V'])).ok()
+    let tag = tag.trim();
+    let tag = tag.strip_prefix("rust-").unwrap_or(tag);
+    semver::Version::parse(tag.trim_start_matches(['v', 'V'])).ok()
 }
 
 /// Neuestes passendes Release mit `latest.json` (Version, Manifest-URL, Release-Seite, Notizen).
@@ -237,5 +241,6 @@ mod tests {
         assert_eq!(parse_version("v0.6.0").unwrap(), semver::Version::new(0, 6, 0));
         assert!(parse_version("0.6.0-alpha.2").unwrap() > parse_version("0.6.0-alpha.1").unwrap());
         assert!(parse_version("0.4.0a1").is_none());
+        assert_eq!(parse_version("rust-v0.6.0-alpha.1").unwrap(), semver::Version::parse("0.6.0-alpha.1").unwrap());
     }
 }

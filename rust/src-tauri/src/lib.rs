@@ -85,6 +85,16 @@ pub fn run() {
             commands::check_for_update,
             commands::install_update,
             commands::skip_update,
+            commands::check_import_sources,
+            commands::import_mods,
+            commands::cancel_import,
+            commands::analyze_mod,
+            commands::scan_conflicts,
+            commands::list_profiles,
+            commands::save_profile,
+            commands::rename_profile,
+            commands::delete_profile,
+            commands::apply_profile,
         ])
         .build(tauri::generate_context!())
         .expect("Tauri-Anwendung konnte nicht gestartet werden")

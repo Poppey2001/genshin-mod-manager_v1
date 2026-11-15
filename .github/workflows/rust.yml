@@ -1,7 +1,10 @@
 name: Rust Port (Tauri)
 
-# Baut und testet den Rust-Port unter rust/. Veröffentlicht KEIN Release:
-# Ausgeliefert wird weiterhin die Python-Version, bis der Port vollständig ist.
+# Baut, testet und veröffentlicht den Rust-Port unter rust/.
+#
+# Releases erscheinen als Pre-Release mit dem Tag `rust-v<version>`
+# (Version aus rust/Cargo.toml). Der Python-Updater ignoriert dieses Tag,
+# Python-Nutzer werden also nicht automatisch umgestellt.
 
 on:
   push:
@@ -27,7 +30,7 @@ permissions:
 
 concurrency:
   group: rust-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 defaults:
   run:
@@ -70,20 +73,69 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
-  bundle:
-    name: Bundle ${{ matrix.name }}
+  prepare:
+    name: Release vorbereiten
     needs: check
     if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      release_id: ${{ steps.release.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Version aus rust/Cargo.toml lesen
+        id: version
+        run: |
+          VERSION="$(python3 -c "import tomllib; print(tomllib.load(open('Cargo.toml','rb'))['workspace']['package']['version'])")"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=rust-v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Rust-Version: ${VERSION}"
+
+      - name: Entwurf anlegen (falls noch kein Release existiert)
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          EXISTING="$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate \
+            --jq ".[] | select(.tag_name == \"${TAG}\") | \"\(.id) \(.draft)\"" | head -n1)"
+          if [[ -n "$EXISTING" && "${EXISTING#* }" == "false" ]]; then
+            echo "Release ${TAG} ist bereits veröffentlicht – kein neuer Build."
+            echo "release_id=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -z "$EXISTING" ]]; then
+            gh release create "$TAG" \
+              --draft \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "Genshin Mod Manager ${VERSION} (Rust, Vorschau)" \
+              --notes-file RELEASE_NOTES.md
+            EXISTING="$(gh api "repos/${GITHUB_REPOSITORY}/releases" \
+              --jq ".[] | select(.tag_name == \"${TAG}\") | \"\(.id) \(.draft)\"" | head -n1)"
+          fi
+          echo "release_id=${EXISTING%% *}" >> "$GITHUB_OUTPUT"
+
+  bundle:
+    name: Bundle ${{ matrix.name }}
+    needs: prepare
+    if: needs.prepare.outputs.release_id != ''
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: Linux AppImage
             os: ubuntu-22.04
-            bundles: appimage
-          - name: Windows NSIS
+            args: --bundles appimage
+          - name: Windows Installer
             os: windows-latest
-            bundles: nsis
+            args: --bundles nsis
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -109,26 +161,43 @@ jobs:
 
       - run: npm ci
 
-      - name: Tauri-Build
+      - name: Signatur prüfen
+        id: signing
         shell: bash
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          # Ohne Signatur-Schlüssel keine Updater-Pakete (latest.json/.sig) erzeugen.
-          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
-            npx tauri build --bundles ${{ matrix.bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          if [[ -n "$KEY" ]]; then
+            echo "args=" >> "$GITHUB_OUTPUT"
           else
-            npx tauri build --bundles ${{ matrix.bundles }}
+            echo "::warning::Secret TAURI_SIGNING_PRIVATE_KEY fehlt – Release ohne Update-Pakete (latest.json)."
+            echo 'args=--config {"bundle":{"createUpdaterArtifacts":false}}' >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/upload-artifact@v7
+      - name: Bauen und hochladen
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          name: gmm-rust-${{ runner.os }}
-          path: |
-            rust/target/release/bundle/appimage/*.AppImage
-            rust/target/release/bundle/appimage/*.sig
-            rust/target/release/bundle/nsis/*.exe
-            rust/target/release/bundle/nsis/*.sig
-          if-no-files-found: error
-          retention-days: 14
+          projectPath: rust
+          tauriScript: npx tauri
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          args: ${{ matrix.args }} ${{ steps.signing.outputs.args }}
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+
+  publish:
+    name: Release veröffentlichen
+    needs: [prepare, bundle]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Entwurf veröffentlichen
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease

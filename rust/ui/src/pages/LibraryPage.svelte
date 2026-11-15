@@ -6,6 +6,12 @@
   import { app } from "../lib/store.svelte";
   import { tr } from "../lib/i18n.svelte";
   import { formatDate, formatSize } from "../lib/format";
+  import { open as openDialog } from "@tauri-apps/plugin-dialog";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import ImportDialog from "../components/ImportDialog.svelte";
+  import ModInfoDialog from "../components/ModInfoDialog.svelte";
+
+  const ARCHIVE_EXTENSIONS = ["zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "tbz2", "xz", "txz"];
 
   let { game }: { game: GameDefinition } = $props();
 
@@ -24,6 +30,11 @@
   let focused = $state<string | null>(null);
 
   let unlisten: UnlistenFn | undefined;
+  let unlistenDrop: UnlistenFn | undefined;
+  let importPaths = $state<string[] | null>(null);
+  let importMenuOpen = $state(false);
+  let dragging = $state(false);
+  let infoMod = $state<ModEntry | null>(null);
 
   const mods = $derived(scan?.mods ?? []);
   const characters = $derived([...new Set(mods.flatMap((mod) => mod.characters))].sort(collator));
@@ -64,6 +75,7 @@
     progress = null;
     try {
       scan = await api.scanLibrary(game.id);
+      void api.scanConflicts(game.id).then((items) => (app.conflictCount = items.length)).catch(() => {});
       const known = new Set(scan.mods.map((mod) => mod.path));
       selected = new Set([...selected].filter((path) => known.has(path)));
       app.showToast(tr("library.status.scan_result", { count: scan.mods.length, seconds: scan.duration_seconds }));
@@ -146,20 +158,64 @@
     }
   }
 
+  async function pickImport(kind: "archive" | "directory"): Promise<void> {
+    importMenuOpen = false;
+    const result =
+      kind === "archive"
+        ? await openDialog({
+            multiple: true,
+            title: tr("library.import_picker.archive_title"),
+            filters: [{ name: tr("library.import_picker.supported_archives"), extensions: ARCHIVE_EXTENSIONS }],
+          })
+        : await openDialog({ multiple: true, directory: true, title: tr("library.import_picker.directory_title") });
+    const paths = Array.isArray(result) ? result : result ? [result] : [];
+    if (paths.length) importPaths = paths;
+  }
+
+  function finishImport(imported: boolean): void {
+    importPaths = null;
+    if (imported) void runScan();
+  }
+
   onMount(async () => {
     unlisten = await listen<{ current: number; total: number }>("scan-progress", (event) => {
       progress = event.payload;
+    });
+    unlistenDrop = await getCurrentWebview().onDragDropEvent((event) => {
+      const payload = event.payload;
+      if (payload.type === "enter" || payload.type === "over") dragging = true;
+      else if (payload.type === "leave") dragging = false;
+      else if (payload.type === "drop") {
+        dragging = false;
+        if (payload.paths.length && !importPaths && !scanning) importPaths = payload.paths;
+      }
     });
     void runScan();
   });
 
   onDestroy(() => {
     unlisten?.();
+    unlistenDrop?.();
     if (scanning) void api.cancelScan();
   });
 </script>
 
 <div class="library">
+  {#if dragging}
+    <div class="drop-overlay">{tr("library.action.import")}</div>
+  {/if}
+  {#if infoMod}
+    <ModInfoDialog gameId={game.id} mod={infoMod} onclose={() => (infoMod = null)} />
+  {/if}
+  {#if importPaths}
+    <ImportDialog
+      gameId={game.id}
+      paths={importPaths}
+      characters={characters}
+      modTypes={modTypes}
+      onclose={finishImport}
+    />
+  {/if}
   <header class="header">
     <div>
       <h1>{tr("library.title")}</h1>
@@ -174,6 +230,17 @@
       {#if app.config?.games[game.id]?.launcher_path}
         <button class="btn" onclick={launch}>{tr("rust.library.launch")}</button>
       {/if}
+      <div class="import-menu">
+        <button class="btn" disabled={scanning} onclick={() => (importMenuOpen = !importMenuOpen)}>
+          {tr("library.action.import")} ▾
+        </button>
+        {#if importMenuOpen}
+          <div class="menu" role="menu">
+            <button role="menuitem" onclick={() => pickImport("archive")}>{tr("library.import.archive")}</button>
+            <button role="menuitem" onclick={() => pickImport("directory")}>{tr("library.import.directory")}</button>
+          </div>
+        {/if}
+      </div>
       {#if scanning}
         <button class="btn" onclick={() => api.cancelScan()}>{tr("common.cancel")}</button>
       {:else}
@@ -365,6 +432,11 @@
           {:else if detail.state === "not_configured"}
             <button class="btn" onclick={() => (app.page = "settings")}>{tr("library.details.action.not_configured")}</button>
           {/if}
+          {#if detail.ini_file_count > 0}
+            <button class="btn" title={tr("library.list.info_tooltip")} onclick={() => (infoMod = detail)}>
+              {tr("library.details.action.info")}
+            </button>
+          {/if}
           <button class="btn" onclick={() => api.revealPath(detail!.path)}>{tr("rust.library.open_folder")}</button>
         </div>
       {:else}
@@ -409,6 +481,52 @@
   .header-actions {
     display: flex;
     gap: 8px;
+  }
+
+  .import-menu {
+    position: relative;
+  }
+
+  .menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 220px;
+    display: flex;
+    flex-direction: column;
+    padding: 5px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    box-shadow: 0 12px 30px rgb(0 0 0 / 0.45);
+    z-index: 20;
+  }
+
+  .menu button {
+    text-align: left;
+    padding: 9px 12px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+  }
+
+  .menu button:hover {
+    background: var(--bg-hover);
+  }
+
+  .drop-overlay {
+    position: fixed;
+    inset: 12px;
+    border: 2px dashed var(--accent);
+    border-radius: 16px;
+    background: rgb(41 36 64 / 0.75);
+    display: grid;
+    place-items: center;
+    font-size: 22px;
+    font-weight: 850;
+    color: #fff;
+    z-index: 30;
+    pointer-events: none;
   }
 
   .stats {
