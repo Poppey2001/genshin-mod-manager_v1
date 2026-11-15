@@ -108,17 +108,27 @@ jobs:
             echo "release_id=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [[ -z "$EXISTING" ]]; then
-            gh release create "$TAG" \
-              --draft \
-              --prerelease \
-              --target "$GITHUB_SHA" \
-              --title "Genshin Mod Manager ${VERSION} (Rust, Vorschau)" \
-              --notes-file RELEASE_NOTES.md
-            EXISTING="$(gh api "repos/${GITHUB_REPOSITORY}/releases" \
-              --jq ".[] | select(.tag_name == \"${TAG}\") | \"\(.id) \(.draft)\"" | head -n1)"
+          if [[ -n "$EXISTING" ]]; then
+            RELEASE_ID="${EXISTING%% *}"
+            echo "Vorhandenen Entwurf ${RELEASE_ID} wiederverwenden."
+          else
+            # Die ID direkt aus der Antwort nehmen: Die Release-Liste enthält
+            # einen gerade angelegten Entwurf nicht immer sofort.
+            RELEASE_ID="$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="$TAG" \
+              -f target_commitish="$GITHUB_SHA" \
+              -f name="Genshin Mod Manager ${VERSION} (Rust, Vorschau)" \
+              -F body=@RELEASE_NOTES.md \
+              -F draft=true \
+              -F prerelease=true \
+              --jq .id)"
+            echo "Entwurf ${RELEASE_ID} angelegt."
           fi
-          echo "release_id=${EXISTING%% *}" >> "$GITHUB_OUTPUT"
+          if [[ -z "$RELEASE_ID" ]]; then
+            echo "::error::Release-ID konnte nicht ermittelt werden."
+            exit 1
+          fi
+          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
 
   bundle:
     name: Bundle ${{ matrix.name }}
