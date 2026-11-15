@@ -4,10 +4,17 @@ on:
   push:
     branches:
       - main
+    # Der Rust-Port (rust/) wird von rust.yml gebaut und löst kein Python-Release aus.
+    paths-ignore:
+      - "rust/**"
+      - ".github/workflows/rust.yml"
 
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - "rust/**"
+      - ".github/workflows/rust.yml"
 
   workflow_dispatch:
     inputs:

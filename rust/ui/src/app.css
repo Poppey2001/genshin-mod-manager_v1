@@ -1,0 +1,188 @@
+/* Farben aus app/ui/main_window_ui.py und app/styles/library.qss übernommen. */
+:root {
+  --bg: #101319;
+  --bg-elevated: #151920;
+  --bg-card: #1a1f27;
+  --bg-input: #11151a;
+  --bg-hover: #20262e;
+  --border: #292f39;
+  --border-strong: #303742;
+  --text: #e7e9ef;
+  --text-strong: #f5f6f8;
+  --text-muted: #87919f;
+  --text-faint: #59616d;
+  --accent: #8067ff;
+  --accent-strong: #7157e8;
+  --accent-soft: #292440;
+  --accent-border: #574a96;
+  --success: #48c78e;
+  --success-soft: #16352a;
+  --warning: #ffc76d;
+  --warning-soft: #3a2f17;
+  --danger: #e24d61;
+  --danger-soft: #3b1a22;
+  --radius: 9px;
+  --font: "Inter", "Segoe UI", "Noto Sans", system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 8px 10px;
+  outline: none;
+  user-select: text;
+}
+
+input:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: #1b2027;
+  color: #c9cfd8;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: #252c35;
+  color: #fff;
+  border-color: #444d5a;
+}
+
+.btn.primary {
+  background: var(--accent-strong);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.btn.danger {
+  border-color: #6b2a36;
+  color: #ffb3bf;
+}
+
+.btn.quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.badge.enabled {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.badge.disabled {
+  background: #232831;
+  color: var(--text-muted);
+}
+.badge.conflict {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.badge.broken {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.badge.not_configured {
+  background: #232831;
+  color: var(--text-faint);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2c333e;
+  border-radius: 5px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 30px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 50%,
+    calc(100% - 11px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+}
